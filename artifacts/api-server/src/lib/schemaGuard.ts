@@ -1675,6 +1675,10 @@ async function runGuard(): Promise<void> {
       updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+  await db.execute(sql`
+    ALTER TABLE merchant_auth_locks
+      ADD COLUMN IF NOT EXISTS last_exhaustion_at TIMESTAMPTZ
+  `);
   logger.info({ table: "merchant_auth_locks" }, "schema_guard_table_created");
 
   logger.info("schema_guard_completed");

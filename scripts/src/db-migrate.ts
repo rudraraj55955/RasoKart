@@ -1488,6 +1488,10 @@ async function migrate() {
       updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+  await runSection("merchant-auth-locks-last-exhaustion-at", sql`
+    ALTER TABLE merchant_auth_locks
+      ADD COLUMN IF NOT EXISTS last_exhaustion_at TIMESTAMPTZ
+  `);
 
   await runSection("iam-tables", sql`
     CREATE TABLE IF NOT EXISTS permissions (

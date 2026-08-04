@@ -13,6 +13,9 @@ export const merchantAuthLocksTable = pgTable("merchant_auth_locks", {
   identifierHash: text("identifier_hash").primaryKey(),
   lockedUntil: timestamp("locked_until", { withTimezone: true }),
   windowExhaustionCount: integer("window_exhaustion_count").notNull().default(0),
+  /** Timestamp of the most recent window-exhaustion event. Used to reset the
+   *  counter when a full rate-limit window passes without exhaustion. */
+  lastExhaustionAt: timestamp("last_exhaustion_at", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

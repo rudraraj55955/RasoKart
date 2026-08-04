@@ -34,8 +34,16 @@ type OtpVerifyValues = z.infer<typeof otpVerifySchema>;
 const registerSchema = z.object({
   businessName: z.string().min(2, "Business name is required"),
   contactName: z.string().min(2, "Contact name is required"),
-  phone: z.string().min(5, "Phone number is required"),
-  website: z.string().url("Must be a valid URL").optional().or(z.literal("")),
+  phone: z.string().min(1, "Phone number is required").refine((v) => /\d/.test(v), "Phone number must contain at least one digit"),
+  website: z.string().optional().refine((v) => {
+    if (!v || v.trim() === "") return true;
+    try {
+      const p = new URL(v.trim());
+      return p.protocol === "http:" || p.protocol === "https:";
+    } catch {
+      return false;
+    }
+  }, "Website must start with http:// or https://"),
   password: z.string().min(8, "Password must be at least 8 characters"),
 });
 type RegisterFormValues = z.infer<typeof registerSchema>;

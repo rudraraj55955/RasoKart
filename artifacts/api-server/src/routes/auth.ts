@@ -613,6 +613,30 @@ router.post("/register", async (req, res, next) => {
       return;
     }
 
+    // Validate phone: must contain at least one digit
+    const phoneTrimmed = (phone as string).trim();
+    if (!/\d/.test(phoneTrimmed)) {
+      res.status(400).json({ error: "Phone number must contain at least one digit" });
+      return;
+    }
+
+    // Validate website: must be http/https if provided
+    if (website) {
+      const w = (website as string).trim();
+      if (w) {
+        try {
+          const parsed = new URL(w);
+          if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+            res.status(400).json({ error: "Website must start with http:// or https://" });
+            return;
+          }
+        } catch {
+          res.status(400).json({ error: "Website must be a valid URL (e.g. https://yourbusiness.com)" });
+          return;
+        }
+      }
+    }
+
     await db.update(merchantAuthOtpsTable).set({ consumedAt: new Date() }).where(eq(merchantAuthOtpsTable.id, otpRow.id));
 
     const passwordHash = await bcrypt.hash(password, 10);
@@ -620,8 +644,8 @@ router.post("/register", async (req, res, next) => {
       businessName,
       contactName,
       email: normalizedEmail,
-      phone,
-      website: website || null,
+      phone: phoneTrimmed.slice(0, 50),
+      website: website ? (website as string).trim().slice(0, 500) || null : null,
       status: "pending",
     }).returning();
     const [user] = await db.insert(usersTable).values({
@@ -2375,11 +2399,12 @@ router.post("/merchant/google", googleMerchantLimiter, async (req, res, next) =>
       return;
     }
 
-    const { idToken, businessName, contactName, phone } = req.body as {
+    const { idToken, businessName, contactName, phone, website } = req.body as {
       idToken?: string;
       businessName?: string;
       contactName?: string;
       phone?: string;
+      website?: string | null;
     };
 
     if (!idToken || typeof idToken !== "string") {
@@ -2448,11 +2473,38 @@ router.post("/merchant/google", googleMerchantLimiter, async (req, res, next) =>
           return;
         }
 
+        // Validate phone: must contain at least one digit
+        const phoneTrimmedGoogle = (phone as string).trim();
+        if (!/\d/.test(phoneTrimmedGoogle)) {
+          res.status(400).json({ error: "Phone number must contain at least one digit" });
+          return;
+        }
+
+        // Validate website: must be http/https if provided
+        let websiteValueGoogle: string | null = null;
+        if (website) {
+          const w = (website as string).trim();
+          if (w) {
+            try {
+              const parsed = new URL(w);
+              if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+                res.status(400).json({ error: "Website must start with http:// or https://" });
+                return;
+              }
+              websiteValueGoogle = w.slice(0, 500);
+            } catch {
+              res.status(400).json({ error: "Website must be a valid URL (e.g. https://yourbusiness.com)" });
+              return;
+            }
+          }
+        }
+
         const [merchant] = await db.insert(merchantsTable).values({
           businessName,
           contactName,
           email: normalizedEmail,
-          phone,
+          phone: phoneTrimmedGoogle.slice(0, 50),
+          website: websiteValueGoogle,
           status: "pending",
         }).returning();
 

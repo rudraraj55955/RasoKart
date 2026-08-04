@@ -657,8 +657,8 @@ function MerchantGoogleSignIn({ onSigningIn }: { onSigningIn: () => void }) {
   const { providers, loading } = useSocialProviders();
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
-  const [needsReg, setNeedsReg] = useState<{ email: string; name?: string } | null>(null);
-  const [regForm, setRegForm] = useState({ businessName: "", contactName: "", phone: "" });
+  const [needsReg, setNeedsReg] = useState<{ email: string; name?: string; idToken: string } | null>(null);
+  const [regForm, setRegForm] = useState({ businessName: "", contactName: "", phone: "", website: "" });
 
   if (loading || !providers.google.enabled || !providers.google.clientId) return null;
 
@@ -672,7 +672,7 @@ function MerchantGoogleSignIn({ onSigningIn }: { onSigningIn: () => void }) {
       });
       const data = await r.json();
       if (r.status === 202 && data.needsRegistration) {
-        setNeedsReg({ email: data.email, name: data.name });
+        setNeedsReg({ email: data.email, name: data.name, idToken });
         setBusy(false);
         return;
       }
@@ -696,12 +696,34 @@ function MerchantGoogleSignIn({ onSigningIn }: { onSigningIn: () => void }) {
       toast.error("Please fill in all required fields.");
       return;
     }
+    if (!/\d/.test(regForm.phone)) {
+      toast.error("Phone number must contain at least one digit.");
+      return;
+    }
+    if (regForm.website.trim()) {
+      try {
+        const p = new URL(regForm.website.trim());
+        if (p.protocol !== "http:" && p.protocol !== "https:") {
+          toast.error("Website must start with http:// or https://");
+          return;
+        }
+      } catch {
+        toast.error("Website must be a valid URL (e.g. https://yourbusiness.com)");
+        return;
+      }
+    }
     setBusy(true);
     try {
       const r = await fetch(apiUrl("/auth/merchant/google"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idToken: "", ...regForm, email: needsReg.email }),
+        body: JSON.stringify({
+          idToken: needsReg.idToken,
+          businessName: regForm.businessName,
+          contactName: regForm.contactName,
+          phone: regForm.phone,
+          website: regForm.website || null,
+        }),
       });
       const data = await r.json();
       if (!r.ok) {
@@ -738,6 +760,11 @@ function MerchantGoogleSignIn({ onSigningIn }: { onSigningIn: () => void }) {
           placeholder="Phone number"
           value={regForm.phone}
           onChange={e => setRegForm(f => ({ ...f, phone: e.target.value }))}
+        />
+        <Input
+          placeholder="Website (optional, e.g. https://yourbusiness.com)"
+          value={regForm.website}
+          onChange={e => setRegForm(f => ({ ...f, website: e.target.value }))}
         />
         <Button className="w-full" onClick={handleRegister} disabled={busy}>
           {busy ? "Creating account…" : "Create account"}
