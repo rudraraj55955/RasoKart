@@ -964,6 +964,7 @@ export default function MerchantDeposits() {
       toast.success("Deposit received successfully");
       queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      queryClient.invalidateQueries({ queryKey: getGetPayinStatusQueryKey() });
     }
   }, [activeOrderStatus?.status]);
 
