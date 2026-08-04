@@ -886,11 +886,46 @@ export default function MerchantQrCodes() {
                 <Label>Amount (₹) <span className="text-muted-foreground text-xs">(optional — leave blank for open amount)</span></Label>
                 <Input type="number" step="0.01" placeholder="e.g. 999.00" value={form.amount}
                   onChange={e => { setForm(f => ({ ...f, amount: e.target.value })); setCreateError(""); }} />
-                {payinStatus?.upigatewayMinAmount != null && payinStatus?.upigatewayMaxAmount != null && (
-                  <p className="text-xs text-muted-foreground">
-                    Min ₹{payinStatus.upigatewayMinAmount.toLocaleString()} · Max ₹{payinStatus.upigatewayMaxAmount.toLocaleString()}
-                  </p>
-                )}
+                {(() => {
+                  const ekqrMin = payinStatus?.upigatewayMinAmount;
+                  const ekqrMax = payinStatus?.upigatewayMaxAmount;
+                  const cfMin = payinStatus?.minAmount;
+                  const cfMax = payinStatus?.maxAmount;
+                  const ekqrOn = ekqrMin != null && ekqrMax != null;
+                  const cfOn = payinStatus?.enabled && cfMin != null && cfMax != null;
+
+                  if (ekqrOn && cfOn) {
+                    // Both active — show union (widest accepted) with per-gateway breakdown
+                    const unionMin = Math.min(cfMin!, ekqrMin!);
+                    const unionMax = Math.max(cfMax!, ekqrMax!);
+                    return (
+                      <div className="space-y-0.5">
+                        <p className="text-xs text-muted-foreground">
+                          Accepted range: ₹{unionMin.toLocaleString()} – ₹{unionMax.toLocaleString()}
+                        </p>
+                        <p className="text-xs text-muted-foreground/60">
+                          EkQR: ₹{ekqrMin!.toLocaleString()}–₹{ekqrMax!.toLocaleString()} · Cashfree: ₹{cfMin!.toLocaleString()}–₹{cfMax!.toLocaleString()}
+                        </p>
+                      </div>
+                    );
+                  } else if (ekqrOn) {
+                    return (
+                      <p className="text-xs text-muted-foreground">
+                        Min ₹{ekqrMin!.toLocaleString()} · Max ₹{ekqrMax!.toLocaleString()}
+                      </p>
+                    );
+                  } else if (cfOn) {
+                    return (
+                      <p className="text-xs text-muted-foreground">
+                        Min ₹{cfMin!.toLocaleString()} · Max ₹{cfMax!.toLocaleString()}
+                      </p>
+                    );
+                  } else {
+                    return (
+                      <p className="text-xs text-muted-foreground italic">No limit configured</p>
+                    );
+                  }
+                })()}
               </div>
               {createError && (
                 <div className="flex items-start gap-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2.5">
