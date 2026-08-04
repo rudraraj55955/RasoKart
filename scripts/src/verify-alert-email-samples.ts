@@ -109,6 +109,36 @@ async function httpGetHtml(
 }
 
 // ---------------------------------------------------------------------------
+// SMTP connectivity probe (validates real env creds before any DB mutation)
+// ---------------------------------------------------------------------------
+
+async function probeSmtp(): Promise<{ ok: boolean; error?: string }> {
+  const host = process.env["SMTP_HOST"]!;
+  const port = parseInt(process.env["SMTP_PORT"] ?? "587", 10);
+  const user = process.env["SMTP_USER"]!;
+  const pass = process.env["SMTP_PASS"] ?? "";
+  const secure = port === 465;
+
+  const transporter = nodemailer.createTransport({
+    host,
+    port,
+    secure,
+    auth: { type: "LOGIN", user, pass },
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+  });
+
+  try {
+    await transporter.verify();
+    return { ok: true };
+  } catch (err: any) {
+    return { ok: false, error: (err as Error).message ?? String(err) };
+  } finally {
+    transporter.close();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Ethereal test account
 // ---------------------------------------------------------------------------
 
@@ -301,6 +331,26 @@ async function run() {
   }
 
   await assertApiReachable("alert email verification");
+
+  // SMTP connectivity probe — verifies real env creds before any DB mutation.
+  // Exits 1 immediately if the configured host/port/user/pass can't authenticate,
+  // so misconfigured credentials surface as a clear diagnostic rather than a
+  // confusing SMTP error buried inside the send-sample calls.
+  console.log("── SMTP connectivity probe …");
+  const smtpProbe = await probeSmtp();
+  if (!smtpProbe.ok) {
+    console.error(
+      `✗ SMTP connection failed — check credentials\n` +
+        `  Host : ${process.env["SMTP_HOST"]}:${process.env["SMTP_PORT"] ?? "587"}\n` +
+        `  User : ${process.env["SMTP_USER"]}\n` +
+        `  Error: ${smtpProbe.error}\n` +
+        `  Fix  : update SMTP_HOST / SMTP_USER / SMTP_PASS in ecosystem.config.cjs and redeploy.`,
+    );
+    process.exit(1);
+  }
+  console.log(
+    `  ✓ SMTP probe OK (${process.env["SMTP_HOST"]}:${process.env["SMTP_PORT"] ?? "587"})\n`,
+  );
 
   // 1. Admin login
   let token: string;
