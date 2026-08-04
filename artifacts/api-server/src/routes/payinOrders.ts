@@ -58,10 +58,35 @@ router.get("/payin/status", requireAuth, async (req, res, next) => {
       ? Math.min(cfg.maxAmount, ugCfg.maxAmount)
       : cfg.maxAmount;
 
-    // Fetch today's paid total for this merchant so the frontend can show
-    // remaining daily capacity and block submission before it hits the server.
-    // Fail-open: if the query throws we still return a valid status response —
-    // the server-side enforcement in POST /payin/orders remains authoritative.
+    // ── Daily capacity indicator — BEST-EFFORT only ──────────────────────────
+    // `dailyLimitUsed` is returned so the frontend can show remaining capacity
+    // and optionally surface a warning before the merchant submits.  This
+    // value is intentionally advisory — do NOT use it as a hard gate:
+    //
+    //   1. Stale snapshot — this figure is correct at the moment this GET is
+    //      served, but PAID webhooks can arrive between this poll and the
+    //      merchant's POST.  The used total seen here may be lower than what
+    //      the server will compute when the POST lands, so the UI can show
+    //      headroom that is no longer available.  Conversely, if a previously
+    //      inflated total ages out (e.g. an order transitions out of PAID),
+    //      the UI can appear more restrictive than the server would be.
+    //
+    //   2. Server-timezone boundary — both this endpoint and the authoritative
+    //      POST /payin/orders compute `startOfDay` with setHours(0,0,0,0),
+    //      which uses the *server's* local timezone (UTC on this host).  Both
+    //      endpoints therefore apply the *same* cutoff, so there is no
+    //      discrepancy between the status figure and the server's enforcement.
+    //      Note that the daily window resets at UTC midnight rather than the
+    //      merchant's local midnight; this is a UX consideration, not a
+    //      correctness issue.
+    //
+    //   3. Fail-open — if getMerchantDailyPaidTotal throws (e.g. a transient
+    //      DB error), dailyLimitUsed falls back to 0 so the merchant is not
+    //      blocked client-side.  The authoritative enforcement in POST
+    //      /payin/orders is fail-closed and always recomputes from scratch.
+    //
+    // The POST handler is the sole enforcement point.  Always let the request
+    // through and surface the server's 400 when the limit is genuinely hit.
       const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
     let dailyLimitUsed = 0;
@@ -392,7 +417,7 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
         continue;
       }
 
-    const publicOrderId = `RKPAYIN_${merchantId}_${Date.now()}`;
+    const publicOrderId = req.params["publicOrderId"] as string;
       const startedAt = Date.now();
       const gatewayResult = await createCustomGatewayOrder(integration, {
         publicOrderId,
@@ -548,7 +573,7 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
       return;
     }
 
-    const publicOrderId = `RKPAYIN_${merchantId}_${Date.now()}`;
+    const publicOrderId = req.params["publicOrderId"] as string;
 
     let raw: string;
     let parsed: Awaited<ReturnType<typeof cashfreeCreateOrder>>["parsed"];
