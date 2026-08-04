@@ -687,6 +687,7 @@ router.get("/me", requireAuth, async (req, res, next) => {
     let merchantPhone: string | null = null;
     let merchantWebsite: string | null = null;
     let merchantRejectionReason: string | null = null;
+    let merchantTimezone: string | null = null;
     if (user.role === "merchant" && user.merchantId) {
       // Status is queried separately from merchantType/service-enabled flags
       // because some deploy environments run a pre-payout-feature schema
@@ -701,6 +702,7 @@ router.get("/me", requireAuth, async (req, res, next) => {
             phone: merchantsTable.phone,
             website: merchantsTable.website,
             rejectionReason: merchantsTable.rejectionReason,
+            timezone: merchantsTable.timezone,
           })
           .from(merchantsTable)
           .where(eq(merchantsTable.id, user.merchantId))
@@ -711,6 +713,7 @@ router.get("/me", requireAuth, async (req, res, next) => {
         merchantPhone = statusRow?.phone ?? null;
         merchantWebsite = statusRow?.website ?? null;
         merchantRejectionReason = statusRow?.rejectionReason ?? null;
+        merchantTimezone = statusRow?.timezone ?? null;
       } catch (err) {
         logger.warn({ err, merchantId: user.merchantId }, "Failed to fetch merchant status");
       }
@@ -812,6 +815,7 @@ router.get("/me", requireAuth, async (req, res, next) => {
       contactName: merchantContactName,
       phone: merchantPhone,
       website: merchantWebsite,
+      timezone: merchantTimezone,
       status: merchantStatus,
       rejectionReason: merchantRejectionReason,
       reconciliationAlertEmails: row?.reconciliationAlertEmails ?? true,

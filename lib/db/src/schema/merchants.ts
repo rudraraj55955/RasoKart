@@ -52,6 +52,8 @@ export const merchantsTable = pgTable("merchants", {
   forceApproveReason: text("force_approve_reason"),
   forceApproveKycStatus: text("force_approve_kyc_status"),
   environment: text("environment").notNull().default("production"), // production | demo | sandbox | test | uat | seed
+  /** IANA timezone string (e.g. "Asia/Kolkata") used for per-day window calculations like the payin daily limit. Null = UTC. */
+  timezone: text("timezone"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

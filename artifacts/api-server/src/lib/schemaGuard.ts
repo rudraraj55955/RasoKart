@@ -1180,6 +1180,10 @@ async function runGuard(): Promise<void> {
   await db.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS force_approve_kyc_status TEXT`);
   logger.info({ table: "merchants", migration: "add_force_approve_cols" }, "schema_guard_column_added");
 
+  // ── merchants: merchant-preferred IANA timezone for daily-limit windows ───
+  await db.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS timezone TEXT`);
+  logger.info({ table: "merchants", migration: "add_timezone_col" }, "schema_guard_column_added");
+
   // ── users: make password_hash nullable, add last_login_method ────────────
   await db.execute(sql`ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL`);
   await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_method TEXT`);

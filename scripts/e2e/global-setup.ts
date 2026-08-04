@@ -126,6 +126,7 @@ async function snapshotMerchantSettings(merchantToken: string): Promise<void> {
     quietHoursEnd: me.quietHoursEnd ?? null,
     quietHoursTimezone: me.quietHoursTimezone ?? null,
     businessName: me.businessName ?? "",
+    timezone: me.timezone ?? null,
   };
   writeFileSync(MERCHANT_SETTINGS_SNAPSHOT_CACHE_PATH, JSON.stringify(snapshot));
 }

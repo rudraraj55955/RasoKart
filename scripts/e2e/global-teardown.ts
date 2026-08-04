@@ -97,6 +97,7 @@ async function restoreMerchantSettings(): Promise<void> {
     }),
     apiPatch(token, "/merchants/me", {
       businessName: originals.businessName,
+      timezone: originals.timezone,
     }),
   ]);
 }

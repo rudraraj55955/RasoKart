@@ -1,12 +1,12 @@
 import { Router } from "express";
-import { db, cashfreePaymentOrdersTable, providerIntegrationsTable, PAYIN_ORDER_STATUS, routingLogsTable, systemConfigTable, SYSTEM_CONFIG_KEYS } from "@workspace/db";
+import { db, cashfreePaymentOrdersTable, providerIntegrationsTable, PAYIN_ORDER_STATUS, routingLogsTable, systemConfigTable, SYSTEM_CONFIG_KEYS, merchantsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { cashfreeCreateOrder, cashfreeGetOrder } from "../helpers/cashfree";
 import { decryptSecret } from "../helpers/cryptoUtils";
 import { requireAuth } from "../middlewares/auth";
 import { loadPayinConfig } from "../helpers/payinConfig";
 import { ensurePayinOrdersSchemaGuard } from "../helpers/payinSchemaGuard";
-import { getMerchantDailyPaidTotal } from "../helpers/payinDailyLimit";
+import { getMerchantDailyPaidTotal, getStartOfDayInTimezone } from "../helpers/payinDailyLimit";
 import { insertPayinOrderWithFallback } from "../helpers/payinOrderInsert";
 import { selectProvider, recordRoutingResult, recordChainExhaustedStart, maybeNotifyGatewayRecovery, validateRoutingConfig } from "../helpers/smartRouter";
 import { maybeFireFailoverAlert } from "../helpers/payinFailoverAlert";
@@ -71,14 +71,12 @@ router.get("/payin/status", requireAuth, async (req, res, next) => {
     //      inflated total ages out (e.g. an order transitions out of PAID),
     //      the UI can appear more restrictive than the server would be.
     //
-    //   2. Server-timezone boundary — both this endpoint and the authoritative
-    //      POST /payin/orders compute `startOfDay` with setHours(0,0,0,0),
-    //      which uses the *server's* local timezone (UTC on this host).  Both
-    //      endpoints therefore apply the *same* cutoff, so there is no
-    //      discrepancy between the status figure and the server's enforcement.
-    //      Note that the daily window resets at UTC midnight rather than the
-    //      merchant's local midnight; this is a UX consideration, not a
-    //      correctness issue.
+    //   2. Merchant-timezone boundary — startOfDay is computed using the
+    //      merchant's preferred IANA timezone (stored in merchants.timezone).
+    //      Both this GET and the authoritative POST /payin/orders use the same
+    //      helper, so the advisory figure and the enforcement cutoff always
+    //      align with the merchant's local calendar day.  Merchants without a
+    //      saved timezone fall back to UTC.
     //
     //   3. Fail-open — if getMerchantDailyPaidTotal throws (e.g. a transient
     //      DB error), dailyLimitUsed falls back to 0 so the merchant is not
@@ -87,8 +85,12 @@ router.get("/payin/status", requireAuth, async (req, res, next) => {
     //
     // The POST handler is the sole enforcement point.  Always let the request
     // through and surface the server's 400 when the limit is genuinely hit.
-      const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
+    const [merchantRow] = await db
+      .select({ timezone: merchantsTable.timezone })
+      .from(merchantsTable)
+      .where(eq(merchantsTable.id, user.merchantId))
+      .limit(1);
+    const startOfDay = getStartOfDayInTimezone(merchantRow?.timezone);
     let dailyLimitUsed = 0;
     try {
       dailyLimitUsed = await getMerchantDailyPaidTotal(user.merchantId, startOfDay);
@@ -177,11 +179,19 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
     // over-counts on a partially-migrated table. COALESCE(SUM(...), 0) plus
     // the `?? 0` below guarantees a safe numeric result even when zero rows
     // match (fresh merchant, empty table, etc) — this must never throw.
+    // "Today" is computed in the merchant's preferred IANA timezone so the
+    // window resets at their local midnight, not at UTC midnight.
     req.log.info({ event: "payin_daily_limit_check_started", merchantId }, "payin_daily_limit_check_started");
     let dailyTotal: number;
+    let merchantTimezone: string | null = null;
     try {
-      const startOfDay = new Date();
-      startOfDay.setHours(0, 0, 0, 0);
+      const [mRow] = await db
+        .select({ timezone: merchantsTable.timezone })
+        .from(merchantsTable)
+        .where(eq(merchantsTable.id, merchantId))
+        .limit(1);
+      merchantTimezone = mRow?.timezone ?? null;
+      const startOfDay = getStartOfDayInTimezone(merchantTimezone);
       dailyTotal = await getMerchantDailyPaidTotal(merchantId, startOfDay);
       req.log.info({ event: "payin_daily_limit_check_success", merchantId, dailyTotal }, "payin_daily_limit_check_success");
     } catch (limitErr) {
@@ -303,10 +313,10 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
         // EKQR-specific daily cap is enforced independently of the global limit.
         // Fail-closed: if the lookup throws we cannot safely determine headroom,
         // so we reject rather than allow a potentially over-limit order through.
+        // Reuses the merchant's timezone fetched for the global limit check above.
         let ekqrDailyTotal: number;
         try {
-          const ekqrStartOfDay = new Date();
-          ekqrStartOfDay.setHours(0, 0, 0, 0);
+          const ekqrStartOfDay = getStartOfDayInTimezone(merchantTimezone);
           ekqrDailyTotal = await getMerchantDailyPaidTotal(merchantId, ekqrStartOfDay, decision.providerKey);
         } catch (err) {
           req.log.error({ event: "payin_upigateway_daily_check_error", merchantId, err }, "payin_upigateway_daily_check_error");

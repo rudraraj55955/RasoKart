@@ -208,9 +208,9 @@ function installDbMock(
         return chainable([EKQR_CONNECTION_FIXTURE]);
       }
 
-      // Merchant business name
+      // Merchant business name + timezone (null = UTC/server default)
       if (table === merchantsTable) {
-        return chainable([{ businessName: "Test EKQR Merchant" }]);
+        return chainable([{ businessName: "Test EKQR Merchant", timezone: null }]);
       }
 
       // EKQR system config (EKQR_ENABLED, EKQR_API_KEY, min/max/daily)
@@ -483,7 +483,135 @@ describe("POST /api/qr-codes — EKQR amount and daily-limit enforcement", () =>
     );
   });
 
-  // ── 6. Valid amount — proceeds to dispatch ────────────────────────────────
+  // ── 6. Non-UTC timezone — daily-limit cutoff uses the merchant's local midnight ──
+
+  it("uses the merchant's local timezone for the EKQR daily-limit window (IST midnight ≠ UTC midnight)", async () => {
+    // This test proves that the EKQR daily-limit cutoff in POST /api/qr-codes is computed
+    // from the merchant's preferred timezone rather than from `new Date().setHours(0,0,0,0)`
+    // (server/UTC midnight).
+    //
+    // If the cutoff were always UTC midnight, an IST merchant (UTC+5:30) who made EKQR
+    // payments between 18:30 UTC yesterday and 00:00 UTC today would see those payments
+    // excluded from today's UTC window — effectively resetting 5.5h early.  With the
+    // timezone-aware cutoff, those payments are counted in the IST "today" window
+    // (which starts at 18:30 UTC yesterday).
+    //
+    // We verify the fix by capturing the `receivedAt` GTE cutoff passed to the DB query
+    // and asserting it matches the CURRENT IST midnight, not the current UTC midnight.
+    // Both values are computed dynamically so the test doesn't rely on a hardcoded date.
+    const capturedCutoffs: number[] = [];
+
+    // Compute expected cutoffs relative to "now" so the test isn't date-sensitive.
+    // IST midnight = start of local day in Asia/Kolkata; UTC midnight = start of UTC day.
+    const now = new Date();
+    function startOfDayMs(tz: string): number {
+      const parts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: tz,
+        year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "2-digit", minute: "2-digit", second: "2-digit",
+        hour12: false,
+      }).formatToParts(now);
+      const get = (t: string) => Number(parts.find(p => p.type === t)?.value ?? 0);
+      // Iterate to find the UTC ms for zone midnight (same approach as getStartOfDayInTimezone)
+      const today = { year: get("year"), month: get("month"), day: get("day") };
+      let utcMs = Date.UTC(today.year, today.month - 1, today.day);
+      for (let i = 0; i < 3; i++) {
+        const cp = new Intl.DateTimeFormat("en-CA", {
+          timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit",
+          hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+        }).formatToParts(new Date(utcMs));
+        const cg = (t: string) => Number(cp.find(p => p.type === t)?.value ?? 0);
+        const errorMs = Date.UTC(cg("year"), cg("month")-1, cg("day"), cg("hour"), cg("minute"), cg("second"))
+                       - Date.UTC(today.year, today.month-1, today.day, 0, 0, 0);
+        if (errorMs === 0) break;
+        utcMs -= errorMs;
+      }
+      return utcMs;
+    }
+    const istMidnightMs = startOfDayMs("Asia/Kolkata");
+    const utcMidnightMs = startOfDayMs("UTC");
+    // IST midnight and UTC midnight must differ (5h30m apart) — sanity check
+    assert.ok(istMidnightMs !== utcMidnightMs, "IST midnight and UTC midnight must differ by 5.5h");
+
+    // Install a mock that:
+    // a) returns the merchant WITH timezone = "Asia/Kolkata" (IST)
+    // b) captures any Date values threaded into WHERE clauses
+    (db as any).select = (_fields?: unknown) => ({
+      from: (table: unknown) => {
+        if (table === usersTable) return chainable([MERCHANT_USER]);
+        if (table === merchantPlansTable) return chainable([{ plan: PLAN_FIXTURE, mp: MERCHANT_PLAN_FIXTURE }]);
+        if (table === qrCodesTable) return chainable([{ total: 0, n: 0 }]);
+        if (table === merchantConnectionsTable) return chainable([EKQR_CONNECTION_FIXTURE]);
+        if (table === merchantsTable) return chainable([{ businessName: "IST Merchant", timezone: "Asia/Kolkata" }]);
+        if (table === systemConfigTable) return chainable(ekqrConfigRows());
+        if (table === qrPaymentEventsTable) {
+          // Chainable that captures any Date passed to .where()
+          return {
+            innerJoin: () => ({
+              where: async (clause: any) => {
+                function collectDates(node: any, seen = new Set<any>()): void {
+                  if (!node || typeof node !== "object" || seen.has(node)) return;
+                  seen.add(node);
+                  if (node instanceof Date) { capturedCutoffs.push(node.getTime()); return; }
+                  if ("value" in node && node.value instanceof Date) { capturedCutoffs.push(node.value.getTime()); return; }
+                  for (const v of Object.values(node)) collectDates(v, seen);
+                }
+                collectDates(clause);
+                return [{ total: "0" }]; // no prior volume → won't be blocked by cap
+              },
+            }),
+          };
+        }
+        return chainable([]);
+      },
+    });
+    (db as any).execute = async () => ({ rows: [] });
+    (db as any).insert = (_table: unknown) => ({
+      values: (_vals: unknown) => ({
+        returning: async () => [{
+          id: 999, merchantId: MERCHANT_USER.merchantId, type: "dynamic",
+          label: null, payload: "", amount: null, orderId: null,
+          callbackUrl: null, merchantReference: null, expiresAt: null,
+          status: "active", ekqrOrderId: null, ekqrPaymentUrl: null,
+          providerKey: null, createdAt: new Date(), updatedAt: new Date(),
+        }],
+        onConflictDoNothing: async () => {},
+        onConflictDoUpdate: async () => {},
+      }),
+      catch: () => {},
+    });
+    (db as any).update = (_table: unknown) => ({
+      set: (_vals: unknown) => ({ where: async () => {} }),
+    });
+    (db as any).delete = (_table: unknown) => ({
+      where: async () => {},
+      catch: () => {},
+    });
+
+    // Stub fetch so the EKQR API call succeeds
+    const originalFetch = global.fetch;
+    global.fetch = async () =>
+      ({ text: async () => JSON.stringify({ status: true, msg: "Order created", payment_url: "https://api.ekqr.in/pay/tz-test" }) }) as Response;
+
+    try {
+      await post(server, "/api/qr-codes", { type: "dynamic", amount: "500" }, token);
+    } finally {
+      global.fetch = originalFetch;
+    }
+
+    // The daily-limit WHERE clause must reference IST midnight, not UTC midnight.
+    assert.ok(
+      capturedCutoffs.includes(istMidnightMs),
+      `EKQR daily-limit cutoff must be IST midnight (${new Date(istMidnightMs).toISOString()}) ` +
+      `when merchant timezone is Asia/Kolkata. Captured: ${capturedCutoffs.map(t => new Date(t).toISOString())}`,
+    );
+    assert.ok(
+      !capturedCutoffs.includes(utcMidnightMs),
+      `EKQR daily-limit cutoff must NOT be UTC midnight (${new Date(utcMidnightMs).toISOString()}) for an IST merchant`,
+    );
+  });
+
+  // ── 7. Valid amount — proceeds to dispatch ────────────────────────────────
 
   it("passes through to EKQR dispatch when amount is inside the range and daily headroom exists", async () => {
     // amount 500, min 100, max 50000, daily total 0, daily limit 200000 — should pass all checks

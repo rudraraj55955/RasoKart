@@ -5,6 +5,7 @@ import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { checkPlanLimit, rejectWithLimitError } from "../helpers/planLimits";
 import { makeRateLimiter } from "../helpers/makeRateLimiter";
 import { ekqrCreateOrder, ekqrCheckOrderStatus, ekqrClientTxnId, ekqrFormatDate } from "../helpers/ekqr";
+import { getStartOfDayInTimezone } from "../helpers/payinDailyLimit";
 import { createCustomGatewayOrder } from "../helpers/customGatewayClient";
 import { logger } from "../lib/logger";
 
@@ -334,7 +335,7 @@ router.post("/", qrCodeCreateLimiter, async (req, res) => {
       .from(merchantConnectionsTable)
       .where(and(eq(merchantConnectionsTable.merchantId, merchantId), eq(merchantConnectionsTable.isActive, true)))
       .limit(10),
-    db.select({ businessName: merchantsTable.businessName })
+    db.select({ businessName: merchantsTable.businessName, timezone: merchantsTable.timezone })
       .from(merchantsTable).where(eq(merchantsTable.id, merchantId)).limit(1),
   ]);
 
@@ -374,11 +375,13 @@ router.post("/", qrCodeCreateLimiter, async (req, res) => {
         }
 
         // Daily limit: sum amounts from today's EKQR QR payment events for this merchant.
+        // Use the merchant's preferred IANA timezone so the window resets at their
+        // local midnight rather than the server (UTC) midnight — consistent with the
+        // same behaviour in POST /payin/orders and GET /payin/status.
         // Join with qrCodesTable to scope to EKQR-originated QR codes only
         // (ekqrOrderId IS NOT NULL), so non-EKQR QR payments don't count against
         // this provider's cap.
-        const startOfDay = new Date();
-        startOfDay.setHours(0, 0, 0, 0);
+        const startOfDay = getStartOfDayInTimezone(merchant?.timezone);
         const [dailyRow] = await db
           .select({ total: sql<string>`COALESCE(SUM(${qrPaymentEventsTable.amount}::numeric), 0)` })
           .from(qrPaymentEventsTable)

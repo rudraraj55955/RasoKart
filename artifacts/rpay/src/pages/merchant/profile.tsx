@@ -9,13 +9,48 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Building2, User, Phone, Globe, Mail, Save, Loader2,
-  CheckCircle2, AlertTriangle, Shield, Calendar, Edit3
+  CheckCircle2, AlertTriangle, Shield, Calendar, Edit3, Clock
 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { getApiErrorMessage } from "@/lib/utils";
+
+// Sentinel value for "no timezone preference set — fall back to server UTC".
+// Radix Select requires non-empty strings for item values, so we cannot use
+// an empty string here. We convert this sentinel to null before sending to
+// the API (and back to this sentinel when reading a null from /auth/me).
+const NO_TIMEZONE_VALUE = "__none__";
+
+// Common IANA timezones grouped for the select. The value is the IANA key;
+// the label shows the offset and a recognisable city name.
+const TIMEZONE_OPTIONS = [
+  { value: NO_TIMEZONE_VALUE, label: "UTC (server default)" },
+  // UTC
+  { value: "UTC",            label: "UTC+00:00 — UTC" },
+  // India / South Asia
+  { value: "Asia/Kolkata",   label: "UTC+05:30 — India (IST)" },
+  { value: "Asia/Kathmandu", label: "UTC+05:45 — Nepal (NPT)" },
+  { value: "Asia/Dhaka",     label: "UTC+06:00 — Bangladesh (BST)" },
+  { value: "Asia/Colombo",   label: "UTC+05:30 — Sri Lanka" },
+  { value: "Asia/Karachi",   label: "UTC+05:00 — Pakistan (PKT)" },
+  // Middle East
+  { value: "Asia/Dubai",     label: "UTC+04:00 — Dubai (GST)" },
+  { value: "Asia/Riyadh",    label: "UTC+03:00 — Riyadh (AST)" },
+  // Europe
+  { value: "Europe/London",  label: "UTC+00:00 — London (GMT/BST)" },
+  { value: "Europe/Paris",   label: "UTC+01:00 — Paris (CET)" },
+  // US
+  { value: "America/New_York",   label: "UTC-05:00 — New York (ET)" },
+  { value: "America/Chicago",    label: "UTC-06:00 — Chicago (CT)" },
+  { value: "America/Los_Angeles",label: "UTC-08:00 — Los Angeles (PT)" },
+  // Asia-Pacific
+  { value: "Asia/Singapore", label: "UTC+08:00 — Singapore (SGT)" },
+  { value: "Asia/Tokyo",     label: "UTC+09:00 — Tokyo (JST)" },
+  { value: "Australia/Sydney",label: "UTC+10:00 — Sydney (AEDT)" },
+] as const;
 
 function statusBadge(status: string) {
   if (status === "approved") return <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/20">Approved</Badge>;
@@ -35,8 +70,13 @@ export default function MerchantProfile() {
   const [contactName, setContactName] = useState("");
   const [phone, setPhone] = useState("");
   const [website, setWebsite] = useState("");
+  const [timezone, setTimezone] = useState(NO_TIMEZONE_VALUE);
   const [phoneError, setPhoneError] = useState("");
   const [websiteError, setWebsiteError] = useState("");
+
+  /** Convert null/undefined from the API to the Select sentinel, and vice-versa. */
+  const tzToState = (tz: string | null | undefined): string => tz ?? NO_TIMEZONE_VALUE;
+  const stateToTz = (s: string): string | null => (s === NO_TIMEZONE_VALUE ? null : s);
 
   useEffect(() => {
     if (me && !editing) {
@@ -44,6 +84,7 @@ export default function MerchantProfile() {
       setContactName((me as any).contactName ?? "");
       setPhone((me as any).phone ?? "");
       setWebsite((me as any).website ?? "");
+      setTimezone(tzToState((me as any).timezone));
     }
   }, [me, editing]);
 
@@ -51,7 +92,8 @@ export default function MerchantProfile() {
     businessName !== ((me as any)?.businessName ?? "") ||
     contactName !== ((me as any)?.contactName ?? "") ||
     phone !== ((me as any)?.phone ?? "") ||
-    website !== ((me as any)?.website ?? "");
+    website !== ((me as any)?.website ?? "") ||
+    stateToTz(timezone) !== (((me as any)?.timezone ?? null));
 
   const validatePhone = (value: string): string => {
     const trimmed = value.trim();
@@ -81,6 +123,7 @@ export default function MerchantProfile() {
       setContactName((me as any).contactName ?? "");
       setPhone((me as any).phone ?? "");
       setWebsite((me as any).website ?? "");
+      setTimezone(tzToState((me as any).timezone));
     }
   };
 
@@ -99,6 +142,8 @@ export default function MerchantProfile() {
     if (phone.trim() !== ((me as any)?.phone ?? "")) data.phone = phone.trim();
     const webVal = website.trim() || null;
     if (webVal !== (((me as any)?.website ?? null))) data.website = webVal;
+    const tzVal = stateToTz(timezone);
+    if (tzVal !== (((me as any)?.timezone ?? null))) data.timezone = tzVal;
 
     if (Object.keys(data).length === 0) { setEditing(false); return; }
 
@@ -113,6 +158,11 @@ export default function MerchantProfile() {
   };
 
   const merchant = me as any;
+
+  // Resolve the display label for the merchant's current timezone
+  const currentTzLabel = merchant?.timezone
+    ? (TIMEZONE_OPTIONS.find(o => o.value === merchant.timezone)?.label ?? merchant.timezone)
+    : "UTC (server default)";
 
   return (
     <div className="space-y-6">
@@ -269,6 +319,38 @@ export default function MerchantProfile() {
                       {merchant?.email}
                       <span className="ml-2 text-xs text-muted-foreground/60">(contact support to change)</span>
                     </p>
+                  </div>
+
+                  {/* Timezone preference */}
+                  <div className="space-y-2">
+                    <Label htmlFor="timezone" className="flex items-center gap-1.5 text-muted-foreground">
+                      <Clock className="w-3.5 h-3.5" />Timezone
+                      <span className="text-muted-foreground/60 font-normal">(for daily deposit limit)</span>
+                    </Label>
+                    {editing ? (
+                      <Select value={timezone} onValueChange={setTimezone}>
+                        <SelectTrigger id="timezone" className="w-full">
+                          <SelectValue placeholder="UTC (server default)" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {TIMEZONE_OPTIONS.map(opt => (
+                            <SelectItem key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <p className="text-sm font-medium py-2 px-3 bg-muted/30 rounded-md border border-border/50 min-h-[40px] flex items-center gap-2">
+                        <Clock className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                        {currentTzLabel}
+                      </p>
+                    )}
+                    {!editing && (
+                      <p className="text-xs text-muted-foreground">
+                        Your daily deposit limit resets at midnight in this timezone.
+                      </p>
+                    )}
                   </div>
 
                   {editing && (

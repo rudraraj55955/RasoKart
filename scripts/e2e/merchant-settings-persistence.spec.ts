@@ -33,6 +33,10 @@
  *   - Merchant profile phone number (profile.tsx — same editing-flag guard)
  *   - Merchant profile website URL (profile.tsx — same editing-flag guard;
  *     read-only view renders as an <a> link, not a plain text node)
+ *   - Merchant timezone preference (profile.tsx — saved via PATCH /merchants/me
+ *     and returned by GET /auth/me; read-only view shows the IANA label; test
+ *     uses the API to set the value so it avoids the flaky Radix Select
+ *     interaction and focuses on the /auth/me → page display round-trip)
  */
 
 import { test, expect, type Page } from "@playwright/test";
@@ -286,4 +290,38 @@ test("Merchant profile website URL persists after page reload", async ({ page })
 
   // After reload editing=false, website renders as an <a> link whose text is the URL itself.
   await expect(page.getByText(canary)).toBeVisible({ timeout: 8_000 });
+});
+
+test("Merchant timezone preference is returned by /auth/me and shown on profile after reload", async ({ page }) => {
+  // Step 1: set a known baseline (null = UTC default) via API so the test starts clean.
+  await apiPatch(token, "/merchants/me", { timezone: null });
+
+  // Step 2: verify /auth/me returns timezone: null after the reset.
+  const meAfterReset = await apiGet(token, "/auth/me");
+  if (meAfterReset.timezone !== null) {
+    throw new Error(`Expected timezone null after reset, got: ${meAfterReset.timezone}`);
+  }
+
+  // Step 3: set the canary timezone via API (avoids the flaky Radix Select interaction).
+  await apiPatch(token, "/merchants/me", { timezone: "Asia/Kolkata" });
+
+  // Step 4: verify /auth/me now returns the saved timezone.
+  const meAfterSet = await apiGet(token, "/auth/me");
+  if (meAfterSet.timezone !== "Asia/Kolkata") {
+    throw new Error(`Expected timezone "Asia/Kolkata" from /auth/me, got: ${JSON.stringify(meAfterSet.timezone)}`);
+  }
+
+  // Step 5: navigate to the profile page — the read-only view should show the IST label
+  // derived from the timezone returned by /auth/me.
+  await goToMerchantPage(page, token, "/merchant/profile");
+
+  // The read-only <p> element shows the TIMEZONE_OPTIONS label for Asia/Kolkata.
+  await expect(page.getByText(/UTC\+05:30.*India/i)).toBeVisible({ timeout: 8_000 });
+
+  // Step 6: full page reload (clears React state, forces a fresh /auth/me fetch).
+  await page.reload();
+  await page.waitForLoadState("networkidle");
+
+  // Step 7: the label must still reflect the saved timezone — not "UTC (server default)".
+  await expect(page.getByText(/UTC\+05:30.*India/i)).toBeVisible({ timeout: 8_000 });
 });

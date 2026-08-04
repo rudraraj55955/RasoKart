@@ -57,6 +57,7 @@ export type MerchantSettingsSnapshot = {
   quietHoursEnd: string | null;
   quietHoursTimezone: string | null;
   businessName: string;
+  timezone: string | null;
 };
 
 function readCachedToken(path: string): string {

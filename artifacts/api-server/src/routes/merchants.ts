@@ -4,6 +4,7 @@ import { eq, ilike, and, or, count, sql, desc, lt, lte, gte, isNotNull, inArray,
 import { maskIp } from "../helpers/apiKeyEmail";
 import { loadWebhookRetryConfig } from "../helpers/callbackRetry";
 import { requireAuth, requireAdmin, requirePermission } from "../middlewares/auth";
+import { canChangeMerchantTimezone } from "../helpers/payinDailyLimit";
 import { PERMISSIONS } from "../permissions";
 import { getMerchantPlanUsage } from "../helpers/planLimits";
 import { sendRejectionEmail } from "../helpers/rejectionEmail";
@@ -427,7 +428,7 @@ router.patch("/me", async (req, res) => {
     res.status(403).json({ error: "Merchant access only" });
     return;
   }
-  const { businessName, contactName, phone, website } = req.body ?? {};
+  const { businessName, contactName, phone, website, timezone } = req.body ?? {};
 
   const updates: Partial<typeof merchantsTable.$inferInsert> = {};
   if (typeof businessName === "string") {
@@ -459,6 +460,51 @@ router.patch("/me", async (req, res) => {
       }
     }
     updates.website = w || null;
+  }
+  if ("timezone" in (req.body ?? {})) {
+    let newTimezone: string | null = null;
+    if (timezone === null || timezone === undefined || timezone === "") {
+      newTimezone = null;
+    } else if (typeof timezone === "string") {
+      const tz = timezone.trim().slice(0, 100);
+      try {
+        Intl.DateTimeFormat(undefined, { timeZone: tz });
+      } catch {
+        res.status(400).json({ error: `'${tz}' is not a valid IANA timezone (e.g. "Asia/Kolkata", "America/New_York")` });
+        return;
+      }
+      newTimezone = tz;
+    } else {
+      res.status(400).json({ error: "timezone must be an IANA timezone string or null" });
+      return;
+    }
+
+    // Security guard: moving the window boundary while there are already paid
+    // deposits in the current local window would allow a merchant to exclude
+    // those deposits from the daily count by switching to a timezone whose
+    // local midnight starts later.  We block the change when the current
+    // window has any paid deposits — if the total is 0 there is nothing to
+    // exclude and the change is safe.
+    const [currentMerchant] = await db
+      .select({ timezone: merchantsTable.timezone })
+      .from(merchantsTable)
+      .where(eq(merchantsTable.id, user.merchantId!))
+      .limit(1);
+    const currentTimezone = currentMerchant?.timezone ?? null;
+
+    if (newTimezone !== currentTimezone) {
+      const safe = await canChangeMerchantTimezone(user.merchantId!, currentTimezone);
+      if (!safe) {
+        res.status(409).json({
+          error:
+            "You have deposits in the current local day. Your timezone preference can only be " +
+            "changed once the current local day has no deposits (i.e. after your local midnight).",
+        });
+        return;
+      }
+    }
+
+    updates.timezone = newTimezone;
   }
 
   if (Object.keys(updates).length === 0) {
