@@ -1087,19 +1087,21 @@ router.put("/:key", async (req, res, next) => {
         set: { value: normalized, updatedBy: user.id, updatedAt: new Date() },
       });
 
-    // Write audit log after successful save
-    try {
-      await db.insert(auditLogsTable).values({
-        adminId: user.id,
-        adminEmail: user.email,
-        action: "setting_updated",
-        targetType: "system_config",
-        targetId: null,
-        details: JSON.stringify({ key, oldValue, newValue: normalized }),
-        ipAddress: req.ip ?? null,
-      });
-    } catch (auditErr) {
-      req.log.error({ err: auditErr }, "Failed to write audit log for setting_updated");
+    // Write audit log after successful save — skip when value is unchanged (no-op)
+    if (normalized !== oldValue) {
+      try {
+        await db.insert(auditLogsTable).values({
+          adminId: user.id,
+          adminEmail: user.email,
+          action: "setting_updated",
+          targetType: "system_config",
+          targetId: null,
+          details: JSON.stringify({ key, oldValue, newValue: normalized }),
+          ipAddress: req.ip ?? null,
+        });
+      } catch (auditErr) {
+        req.log.error({ err: auditErr }, "Failed to write audit log for setting_updated");
+      }
     }
 
     res.json({ key, value: normalized });

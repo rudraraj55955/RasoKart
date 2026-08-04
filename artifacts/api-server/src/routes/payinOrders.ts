@@ -62,7 +62,7 @@ router.get("/payin/status", requireAuth, async (req, res, next) => {
     // remaining daily capacity and block submission before it hits the server.
     // Fail-open: if the query throws we still return a valid status response —
     // the server-side enforcement in POST /payin/orders remains authoritative.
-    const startOfDay = new Date();
+      const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
     let dailyLimitUsed = 0;
     try {
@@ -392,7 +392,7 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
         continue;
       }
 
-      const publicOrderId = `RKPAYIN_${merchantId}_${Date.now()}`;
+    const publicOrderId = req.params["publicOrderId"] as string;
       const startedAt = Date.now();
       const gatewayResult = await createCustomGatewayOrder(integration, {
         publicOrderId,
@@ -548,7 +548,7 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
       return;
     }
 
-    const publicOrderId = `RKPAYIN_${merchantId}_${Date.now()}`;
+    const publicOrderId = req.params["publicOrderId"] as string;
 
     let raw: string;
     let parsed: Awaited<ReturnType<typeof cashfreeCreateOrder>>["parsed"];
