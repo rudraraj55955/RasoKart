@@ -964,6 +964,9 @@ export default function MerchantDeposits() {
       toast.success("Deposit received successfully");
       queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      // Refresh daily capacity so the deposit form warning reflects the new
+      // dailyLimitUsed value — without this the remaining-capacity display
+      // stays stale until the 30-second background refetch fires.
       queryClient.invalidateQueries({ queryKey: getGetPayinStatusQueryKey() });
     }
   }, [activeOrderStatus?.status]);
@@ -1032,6 +1035,7 @@ export default function MerchantDeposits() {
             setRzpResult({ status: "success", message: result.message ?? "Deposit received successfully" });
             queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
             queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+            queryClient.invalidateQueries({ queryKey: getGetPayinStatusQueryKey() });
           } catch {
             setRzpResult({ status: "failed", message: "Payment verification failed. Contact support if amount was deducted." });
           }
@@ -1243,6 +1247,7 @@ export default function MerchantDeposits() {
         setSimSourceId("");
         queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
         queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+        queryClient.invalidateQueries({ queryKey: getGetPayinStatusQueryKey() });
       },
       onError: (err: any) => {
         toast.error(err?.message ?? "Failed to simulate payment");
