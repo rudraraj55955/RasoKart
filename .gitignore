@@ -56,3 +56,4 @@ backups/
 *.dump.enc
 *.sql.gz
 scripts/test-results/
+.github-sync-divergence-state.json
