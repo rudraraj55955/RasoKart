@@ -1,6 +1,9 @@
 {
-  "diverged": false,
-  "consecutivePollsDiverged": 0,
-  "firstDetectedAt": null,
-  "lastEmailSentPollCount": 0
+  "diverged": true,
+  "consecutivePollsDiverged": 2,
+  "firstDetectedAt": "2026-08-04T15:29:41.066Z",
+  "lastEmailSentPollCount": 1,
+  "alertedAdminEmails": [
+    "admin@rasokart.com"
+  ]
 }
