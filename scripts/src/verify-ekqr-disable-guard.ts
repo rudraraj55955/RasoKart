@@ -29,6 +29,7 @@
  */
 
 import { env } from "node:process";
+import { assertApiReachable } from "./lib/probe.js";
 
 const EKQR_API_BASE = "http://localhost:80/api";
 const EKQR_ADMIN_EMAIL = env["VERIFY_ADMIN_EMAIL"] ?? "admin@rasokart.com";
@@ -205,6 +206,8 @@ async function main() {
   console.log("=== RasoKart ekqr Disable Guard Verification ===\n");
   console.log("Confirms the disable dialog never fires spuriously");
   console.log("on re-enable or save-while-disabled for the UPI (ekqr) gateway.\n");
+
+  await assertApiReachable("ekqr disable guard verification");
 
   let token: string;
   try {
