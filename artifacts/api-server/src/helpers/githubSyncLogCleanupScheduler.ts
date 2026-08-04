@@ -291,6 +291,20 @@ async function _runGithubSyncLogCleanupImpl(opts?: { source?: "scheduled" | "man
       await persistFailureStreak({ count: 0, lastFailedDate: "" });
       logger.info({ previousStreak: streak.count }, "GitHub sync log cleanup failure streak reset");
     }
+  } else if (errors === 0) {
+    // A manual (or startup) run completed without errors — reset any active
+    // streak immediately so alerts are not kept live when the issue is already
+    // resolved.  We deliberately do NOT advance the streak counter for
+    // non-scheduled runs because the "N consecutive nights" logic is meaningful
+    // only for the nightly cron window.
+    const streak = await readFailureStreak();
+    if (streak.count > 0) {
+      await persistFailureStreak({ count: 0, lastFailedDate: "" });
+      logger.info(
+        { previousStreak: streak.count, source: opts?.source ?? "unknown" },
+        "GitHub sync log cleanup failure streak reset by manual clean run",
+      );
+    }
   }
 
   return { deleted, errors };
