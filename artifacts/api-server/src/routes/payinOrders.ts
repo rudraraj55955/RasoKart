@@ -40,21 +40,21 @@ router.get("/payin/status", requireAuth, async (req, res, next) => {
       res.status(403).json({ error: "Merchant access only" });
       return;
     }
-    const cfg = await loadPayinConfig();
+        const cfg = await loadPayinConfig();
     const [chainExhaustedRow] = await db.select().from(systemConfigTable)
       .where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.PAYIN_CHAIN_EXHAUSTED_SINCE))
       .limit(1);
-    const ugCfg = await loadUpigatewayConfig();
+        const ugCfg = await loadUpigatewayConfig().catch(() => null);
 
     // Compute the narrowest range guaranteed to be accepted across all
     // currently-active providers. When EKQR/UPIGateway is enabled its limits
     // are often tighter than the global Cashfree limits, so we expose the
     // intersection so the frontend can validate before submitting and spare
     // the merchant a confusing 400 after the form is sent.
-    const effectiveMinAmount = ugCfg.enabled
+    const effectiveMinAmount = ugCfg?.enabled
       ? Math.max(cfg.minAmount, ugCfg.minAmount)
       : cfg.minAmount;
-    const effectiveMaxAmount = ugCfg.enabled
+    const effectiveMaxAmount = ugCfg?.enabled
       ? Math.min(cfg.maxAmount, ugCfg.maxAmount)
       : cfg.maxAmount;
 
@@ -76,8 +76,8 @@ router.get("/payin/status", requireAuth, async (req, res, next) => {
       minAmount: cfg.minAmount,
       maxAmount: cfg.maxAmount,
       routingHealthy: !chainExhaustedRow,
-      upigatewayMinAmount: ugCfg.enabled ? ugCfg.minAmount : null,
-      upigatewayMaxAmount: ugCfg.enabled ? ugCfg.maxAmount : null,
+      upigatewayMinAmount: ugCfg?.enabled ? ugCfg.minAmount : null,
+      upigatewayMaxAmount: ugCfg?.enabled ? ugCfg.maxAmount : null,
       effectiveMinAmount,
       effectiveMaxAmount,
       dailyLimitUsed,
@@ -92,7 +92,7 @@ router.get("/payin/status", requireAuth, async (req, res, next) => {
  * Response never includes cf_order_id, payment_session_id, or raw provider fields.
  */
 router.post("/payin/orders", requireAuth, async (req, res) => {
-  const user = (req as any).user;
+    const user = (req as any).user;
   const merchantId: number | undefined = user?.merchantId;
 
   // Generic, safe response used for every failure path below — never leaks
@@ -136,7 +136,7 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
       return;
     }
 
-    const cfg = await loadPayinConfig();
+        const cfg = await loadPayinConfig();
     if (!cfg.enabled || !cfg.upiEnabled || !cfg.merchantPayinEnabled) {
       res.status(400).json({ error: "UPI deposits are not available right now. Please try again later." });
       return;
@@ -156,6 +156,8 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
     let dailyTotal: number;
     try {
       const startOfDay = new Date();
+
+    const dailySpent = await getMerchantDailyPaidTotal(user.merchantId, startOfDay).catch(() => null);
       startOfDay.setHours(0, 0, 0, 0);
       dailyTotal = await getMerchantDailyPaidTotal(merchantId, startOfDay);
       req.log.info({ event: "payin_daily_limit_check_success", merchantId, dailyTotal }, "payin_daily_limit_check_success");
@@ -392,7 +394,7 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
         continue;
       }
 
-      const publicOrderId = `RKPAYIN_${merchantId}_${Date.now()}`;
+    const publicOrderId = req.params["publicOrderId"] as string;
       const startedAt = Date.now();
       const gatewayResult = await createCustomGatewayOrder(integration, {
         publicOrderId,
@@ -541,14 +543,14 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
       res.status(400).json({ error: "UPI deposits are not available right now. Please try again later." });
       return;
     }
-    const decrypted = decryptSecret(cfg.rawClientSecret);
+          const decrypted = decryptSecret(cfg.rawClientSecret);
     if (!decrypted.ok || !decrypted.value.trim()) {
       req.log.warn({ event: "payin_deposit_order_create_failed", merchantId, safeReason: "decrypt_failed" }, "payin_deposit_order_create_failed");
       genericFailure();
       return;
     }
 
-    const publicOrderId = `RKPAYIN_${merchantId}_${Date.now()}`;
+    const publicOrderId = req.params["publicOrderId"] as string;
 
     let raw: string;
     let parsed: Awaited<ReturnType<typeof cashfreeCreateOrder>>["parsed"];
