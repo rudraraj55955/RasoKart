@@ -2084,7 +2084,8 @@ export default function MerchantDeposits() {
                   <Input
                     type="number"
                     placeholder="e.g. 5000"
-                    min="1"
+                    min={payinStatusData?.effectiveMinAmount ?? 1}
+                    max={payinStatusData?.effectiveMaxAmount ?? undefined}
                     value={cfAmount}
                     onChange={e => { setCfAmount(e.target.value); setCfCreateError(""); }}
                   />
@@ -2093,6 +2094,16 @@ export default function MerchantDeposits() {
                       Min ₹{payinStatusData.effectiveMinAmount.toLocaleString()} · Max ₹{payinStatusData.effectiveMaxAmount.toLocaleString()}
                     </p>
                   )}
+                  {cfAmount !== "" && payinStatusData?.effectiveMinAmount != null && payinStatusData?.effectiveMaxAmount != null && (() => {
+                    const n = Number(cfAmount);
+                    if (!isNaN(n) && n > 0 && n < payinStatusData.effectiveMinAmount) {
+                      return <p className="text-xs text-rose-400">Minimum deposit amount is ₹{payinStatusData.effectiveMinAmount.toLocaleString()}</p>;
+                    }
+                    if (!isNaN(n) && n > payinStatusData.effectiveMaxAmount) {
+                      return <p className="text-xs text-rose-400">Maximum deposit amount is ₹{payinStatusData.effectiveMaxAmount.toLocaleString()}</p>;
+                    }
+                    return null;
+                  })()}
                   {payinStatusData?.dailyLimit != null && payinStatusData?.dailyLimitUsed != null && (() => {
                     const remaining = payinStatusData.dailyLimit - payinStatusData.dailyLimitUsed;
                     const enteredAmt = Number(cfAmount) || 0;
@@ -2148,7 +2159,15 @@ export default function MerchantDeposits() {
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={resetPayinDialog} disabled={cfCreating}>Cancel</Button>
-                <Button onClick={handleCashfreePay} disabled={cfCreating || !cfAmount || !cfPhone.trim()}>
+                <Button onClick={handleCashfreePay} disabled={cfCreating || !cfAmount || !cfPhone.trim() || (() => {
+                  const n = Number(cfAmount);
+                  const effMin = payinStatusData?.effectiveMinAmount;
+                  const effMax = payinStatusData?.effectiveMaxAmount;
+                  if (!cfAmount || isNaN(n) || n <= 0) return false;
+                  if (effMin != null && n < effMin) return true;
+                  if (effMax != null && n > effMax) return true;
+                  return false;
+                })()}>
                   {cfCreating ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Creating…</> : "Create Deposit Order"}
                 </Button>
               </DialogFooter>
