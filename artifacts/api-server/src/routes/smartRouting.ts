@@ -193,6 +193,27 @@ router.post("/configs/:id/rules", async (req, res, next) => {
       }
     }
 
+    // Pre-insert guard: re-validate the slot hasn't been claimed since the initial check.
+    // Catches the race where two admins both receive the same suggestedPriority and retry
+    // simultaneously — without this, one INSERT wins and the other hits a raw DB 23505.
+    if (effectiveEnabled) {
+      const [preInsertConflict] = await db.select({ id: routingRulesTable.id, providerKey: routingRulesTable.providerKey })
+        .from(routingRulesTable)
+        .where(and(
+          eq(routingRulesTable.configId, configId),
+          eq(routingRulesTable.priority, effectivePriority),
+          eq(routingRulesTable.isEnabled, true),
+        )).limit(1);
+      if (preInsertConflict) {
+        const suggestedPriority = await getNextFreePriority(configId, effectivePriority);
+        res.status(409).json({
+          error: `Priority ${effectivePriority} is already used by rule for "${preInsertConflict.providerKey}". Equal-priority rules tie-break to the oldest rule (lowest ID), so your new rule would be silently ignored. Use a different priority number.`,
+          suggestedPriority,
+        });
+        return;
+      }
+    }
+
     const [row] = await db.insert(routingRulesTable).values({
       configId,
       providerKey: providerKey.trim(),
@@ -324,6 +345,32 @@ router.put("/rules/:id", async (req, res, next) => {
     if (isFallbackOnly !== undefined) updateSet.isFallbackOnly = isFallbackOnly;
     if (maxRetries !== undefined) updateSet.maxRetries = Math.max(1, Math.min(5, maxRetries));
     if (notes !== undefined) updateSet.notes = notes;
+
+    // Pre-update guard: re-validate the target slot hasn't been claimed since the initial check.
+    // Fires only when the priority is actually changing or the rule is being re-enabled, because
+    // those are the only cases where a concurrent claim could create a conflict.
+    const willBeEnabled = isEnabled !== undefined ? isEnabled : existing.isEnabled;
+    const effectivePriorityForUpdate = priority !== undefined ? priority : existing.priority;
+    const priorityIsChanging = priority !== undefined && priority !== existing.priority;
+    const beingReEnabled = isEnabled === true && existing.isEnabled === false;
+    if (willBeEnabled && (priorityIsChanging || beingReEnabled)) {
+      const [preUpdateConflict] = await db.select({ id: routingRulesTable.id, providerKey: routingRulesTable.providerKey })
+        .from(routingRulesTable)
+        .where(and(
+          eq(routingRulesTable.configId, existing.configId),
+          eq(routingRulesTable.priority, effectivePriorityForUpdate),
+          eq(routingRulesTable.isEnabled, true),
+          ne(routingRulesTable.id, id),
+        )).limit(1);
+      if (preUpdateConflict) {
+        const suggestedPriority = await getNextFreePriority(existing.configId, effectivePriorityForUpdate, id);
+        res.status(409).json({
+          error: `Priority ${effectivePriorityForUpdate} is already used by rule for "${preUpdateConflict.providerKey}". Equal-priority rules tie-break to the oldest rule (lowest ID), so this rule would be silently ignored. Use a different priority number.`,
+          suggestedPriority,
+        });
+        return;
+      }
+    }
 
     const [updated] = await db.update(routingRulesTable).set(updateSet as any).where(eq(routingRulesTable.id, id)).returning();
 

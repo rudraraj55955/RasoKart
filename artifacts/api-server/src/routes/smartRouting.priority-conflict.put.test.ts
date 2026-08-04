@@ -346,5 +346,140 @@ describe(
         );
       },
     );
+
+    it(
+      "double-409 retry (Promise.all) — loser gets fresh 409 with correct suggestedPriority, never a 500",
+      async () => {
+        /**
+         * Full 'double 409 avoidance' scenario with two truly concurrent PUT retries:
+         *
+         *   Round 1: Admin A and B both try to PUT rule 101 to priority 5 → both receive
+         *            409 with suggestedPriority=6.
+         *
+         *   Round 2: Both click "Use it" and PUT priority 6 simultaneously.
+         *            Both initial conflict checks AND both pre-update guards see
+         *            priority 6 as free (the race window between SELECT and UPDATE).
+         *            The first UPDATE commits successfully.
+         *            The second UPDATE hits the unique constraint (23505).
+         *            The catch-handler translates this into a 409 with a
+         *            freshly-recomputed suggestedPriority=8 (first free slot above
+         *            6, given {3,5,6,7} are now occupied), NOT a raw 500.
+         *
+         * Field-shape routing:
+         *   no fields           → "get existing rule" → RULE_101
+         *   { id, providerKey } → initial + pre-update conflict checks → [] (both pass)
+         *   { configId, priority } → catch: re-fetch rule info → rule config
+         *   { providerKey }     → catch: find who owns priority 6 → razorpay
+         *   { priority }        → getNextFreePriority → [3,5,6,7] → 8
+         */
+        let updateCount = 0;
+
+        const RULE_101_UPDATED = { ...RULE_101, priority: 6 };
+
+        (db as any).select = (fields?: unknown) => {
+          const keys = fields ? Object.keys(fields as object) : [];
+          return {
+            from: (table: unknown) => ({
+              where: (_cond: unknown) => ({
+                limit: async () => {
+                  if (table === usersTable) return [ADMIN_USER];
+                  if (table === routingRulesTable) {
+                    if (keys.length === 0) {
+                      // "get existing rule" — rule 101 at priority 7, enabled
+                      return [RULE_101];
+                    }
+                    if (keys.includes("id") && keys.includes("providerKey")) {
+                      // Initial conflict check AND pre-update guard:
+                      // priority 6 looks free to both requests (race window)
+                      return [];
+                    }
+                    if (keys.includes("configId") && keys.includes("priority")) {
+                      // 23505 catch-handler: re-fetch rule info for rule 101
+                      return [{ configId: RULE_101.configId, priority: 6 }];
+                    }
+                    if (keys.includes("providerKey") && !keys.includes("id") && !keys.includes("configId")) {
+                      // 23505 catch-handler: find who now owns priority 6
+                      return [{ providerKey: "razorpay" }];
+                    }
+                    if (keys.includes("priority")) {
+                      // getNextFreePriority: {3,5,6,7} occupied → 8
+                      return [{ priority: 3 }, { priority: 5 }, { priority: 6 }, { priority: 7 }];
+                    }
+                    if (keys.includes("isFallbackOnly")) {
+                      return [];
+                    }
+                  }
+                  return [];
+                },
+              }),
+              orderBy: async () => [],
+              limit: async () => {
+                if (table === usersTable) return [ADMIN_USER];
+                return [];
+              },
+            }),
+          };
+        };
+
+        (db as any).update = (_table: unknown) => ({
+          set: (_values: unknown) => ({
+            where: (_cond: unknown) => ({
+              returning: async () => {
+                updateCount++;
+                if (updateCount === 1) {
+                  // First UPDATE wins
+                  return [RULE_101_UPDATED];
+                }
+                // Second UPDATE loses — DB unique constraint fires
+                const err = new Error("duplicate key value violates unique constraint");
+                (err as any).code = "23505";
+                (err as any).constraint = "routing_rules_enabled_priority_uniq";
+                throw err;
+              },
+            }),
+          }),
+        });
+
+        const [a, b] = await Promise.all([
+          put(server, "/api/smart-routing/rules/101", { priority: 6 }, token),
+          put(server, "/api/smart-routing/rules/101", { priority: 6 }, token),
+        ]);
+
+        // One must succeed; the other must be a proper 409, never a 500
+        const statuses = [a.status, b.status].sort((x, y) => x - y);
+        assert.ok(
+          statuses[0] === 200 && statuses[1] === 409,
+          `Expected one 200 and one 409 — got ${a.status} and ${b.status}`,
+        );
+
+        const rejected = a.status === 409 ? a : b;
+
+        // The 409 must carry a numeric suggestedPriority — not a raw DB error / 500
+        assert.ok(
+          typeof (rejected.body as any)["suggestedPriority"] === "number",
+          `409 body must include a numeric suggestedPriority, got: ${JSON.stringify(rejected.body)}`,
+        );
+
+        const suggested = (rejected.body as any)["suggestedPriority"] as number;
+
+        // With {3,5,6,7} occupied the first free slot above 6 is 8.
+        // The suggestion must NOT be 6 (taken by the winner).
+        assert.equal(
+          suggested,
+          8,
+          `Expected suggestedPriority=8 (first free above 6 with {3,5,6,7} occupied), got ${suggested}`,
+        );
+
+        // Both UPDATEs must have been attempted (both passed all SELECTs before writing)
+        assert.equal(updateCount, 2, `Expected both requests to attempt UPDATE, got updateCount=${updateCount}`);
+
+        // Error must cite the conflict
+        assert.match(
+          (rejected.body as any)["error"] as string,
+          /Priority 6 is already used/,
+          "409 body must cite the conflicting priority number",
+        );
+      },
+    );
   },
 );

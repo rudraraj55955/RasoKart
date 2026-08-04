@@ -363,5 +363,136 @@ describe(
         );
       },
     );
+
+    it(
+      "double-409 retry (Promise.all) — loser gets fresh 409 with correct suggestedPriority, never a 500",
+      async () => {
+        /**
+         * Full 'double 409 avoidance' scenario with two truly concurrent retries:
+         *
+         *   Round 1: Admin A and B both POST priority 5 → both receive 409 with
+         *            suggestedPriority=6.  (Covered separately by scenario 2 above.)
+         *
+         *   Round 2: Both click "Use it" and POST priority 6 simultaneously.
+         *            Both initial conflict checks AND both pre-insert guards see
+         *            priority 6 as free (neither INSERT has committed yet — this
+         *            is the remaining race window the pre-insert guard cannot close).
+         *            The first INSERT commits successfully.
+         *            The second INSERT hits the unique constraint (23505).
+         *            The catch-handler translates this into a 409 with a
+         *            freshly-recomputed suggestedPriority=8 (first free slot above
+         *            6, given {3,5,6,7} are now occupied), NOT a raw 500.
+         *
+         * Field-shape routing:
+         *   { id, providerKey } → initial + pre-insert conflict checks → [] (both pass)
+         *   { providerKey }     → catch-handler: find who owns priority 6 → razorpay
+         *   { priority }        → getNextFreePriority → [3,5,6,7] → 8
+         *
+         * This test exercises the 23505 catch-handler path and verifies the loser
+         * always receives a clean, actionable 409 rather than an unhandled error.
+         */
+        let insertCount = 0;
+
+        (db as any).select = (fields?: unknown) => {
+          const keys = fields ? Object.keys(fields as object) : [];
+          return {
+            from: (table: unknown) => ({
+              where: (_cond: unknown) => ({
+                limit: async () => {
+                  if (table === usersTable) return [ADMIN_USER];
+                  if (table === routingConfigsTable) return [EXISTING_CONFIG];
+                  if (table === routingRulesTable) {
+                    if (keys.includes("id") && keys.includes("providerKey")) {
+                      // Initial conflict check AND pre-insert guard: priority 6
+                      // looks free to both requests (they race past both SELECTs).
+                      return [];
+                    }
+                    if (keys.includes("providerKey") && !keys.includes("id")) {
+                      // 23505 catch-handler: identify who now owns priority 6
+                      return [{ providerKey: "razorpay" }];
+                    }
+                    if (keys.includes("priority")) {
+                      // getNextFreePriority: priority 6 is now committed; {3,5,6,7} occupied
+                      return [{ priority: 3 }, { priority: 5 }, { priority: 6 }, { priority: 7 }];
+                    }
+                    if (keys.includes("isFallbackOnly")) {
+                      return [];
+                    }
+                  }
+                  return [];
+                },
+              }),
+              orderBy: async () => [],
+              limit: async () => {
+                if (table === usersTable) return [ADMIN_USER];
+                return [];
+              },
+            }),
+          };
+        };
+
+        (db as any).insert = (_table: unknown) => ({
+          values: (_vals: unknown) => ({
+            returning: async () => {
+              insertCount++;
+              if (insertCount === 1) {
+                // First INSERT wins — new rule at priority 6
+                return [{ ...NEW_RULE_5, priority: 6 }];
+              }
+              // Second INSERT loses — DB unique constraint fires
+              const err = new Error("duplicate key value violates unique constraint");
+              (err as any).code = "23505";
+              (err as any).constraint = "routing_rules_enabled_priority_uniq";
+              throw err;
+            },
+          }),
+        });
+
+        const [a, b] = await Promise.all([
+          post(server, "/api/smart-routing/configs/42/rules", { providerKey: "razorpay", priority: 6 }, token),
+          post(server, "/api/smart-routing/configs/42/rules", { providerKey: "stripe", priority: 6 }, token),
+        ]);
+
+        // One request must succeed; the other must get a proper 409, never a 500
+        const statuses = [a.status, b.status].sort((x, y) => x - y);
+        assert.ok(
+          statuses[0] === 200 && statuses[1] === 409,
+          `Expected one 200 and one 409 — got ${a.status} and ${b.status}`,
+        );
+
+        const rejected = a.status === 409 ? a : b;
+
+        // The 409 must carry a numeric suggestedPriority — not a raw DB error / 500
+        assert.ok(
+          typeof (rejected.body as any)["suggestedPriority"] === "number",
+          `409 body must include a numeric suggestedPriority, got: ${JSON.stringify(rejected.body)}`,
+        );
+
+        const suggested = (rejected.body as any)["suggestedPriority"] as number;
+
+        // With {3,5,6,7} occupied the first free slot above 6 is 8.
+        // Critically, the suggestion must NOT be 6 (already taken by the winner).
+        assert.equal(
+          suggested,
+          8,
+          `Expected suggestedPriority=8 (first free above 6 with {3,5,6,7} occupied), got ${suggested}`,
+        );
+
+        // Both INSERTs must have been attempted (both passed all SELECTs before writing)
+        assert.equal(insertCount, 2, `Expected both requests to attempt INSERT, got insertCount=${insertCount}`);
+
+        // The error message must name the conflict
+        assert.match(
+          (rejected.body as any)["error"] as string,
+          /Priority 6 is already used/,
+          "409 body must cite the conflicting priority number",
+        );
+        assert.match(
+          (rejected.body as any)["error"] as string,
+          /"razorpay"/,
+          "409 body must name the provider that now owns the priority",
+        );
+      },
+    );
   },
 );
