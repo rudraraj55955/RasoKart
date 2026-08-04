@@ -513,6 +513,236 @@ describe("POST /api/merchant/payin/orders — EKQR transaction limit enforcement
   );
 
   it(
+    "documents per-merchant contract: each merchant is evaluated against only their own EKQR slice, not the combined pool",
+    async () => {
+      // ── Scenario ──────────────────────────────────────────────────────────
+      // Provider EKQR daily cap : 200 000
+      // Merchant A (merchantId=77) already paid : 150 000 via EKQR today
+      // Merchant B (merchantId=78) already paid : 100 000 via EKQR today
+      // Combined usage          : 250 000  — exceeds the 200 000 cap
+      //
+      // Under the CURRENT per-merchant model the route calls:
+      //   getMerchantDailyPaidTotal(merchantId, startOfDay, 'upigateway')
+      // which filters by merchantId:
+      //   A's slice  : 150 000 + 500 = 150 500 < 200 000 → 200 OK
+      //   B's slice  : 100 000 + 500 = 100 500 < 200 000 → 200 OK
+      //
+      // The DB mock below is QUERY-AWARE: it reads the merchantId Param
+      // from the Drizzle WHERE condition and sums only matching rows from
+      // the seeded dataset.  If the implementation is ever changed to a
+      // provider-scoped aggregate (removing the merchantId filter), the mock
+      // will return the COMBINED total (250 000) for both requests, exceeding
+      // the cap → 422 → the test fails → the contract change is visible.
+
+      // ── Shared in-memory dataset ──────────────────────────────────────────
+      // Each row represents a PAID EKQR order already recorded today.
+      const SEEDED_ORDERS = [
+        { merchantId: 77, amount: 150_000, status: "PAID", providerKey: "upigateway" },
+        { merchantId: 78, amount: 100_000, status: "PAID", providerKey: "upigateway" },
+      ];
+
+      /**
+       * Extracts all scalar Param values from a Drizzle SQL condition tree.
+       * Drizzle builds WHERE clauses as nested SQL objects whose `queryChunks`
+       * array contains StringChunk, Column, and Param nodes.  Recursing into
+       * queryChunks and `value` arrays surfaces the bound parameter values so
+       * the mock can filter the in-memory dataset the same way the DB would.
+       */
+      function extractParams(chunk: unknown): unknown[] {
+        if (chunk == null || typeof chunk !== "object") return [];
+        const c = chunk as Record<string, unknown>;
+        const results: unknown[] = [];
+        if (c["constructor"] != null && (c["constructor"] as { name?: string }).name === "Param") {
+          results.push(c["value"]);
+        }
+        if (Array.isArray(c["queryChunks"])) {
+          for (const sub of c["queryChunks"]) results.push(...extractParams(sub));
+        }
+        if (Array.isArray(c["value"])) {
+          for (const sub of c["value"]) results.push(...extractParams(sub));
+        }
+        return results;
+      }
+
+      /**
+       * Simulate SUM(amount) for a WHERE condition against SEEDED_ORDERS.
+       *
+       * Rules that mirror the production getMerchantDailyPaidTotal query:
+       *   - Always filters status = 'PAID' (all seeded rows are PAID, so no-op)
+       *   - If a numeric param is present  → filter by merchantId
+       *   - If a non-'PAID' string param is present → filter by providerKey
+       *
+       * This makes the mock sensitive to the query's predicate scope:
+       *   per-merchant query  → numeric param 77 or 78 → returns 150 000 or 100 000
+       *   provider-wide query → no numeric param      → returns 250 000
+       */
+      function computeTotal(cond: unknown): string {
+        const params = extractParams(cond);
+        const merchantIdParam = params.find((p) => typeof p === "number") as number | undefined;
+        const providerKeyParam = params.find(
+          (p) => typeof p === "string" && p !== "PAID",
+        ) as string | undefined;
+
+        const total = SEEDED_ORDERS.filter((r) => {
+          if (merchantIdParam !== undefined && r.merchantId !== merchantIdParam) return false;
+          if (providerKeyParam !== undefined && r.providerKey !== providerKeyParam) return false;
+          return true;
+        }).reduce((sum, r) => sum + r.amount, 0);
+
+        return String(total);
+      }
+
+      // ── Merchant B identity ───────────────────────────────────────────────
+      const MERCHANT_USER_B = {
+        id: 202,
+        merchantId: 78,
+        role: "merchant" as const,
+        email: "ekqr-test-merchant-b@rasokart.test",
+        isActive: true,
+        passwordUpdatedAt: null,
+        isSuperAdmin: false,
+      };
+      const tokenB = generateToken({ userId: MERCHANT_USER_B.id, role: "merchant" });
+
+      /**
+       * Install a query-aware DB mock for a given authenticated merchant user.
+       * cashfreePaymentOrdersTable SELECT queries forward the WHERE condition to
+       * computeTotal(), which filters SEEDED_ORDERS by the predicates present
+       * in that condition — making the mock sensitive to merchantId scope.
+       */
+      function installSharedQuotaMock(user: typeof MERCHANT_USER | typeof MERCHANT_USER_B) {
+        let sysConfigCall = 0;
+        (db as any).select = (_fields?: unknown) => ({
+          from: (table: unknown) => ({
+            where: (cond: unknown) => {
+              if (table === usersTable) return chainable([user]);
+              if (table === cashfreePaymentOrdersTable) {
+                return chainable([{ total: computeTotal(cond) }]);
+              }
+              if (table === systemConfigTable) {
+                sysConfigCall++;
+                if (sysConfigCall === 1) return chainable(payinConfigRows());
+                return chainable(upigatewayConfigRows({ dailyLimit: 200_000 }));
+              }
+              if (table === routingConfigsTable) return chainable([ROUTING_CONFIG]);
+              if (table === routingRulesTable) return chainable([ROUTING_RULE]);
+              return chainable([]);
+            },
+          }),
+        });
+        (db as any).execute = async () => ({ rows: [] });
+        (db as any).insert = (_table: unknown) => ({
+          values: (_vals: unknown) => ({
+            returning: async () => [{ id: 999 }],
+            onConflictDoNothing: async () => {},
+            onConflictDoUpdate: async () => {},
+          }),
+          catch: () => {},
+        });
+        (db as any).update = (_table: unknown) => ({
+          set: (_vals: unknown) => ({ where: async () => {} }),
+        });
+      }
+
+      // ── Merchant A request ────────────────────────────────────────────────
+      // Global check : seeded total for merchant 77 = 150 000 < 5 000 000 cap → passes
+      // EKQR check   : seeded EKQR total for merchant 77 = 150 000 + 500 = 150 500 < 200 000 → passes
+      installSharedQuotaMock(MERCHANT_USER);
+      const savedFetchA = global.fetch;
+      global.fetch = async () =>
+        ({
+          text: async () =>
+            JSON.stringify({
+              status: true,
+              msg: "Order created",
+              payment_url: "https://api.ekqr.in/pay/merchant-a-shared-quota",
+            }),
+        }) as Response;
+
+      let resultA: { status: number; body: Record<string, unknown> };
+      try {
+        resultA = await post(
+          server,
+          "/api/merchant/payin/orders",
+          { amount: 500, customerPhone: "9876543210", customerName: "Merchant A" },
+          token,
+        );
+      } finally {
+        global.fetch = savedFetchA;
+      }
+
+      // ── Reset, then Merchant B request ────────────────────────────────────
+      (db as any).select = originalSelect;
+      (db as any).insert = originalInsert;
+      if (originalUpdate) (db as any).update = originalUpdate;
+      if (originalExecute) (db as any).execute = originalExecute;
+      resetPayinSchemaGuardCacheForTests();
+
+      // Global check : seeded total for merchant 78 = 100 000 < 5 000 000 cap → passes
+      // EKQR check   : seeded EKQR total for merchant 78 = 100 000 + 500 = 100 500 < 200 000 → passes
+      installSharedQuotaMock(MERCHANT_USER_B);
+      const savedFetchB = global.fetch;
+      global.fetch = async () =>
+        ({
+          text: async () =>
+            JSON.stringify({
+              status: true,
+              msg: "Order created",
+              payment_url: "https://api.ekqr.in/pay/merchant-b-shared-quota",
+            }),
+        }) as Response;
+
+      let resultB: { status: number; body: Record<string, unknown> };
+      try {
+        resultB = await post(
+          server,
+          "/api/merchant/payin/orders",
+          { amount: 500, customerPhone: "9876543210", customerName: "Merchant B" },
+          tokenB,
+        );
+      } finally {
+        global.fetch = savedFetchB;
+      }
+
+      // ── Assertions ────────────────────────────────────────────────────────
+      // The combined EKQR usage across both merchants exceeds the daily cap.
+      const combinedEkqrUsage = SEEDED_ORDERS
+        .filter((r) => r.providerKey === "upigateway")
+        .reduce((s, r) => s + r.amount, 0);
+      assert.ok(
+        combinedEkqrUsage > 200_000,
+        `Test premise: combined EKQR usage (${combinedEkqrUsage}) must exceed the daily cap (200 000)`,
+      );
+
+      // Per-merchant model → A's slice is within cap → full dispatch → 200 OK
+      assert.equal(
+        resultA.status,
+        200,
+        `Merchant A (150 000/200 000 used) must be accepted under the per-merchant ` +
+          `model even though combined EKQR usage (${combinedEkqrUsage}) exceeds the cap ` +
+          `(got ${resultA.status}: ${JSON.stringify(resultA.body)})`,
+      );
+      assert.ok(
+        typeof (resultA.body as Record<string, unknown>)["publicOrderId"] === "string",
+        `Merchant A response must include publicOrderId (got ${JSON.stringify(resultA.body)})`,
+      );
+
+      // Per-merchant model → B's slice is within cap → full dispatch → 200 OK
+      assert.equal(
+        resultB.status,
+        200,
+        `Merchant B (100 000/200 000 used) must be accepted under the per-merchant ` +
+          `model even though combined EKQR usage (${combinedEkqrUsage}) exceeds the cap ` +
+          `(got ${resultB.status}: ${JSON.stringify(resultB.body)})`,
+      );
+      assert.ok(
+        typeof (resultB.body as Record<string, unknown>)["publicOrderId"] === "string",
+        `Merchant B response must include publicOrderId (got ${JSON.stringify(resultB.body)})`,
+      );
+    },
+  );
+
+  it(
     "passes through to dispatch when depositAmount is inside the EKQR range with daily headroom",
     async () => {
       // ekqrDailyTotal = 0, dailyLimit = 200 000, amount = 500 → well within cap
