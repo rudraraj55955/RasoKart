@@ -1710,6 +1710,24 @@ async function runGuard(): Promise<void> {
   `);
   logger.info({ table: "merchant_auth_locks" }, "schema_guard_table_created");
 
+  // ── razorpayx_verification_log ────────────────────────────────────────────
+  // Persists every RazorpayX probe result so admins can view full history.
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS razorpayx_verification_log (
+      id           SERIAL PRIMARY KEY,
+      status       TEXT NOT NULL,
+      activated    TEXT NOT NULL DEFAULT 'false',
+      message      TEXT,
+      triggered_by TEXT,
+      checked_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS razorpayx_verification_log_checked_at_idx
+      ON razorpayx_verification_log(checked_at)
+  `);
+  logger.info({ table: "razorpayx_verification_log" }, "schema_guard_table_created");
+
   logger.info("schema_guard_completed");
 }
 

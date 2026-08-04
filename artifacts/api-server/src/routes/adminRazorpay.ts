@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, razorpayPaymentOrdersTable, razorpayWebhookLogsTable, systemConfigTable, SYSTEM_CONFIG_KEYS, providerProductsTable, razorpayRefundsTable } from "@workspace/db";
+import { db, razorpayPaymentOrdersTable, razorpayWebhookLogsTable, systemConfigTable, SYSTEM_CONFIG_KEYS, providerProductsTable, razorpayRefundsTable, razorpayxVerificationLogTable } from "@workspace/db";
 import { eq, inArray, desc, and, or, ilike, gte, lte, sql, like } from "drizzle-orm";
 import { razorpayCreateRefund, razorpayFetchRefund, verifyRazorpayXActivation } from "../helpers/razorpay";
 import { requireAuth, requireAdmin, requireSuperAdmin, requirePermission } from "../middlewares/auth";
@@ -572,23 +572,27 @@ router.get("/refunds/:refundId/status", requirePermission(["admin_razorpay", "ra
 
 /**
  * GET /api/admin/razorpay/razorpayx/verify
- * Probe RazorpayX Payouts API and persist the result to system_config.
+ * Probe RazorpayX Payouts API, persist the result to system_config AND
+ * append a row to razorpayx_verification_log for historical tracking.
  * Safe: uses a read-only contacts list call with no financial side effects.
  */
 router.get("/razorpayx/verify", requirePermission(["admin_razorpay", "razorpay_capabilities_test"]), async (req, res, next) => {
   try {
+    const user = (req as any).user;
     const result = await verifyRazorpayXActivation();
 
-    const now = new Date().toISOString();
+    const now = new Date();
+    const nowIso = now.toISOString();
     const statusValue = result.activated ? "pass" : (result.keyConfigured ? "fail" : "not_configured");
 
+    // Persist latest status into system_config (existing behaviour)
     await db.insert(systemConfigTable)
       .values({ key: SYSTEM_CONFIG_KEYS.RAZORPAY_X_VERIFICATION_STATUS, value: statusValue })
       .onConflictDoUpdate({ target: systemConfigTable.key, set: { value: statusValue } });
 
     await db.insert(systemConfigTable)
-      .values({ key: SYSTEM_CONFIG_KEYS.RAZORPAY_X_VERIFIED_AT, value: now })
-      .onConflictDoUpdate({ target: systemConfigTable.key, set: { value: now } });
+      .values({ key: SYSTEM_CONFIG_KEYS.RAZORPAY_X_VERIFIED_AT, value: nowIso })
+      .onConflictDoUpdate({ target: systemConfigTable.key, set: { value: nowIso } });
 
     if (!result.activated) {
       await db.insert(systemConfigTable)
@@ -596,7 +600,32 @@ router.get("/razorpayx/verify", requirePermission(["admin_razorpay", "razorpay_c
         .onConflictDoUpdate({ target: systemConfigTable.key, set: { value: result.message } });
     }
 
-    res.json({ ...result, verifiedAt: now });
+    // Append to verification history log
+    await db.insert(razorpayxVerificationLogTable).values({
+      status: statusValue,
+      activated: String(result.activated),
+      message: result.message ?? null,
+      triggeredBy: user?.email ?? null,
+      checkedAt: now,
+    });
+
+    res.json({ ...result, checkedAt: nowIso });
+  } catch (err) { next(err); }
+});
+
+/**
+ * GET /api/admin/razorpay/razorpayx/verify/history
+ * Returns the last 10 RazorpayX verification results, newest first.
+ */
+router.get("/razorpayx/verify/history", requirePermission(["admin_razorpay", "razorpay_capabilities_test"]), async (req, res, next) => {
+  try {
+    const limit = Math.min(50, parseInt(req.query["limit"] as string ?? "10", 10) || 10);
+    const rows = await db
+      .select()
+      .from(razorpayxVerificationLogTable)
+      .orderBy(desc(razorpayxVerificationLogTable.checkedAt))
+      .limit(limit);
+    res.json({ history: rows });
   } catch (err) { next(err); }
 });
 

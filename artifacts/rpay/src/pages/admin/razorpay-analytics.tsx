@@ -60,6 +60,15 @@ interface RazorpayX {
   activated: boolean;
 }
 
+interface VerificationLogEntry {
+  id: number;
+  status: string;
+  activated: string;
+  message: string | null;
+  triggeredBy: string | null;
+  checkedAt: string;
+}
+
 // ── constants ─────────────────────────────────────────────────────────────────
 
 const PERIODS = [
@@ -258,6 +267,8 @@ export default function AdminRazorpayAnalytics() {
   const [loading, setLoading]       = useState(true);
   const [xVerifying, setXVerifying] = useState(false);
   const [error, setError]           = useState<string | null>(null);
+  const [verificationHistory, setVerificationHistory] = useState<VerificationLogEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
   // KPI drill-down: which card is expanded
   const [activeDrill, setActiveDrill] = useState<{ status: string | null; label: string } | null>(null);
 
@@ -294,6 +305,21 @@ export default function AdminRazorpayAnalytics() {
 
   useEffect(() => { fetchAll(period); }, [period, fetchAll]);
 
+  const fetchVerificationHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const resp = await fetch("/api/admin/razorpay/razorpayx/verify/history?limit=10", { headers: authHeader() });
+      if (resp.ok) {
+        const j = await resp.json() as { history: VerificationLogEntry[] };
+        setVerificationHistory(j.history ?? []);
+      }
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchVerificationHistory(); }, [fetchVerificationHistory]);
+
   const handleXVerify = async () => {
     setXVerifying(true);
     try {
@@ -305,6 +331,8 @@ export default function AdminRazorpayAnalytics() {
           verifiedAt: j.checkedAt ?? null,
           activated: j.activated,
         });
+        // Refresh history after a new run
+        fetchVerificationHistory();
       }
     } finally {
       setXVerifying(false);
@@ -691,6 +719,56 @@ export default function AdminRazorpayAnalytics() {
           >
             RazorpayX Payout Docs <ExternalLink className="w-3 h-3" />
           </a>
+
+          {/* Verification history */}
+          <div className="pt-2 border-t border-border/30">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-medium text-muted-foreground">Verification History</p>
+              {historyLoading && <RefreshCw className="w-3 h-3 animate-spin text-muted-foreground/60" />}
+            </div>
+            {verificationHistory.length === 0 && !historyLoading ? (
+              <p className="text-xs text-muted-foreground/60 py-2 text-center">No past verifications recorded yet.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-muted-foreground border-b border-border/20">
+                      <th className="text-left pb-1.5 font-medium pr-3">Status</th>
+                      <th className="text-left pb-1.5 font-medium pr-3">Activated</th>
+                      <th className="text-left pb-1.5 font-medium pr-3">Triggered by</th>
+                      <th className="text-left pb-1.5 font-medium">Checked at</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/10">
+                    {verificationHistory.map(entry => (
+                      <tr key={entry.id} className="hover:bg-muted/10">
+                        <td className="py-1.5 pr-3">
+                          <span className={cn("font-semibold",
+                            entry.status === "pass" ? "text-emerald-400"
+                            : entry.status === "not_configured" ? "text-zinc-500"
+                            : "text-amber-400"
+                          )}>
+                            {entry.status === "pass" ? "pass"
+                              : entry.status === "not_configured" ? "not configured"
+                              : "fail"}
+                          </span>
+                        </td>
+                        <td className="py-1.5 pr-3">
+                          {entry.activated === "true"
+                            ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                            : <AlertTriangle className="w-3.5 h-3.5 text-muted-foreground/40" />}
+                        </td>
+                        <td className="py-1.5 pr-3 text-muted-foreground truncate max-w-[120px]" title={entry.triggeredBy ?? ""}>
+                          {entry.triggeredBy ?? <span className="text-muted-foreground/40">—</span>}
+                        </td>
+                        <td className="py-1.5 text-muted-foreground">{fmtDate(entry.checkedAt)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
     </div>

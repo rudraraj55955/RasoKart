@@ -68,3 +68,25 @@ export const insertRazorpayPaymentOrderSchema = createInsertSchema(razorpayPayme
 export type InsertRazorpayPaymentOrder = z.infer<typeof insertRazorpayPaymentOrderSchema>;
 export type RazorpayPaymentOrder = typeof razorpayPaymentOrdersTable.$inferSelect;
 export type RazorpayWebhookLog = typeof razorpayWebhookLogsTable.$inferSelect;
+
+// ── RazorpayX verification history ───────────────────────────────────────────
+
+export const razorpayxVerificationLogTable = pgTable(
+  "razorpayx_verification_log",
+  {
+    id: serial("id").primaryKey(),
+    /** "pass" | "fail" | "not_configured" */
+    status: text("status").notNull(),
+    activated: text("activated").notNull().default("false"),
+    /** Raw message / failure reason from the probe */
+    message: text("message"),
+    /** Which admin triggered the check (email), null if system-initiated */
+    triggeredBy: text("triggered_by"),
+    checkedAt: timestamp("checked_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("razorpayx_verification_log_checked_at_idx").on(table.checkedAt),
+  ]
+);
+
+export type RazorpayxVerificationLog = typeof razorpayxVerificationLogTable.$inferSelect;
