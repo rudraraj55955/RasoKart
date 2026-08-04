@@ -704,6 +704,23 @@ export default function AdminSmartRouting() {
     : false;
 
   /**
+   * When the current priority conflicts with another enabled rule, pre-compute the next
+   * free priority slot so the "Use suggested priority" button can appear without waiting
+   * for a server-side error response.
+   */
+  const conflictSuggestedPriority = useMemo<number | null>(() => {
+    if (!priorityConflictRule) return null;
+    const takenPriorities = new Set(
+      (rulesQ.data ?? [])
+        .filter(r => r.isEnabled && r.id !== editingRule?.id)
+        .map(r => r.priority)
+    );
+    let next = 1;
+    while (takenPriorities.has(next)) next++;
+    return next;
+  }, [priorityConflictRule, rulesQ.data, editingRule]);
+
+  /**
    * Pre-save coverage check: build the proposed rule set (current rules + dialog changes)
    * and run the client-side gap check to warn before the admin clicks Save.
    */
@@ -1940,17 +1957,17 @@ export default function AdminSmartRouting() {
                 ) : (
                   <p className="text-xs text-zinc-600 mt-1">1 = highest priority</p>
                 )}
-                {ruleSuggestedPriority !== null && (
+                {(ruleSuggestedPriority !== null || conflictSuggestedPriority !== null) && (
                   <div className="flex items-center gap-2 mt-1.5 p-2 rounded-md bg-violet-500/10 border border-violet-500/30">
                     <Info className="w-3.5 h-3.5 text-violet-400 shrink-0" />
                     <p className="text-xs text-violet-300 flex-1">
-                      Next free priority: <span className="font-mono font-medium">{ruleSuggestedPriority}</span>
+                      Next free priority: <span className="font-mono font-medium">{ruleSuggestedPriority ?? conflictSuggestedPriority}</span>
                     </p>
                     <Button
                       size="sm"
                       variant="ghost"
                       className="h-6 text-xs text-violet-300 hover:text-violet-200 hover:bg-violet-500/20 px-2 py-0"
-                      onClick={() => { setRfPriority(ruleSuggestedPriority); setRuleSuggestedPriority(null); }}
+                      onClick={() => { setRfPriority(ruleSuggestedPriority ?? conflictSuggestedPriority!); setRuleSuggestedPriority(null); }}
                     >
                       Use it
                     </Button>
