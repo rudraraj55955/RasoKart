@@ -39,6 +39,7 @@ export * from "./rateLimitHits";
 export * from "./merchantAuthLocks";
 export * from "./signatureFailureAlertLogs";
 export * from "./webhookFailureAlertLogs";
+export * from "./ekqrSyncAlertLogs";
 export * from "./storageCleanupRuns";
 export * from "./ekqrWebhookLogs";
 export * from "./cleanupRunHistory";

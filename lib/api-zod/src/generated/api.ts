@@ -7578,6 +7578,42 @@ export const ResetEkqrStuckAlertCooldownResponse = zod.object({
 
 
 /**
+ * @summary Get EKQR stuck-QR alert send history (admin only)
+ */
+export const getEkqrStuckAlertHistoryQueryLimitDefault = 50;
+export const getEkqrStuckAlertHistoryQueryLimitMax = 200;
+
+
+
+export const GetEkqrStuckAlertHistoryQueryParams = zod.object({
+  "limit": zod.coerce.number().min(1).max(getEkqrStuckAlertHistoryQueryLimitMax).default(getEkqrStuckAlertHistoryQueryLimitDefault)
+})
+
+export const GetEkqrStuckAlertHistoryResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "sentAt": zod.coerce.date(),
+  "stuckCount": zod.number().describe('Number of EKQR QR codes found stuck at the time this event was recorded'),
+  "threshold": zod.number().describe('Stuck-QR threshold that was configured when this event was recorded'),
+  "staleMinutes": zod.number().describe('Stale-minutes threshold that was configured when this event was recorded'),
+  "cooldownHours": zod.number().nullish().describe('Cooldown window (hours) active when this event was recorded. Null for rows that pre-date this column.'),
+  "suppressed": zod.boolean().describe('True when the alert was suppressed by the cooldown window; false when the email was dispatched'),
+  "recipientCount": zod.number().describe('Number of admin emails the alert was successfully delivered to (0 when suppressed)'),
+  "recipientEmails": zod.array(zod.string()).describe('List of admin email addresses the alert was sent to (empty when suppressed)')
+})),
+  "total": zod.number()
+})
+
+
+/**
+ * @summary Clear all EKQR stuck-QR alert history entries (admin only)
+ */
+export const ClearEkqrStuckAlertHistoryResponse = zod.object({
+  "cleared": zod.boolean()
+})
+
+
+/**
  * @summary Mark a single notification as read
  */
 export const MarkNotificationReadParams = zod.object({

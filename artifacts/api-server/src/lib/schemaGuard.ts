@@ -1280,6 +1280,25 @@ async function runGuard(): Promise<void> {
   // the value explicitly, but removing the default prevents silent schema drift.
   await db.execute(sql`ALTER TABLE webhook_failure_alert_logs ALTER COLUMN cooldown_hours DROP DEFAULT`);
 
+  // ── ekqr_sync_alert_logs ────────────────────────────────────────────────
+  // Stores one row per EKQR stuck-QR alert event — both sent and cooldown-
+  // suppressed events — so admins can review how often alerts fire and when
+  // they were suppressed.
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS ekqr_sync_alert_logs (
+      id               SERIAL PRIMARY KEY,
+      sent_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      stuck_count      INTEGER NOT NULL,
+      threshold        INTEGER NOT NULL,
+      stale_minutes    INTEGER NOT NULL,
+      cooldown_hours   INTEGER,
+      suppressed       BOOLEAN NOT NULL DEFAULT FALSE,
+      recipient_count  INTEGER NOT NULL DEFAULT 0,
+      recipient_emails JSONB NOT NULL DEFAULT '[]'
+    )
+  `);
+  logger.info({ table: "ekqr_sync_alert_logs" }, "schema_guard_table_created");
+
   // ── otp_email_settings (Email OTP provider config — singleton id=1) ────────
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS otp_email_settings (

@@ -90,6 +90,7 @@ import type {
   ChartDataPoint,
   CleanupRunHistoryResponse,
   CleanupStats,
+  ClearEkqrStuckAlertHistory200,
   ClearQrCleanupHistory200,
   ClearSignatureFailureAlertHistory200,
   ClearTestEmailHistory200,
@@ -123,6 +124,7 @@ import type {
   EkqrConfig,
   EkqrConfigInput,
   EkqrPaymentWebhook200,
+  EkqrSyncAlertHistoryResponse,
   EkqrSyncResult,
   EkqrTestResult,
   EkqrTestWebhookResult,
@@ -148,6 +150,7 @@ import type {
   GetAdminReportDeliveryHistory200,
   GetAdminReportDeliveryHistoryParams,
   GetCallbackSecretHistoryParams,
+  GetEkqrStuckAlertHistoryParams,
   GetIamAudit200,
   GetIamAuditParams,
   GetIamMigrationPreview200,
@@ -22210,6 +22213,160 @@ export const useResetEkqrStuckAlertCooldown = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getResetEkqrStuckAlertCooldownMutationOptions(options));
+    }
+
+export const getGetEkqrStuckAlertHistoryUrl = (params?: GetEkqrStuckAlertHistoryParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/system-config/ekqr-stuck-alert-history?${stringifiedParams}` : `/api/system-config/ekqr-stuck-alert-history`
+}
+
+/**
+ * @summary Get EKQR stuck-QR alert send history (admin only)
+ */
+export const getEkqrStuckAlertHistory = async (params?: GetEkqrStuckAlertHistoryParams, options?: RequestInit): Promise<EkqrSyncAlertHistoryResponse> => {
+
+  return customFetch<EkqrSyncAlertHistoryResponse>(getGetEkqrStuckAlertHistoryUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetEkqrStuckAlertHistoryQueryKey = (params?: GetEkqrStuckAlertHistoryParams,) => {
+    return [
+    `/api/system-config/ekqr-stuck-alert-history`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetEkqrStuckAlertHistoryQueryOptions = <TData = Awaited<ReturnType<typeof getEkqrStuckAlertHistory>>, TError = ErrorType<unknown>>(params?: GetEkqrStuckAlertHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEkqrStuckAlertHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetEkqrStuckAlertHistoryQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getEkqrStuckAlertHistory>>> = ({ signal }) => getEkqrStuckAlertHistory(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getEkqrStuckAlertHistory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetEkqrStuckAlertHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof getEkqrStuckAlertHistory>>>
+export type GetEkqrStuckAlertHistoryQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get EKQR stuck-QR alert send history (admin only)
+ */
+
+export function useGetEkqrStuckAlertHistory<TData = Awaited<ReturnType<typeof getEkqrStuckAlertHistory>>, TError = ErrorType<unknown>>(
+ params?: GetEkqrStuckAlertHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEkqrStuckAlertHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetEkqrStuckAlertHistoryQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getClearEkqrStuckAlertHistoryUrl = () => {
+
+
+
+
+  return `/api/system-config/ekqr-stuck-alert-history`
+}
+
+/**
+ * @summary Clear all EKQR stuck-QR alert history entries (admin only)
+ */
+export const clearEkqrStuckAlertHistory = async ( options?: RequestInit): Promise<ClearEkqrStuckAlertHistory200> => {
+
+  return customFetch<ClearEkqrStuckAlertHistory200>(getClearEkqrStuckAlertHistoryUrl(),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getClearEkqrStuckAlertHistoryMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof clearEkqrStuckAlertHistory>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof clearEkqrStuckAlertHistory>>, TError,void, TContext> => {
+
+const mutationKey = ['clearEkqrStuckAlertHistory'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof clearEkqrStuckAlertHistory>>, void> = () => {
+
+
+          return  clearEkqrStuckAlertHistory(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ClearEkqrStuckAlertHistoryMutationResult = NonNullable<Awaited<ReturnType<typeof clearEkqrStuckAlertHistory>>>
+
+    export type ClearEkqrStuckAlertHistoryMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Clear all EKQR stuck-QR alert history entries (admin only)
+ */
+export const useClearEkqrStuckAlertHistory = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof clearEkqrStuckAlertHistory>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof clearEkqrStuckAlertHistory>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getClearEkqrStuckAlertHistoryMutationOptions(options));
     }
 
 export const getMarkNotificationReadUrl = (id: number,) => {

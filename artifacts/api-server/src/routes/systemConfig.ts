@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, systemConfigTable, SYSTEM_CONFIG_KEYS, SYSTEM_CONFIG_DEFAULTS, auditLogsTable, signatureFailureAlertLogsTable, webhookFailureAlertLogsTable, storageCleanupRunsTable, uploadedObjectsTable, merchantsTable, merchantConnectionsTable, qrCodesTable, cashfreePaymentOrdersTable, cashfreePayoutsTable, providerIntegrationsTable } from "@workspace/db";
+import { db, systemConfigTable, SYSTEM_CONFIG_KEYS, SYSTEM_CONFIG_DEFAULTS, auditLogsTable, signatureFailureAlertLogsTable, webhookFailureAlertLogsTable, ekqrSyncAlertLogsTable, storageCleanupRunsTable, uploadedObjectsTable, merchantsTable, merchantConnectionsTable, qrCodesTable, cashfreePaymentOrdersTable, cashfreePayoutsTable, providerIntegrationsTable } from "@workspace/db";
 import { ekqrCreateOrder, ekqrClientTxnId } from "../helpers/ekqr";
 import { testPayoutConnection, cashfreePayoutGetTransferStatus, normalizeCashfreePayoutStatus, type CashfreePayoutEnv } from "../helpers/cashfreePayout";
 import { cashfreeCreateOrder, type CashfreeEnv } from "../helpers/cashfree";
@@ -1225,6 +1225,64 @@ router.post("/ekqr-stuck-alert/reset-cooldown", async (req, res, next) => {
     req.log.info({ deleted }, "EKQR stuck-QR alert cooldown reset");
 
     res.json({ reset: true, deleted });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/system-config/ekqr-stuck-alert-history
+router.get("/ekqr-stuck-alert-history", async (req, res, next) => {
+  try {
+    const limit = Math.min(parseInt((req.query['limit'] as string) || "50") || 50, 200);
+
+    const [rows, [{ total }]] = await Promise.all([
+      db
+        .select()
+        .from(ekqrSyncAlertLogsTable)
+        .orderBy(desc(ekqrSyncAlertLogsTable.sentAt))
+        .limit(limit),
+      db.select({ total: count() }).from(ekqrSyncAlertLogsTable),
+    ]);
+
+    res.json({
+      data: rows.map((r) => ({
+        id: r.id,
+        sentAt: r.sentAt.toISOString(),
+        stuckCount: r.stuckCount,
+        threshold: r.threshold,
+        staleMinutes: r.staleMinutes,
+        cooldownHours: r.cooldownHours ?? null,
+        suppressed: r.suppressed,
+        recipientCount: r.recipientCount,
+        recipientEmails: r.recipientEmails,
+      })),
+      total,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/system-config/ekqr-stuck-alert-history
+router.delete("/ekqr-stuck-alert-history", async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+
+    await db.delete(ekqrSyncAlertLogsTable);
+
+    await db.insert(auditLogsTable).values({
+      adminId: user.id,
+      adminEmail: user.email,
+      action: "system_config_updated",
+      targetType: "system_config",
+      targetId: null,
+      details: JSON.stringify({ section: "ekqr_stuck_alert_history", action: "cleared" }),
+      ipAddress: (req as any).ip ?? null,
+    });
+
+    req.log.info("EKQR stuck-QR alert history cleared");
+
+    res.json({ cleared: true });
   } catch (err) {
     next(err);
   }

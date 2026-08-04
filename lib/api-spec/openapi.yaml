@@ -7530,6 +7530,42 @@ paths:
                   deleted:
                     type: integer
 
+  /system-config/ekqr-stuck-alert-history:
+    get:
+      operationId: getEkqrStuckAlertHistory
+      tags: [system-config]
+      summary: Get EKQR stuck-QR alert send history (admin only)
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        "200":
+          description: List of EKQR stuck-QR alert log entries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EkqrSyncAlertHistoryResponse"
+    delete:
+      operationId: clearEkqrStuckAlertHistory
+      tags: [system-config]
+      summary: Clear all EKQR stuck-QR alert history entries (admin only)
+      responses:
+        "200":
+          description: History cleared
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [cleared]
+                properties:
+                  cleared:
+                    type: boolean
+
   /notifications/{id}/read:
     post:
       operationId: markNotificationRead
@@ -17405,6 +17441,51 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SignatureFailureAlertLogEntry"
+        total:
+          type: integer
+
+    EkqrSyncAlertLogEntry:
+      type: object
+      required: [id, sentAt, stuckCount, threshold, staleMinutes, suppressed, recipientCount, recipientEmails]
+      properties:
+        id:
+          type: integer
+        sentAt:
+          type: string
+          format: date-time
+        stuckCount:
+          type: integer
+          description: Number of EKQR QR codes found stuck at the time this event was recorded
+        threshold:
+          type: integer
+          description: Stuck-QR threshold that was configured when this event was recorded
+        staleMinutes:
+          type: integer
+          description: Stale-minutes threshold that was configured when this event was recorded
+        cooldownHours:
+          type: integer
+          nullable: true
+          description: Cooldown window (hours) active when this event was recorded. Null for rows that pre-date this column.
+        suppressed:
+          type: boolean
+          description: True when the alert was suppressed by the cooldown window; false when the email was dispatched
+        recipientCount:
+          type: integer
+          description: Number of admin emails the alert was successfully delivered to (0 when suppressed)
+        recipientEmails:
+          type: array
+          items:
+            type: string
+          description: List of admin email addresses the alert was sent to (empty when suppressed)
+
+    EkqrSyncAlertHistoryResponse:
+      type: object
+      required: [data, total]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/EkqrSyncAlertLogEntry"
         total:
           type: integer
 

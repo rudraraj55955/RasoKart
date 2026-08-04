@@ -1,4 +1,4 @@
-import { db, usersTable, webhookFailureAlertLogsTable, systemConfigTable, SYSTEM_CONFIG_KEYS, SYSTEM_CONFIG_DEFAULTS } from "@workspace/db";
+import { db, usersTable, webhookFailureAlertLogsTable, ekqrSyncAlertLogsTable, systemConfigTable, SYSTEM_CONFIG_KEYS, SYSTEM_CONFIG_DEFAULTS } from "@workspace/db";
 import { and, eq, gt, gte, sql } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { sendMail } from "./mailer";
@@ -814,6 +814,16 @@ export async function notifyAdminsOfStuckEkqrQrCodes(opts: {
           { cooldownHours: opts.cooldownHours, lastSentAt: lastSentRow.value },
           "EKQR stuck QR alert suppressed — within cooldown window"
         );
+        // Log the suppression so admins can see it in the history table
+        await db.insert(ekqrSyncAlertLogsTable).values({
+          stuckCount: opts.stuck,
+          threshold: opts.threshold,
+          staleMinutes: opts.staleMinutes,
+          cooldownHours: opts.cooldownHours,
+          suppressed: true,
+          recipientCount: 0,
+          recipientEmails: [],
+        });
         return;
       }
     }
@@ -827,6 +837,7 @@ export async function notifyAdminsOfStuckEkqrQrCodes(opts: {
 
     const sent = results.filter(r => r.status === "fulfilled" && r.value).length;
     const failed = results.length - sent;
+    const sentRecipients = recipients.filter((_, i) => results[i]?.status === "fulfilled" && (results[i] as PromiseFulfilledResult<boolean>).value);
 
     // Record last sent time so cooldown works correctly
     if (sent > 0) {
@@ -839,6 +850,17 @@ export async function notifyAdminsOfStuckEkqrQrCodes(opts: {
           set: { value: now, updatedAt: sql`now()` },
         });
     }
+
+    // Log this send event so admins can review history
+    await db.insert(ekqrSyncAlertLogsTable).values({
+      stuckCount: opts.stuck,
+      threshold: opts.threshold,
+      staleMinutes: opts.staleMinutes,
+      cooldownHours: opts.cooldownHours,
+      suppressed: false,
+      recipientCount: sent,
+      recipientEmails: sentRecipients,
+    });
 
     logger.info(
       { stuck: opts.stuck, threshold: opts.threshold, totalAdmins: recipients.length, sent, failed },

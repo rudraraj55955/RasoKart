@@ -4259,6 +4259,30 @@ export interface SignatureFailureAlertHistoryResponse {
   total: number;
 }
 
+export interface EkqrSyncAlertLogEntry {
+  id: number;
+  sentAt: string;
+  /** Number of EKQR QR codes found stuck at the time this event was recorded */
+  stuckCount: number;
+  /** Stuck-QR threshold that was configured when this event was recorded */
+  threshold: number;
+  /** Stale-minutes threshold that was configured when this event was recorded */
+  staleMinutes: number;
+  /** Cooldown window (hours) active when this event was recorded. Null for rows that pre-date this column. */
+  cooldownHours?: number | null;
+  /** True when the alert was suppressed by the cooldown window; false when the email was dispatched */
+  suppressed: boolean;
+  /** Number of admin emails the alert was successfully delivered to (0 when suppressed) */
+  recipientCount: number;
+  /** List of admin email addresses the alert was sent to (empty when suppressed) */
+  recipientEmails: string[];
+}
+
+export interface EkqrSyncAlertHistoryResponse {
+  data: EkqrSyncAlertLogEntry[];
+  total: number;
+}
+
 export interface WebhookFailureAlertLogEntry {
   id: number;
   sentAt: string;
@@ -8057,6 +8081,18 @@ export type ResetSignatureFailureAlertCooldown200 = {
 export type ResetEkqrStuckAlertCooldown200 = {
   reset: boolean;
   deleted: number;
+};
+
+export type GetEkqrStuckAlertHistoryParams = {
+/**
+ * @minimum 1
+ * @maximum 200
+ */
+limit?: number;
+};
+
+export type ClearEkqrStuckAlertHistory200 = {
+  cleared: boolean;
 };
 
 export type ListSavedFilters200 = {

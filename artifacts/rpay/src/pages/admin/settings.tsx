@@ -12,7 +12,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { toast } from "sonner";
 import { getToken } from "@/lib/auth";
 import { getApiErrorMessage } from "@/lib/utils";
-import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, getListAdminAuditLogsQueryKey, useGetLedgerBackfillLastRun, useRunLedgerBackfill, getGetLedgerBackfillLastRunQueryKey, useRunStorageCleanup, useListStorageCleanupRuns, getListStorageCleanupRunsQueryKey, useGetSignatureFailureAlertHistory, useClearSignatureFailureAlertHistory, getGetSignatureFailureAlertHistoryQueryKey, useGetWebhookFailureAlertHistory, useClearWebhookFailureAlertHistory, getGetWebhookFailureAlertHistoryQueryKey, useGetWebhookFailureAlertConfig, useUpdateWebhookFailureAlertConfig, getGetWebhookFailureAlertConfigQueryKey, useResetWebhookFailureAlertCooldown, useResetSignatureFailureAlertCooldown, useResetEkqrStuckAlertCooldown, useGetCleanupStats, getGetCleanupStatsQueryKey, useGetGithubSyncConfig, useUpdateGithubSyncConfig, getGetGithubSyncConfigQueryKey, useGetGithubSyncStatus, getGetGithubSyncStatusQueryKey, useGetGithubSyncHistory, getGetGithubSyncHistoryQueryKey, useRunGithubSync, useGetGithubSyncRunLog, useGetGithubSyncDivergence, getGetGithubSyncDivergenceQueryKey, useRunGithubSyncLogCleanup, useGetGithubSyncLastCleanup, getGetGithubSyncLastCleanupQueryKey, useGetGithubSyncCleanupAlertSnooze, useSetGithubSyncCleanupAlertSnooze, getGetGithubSyncCleanupAlertSnoozeQueryKey, useGetQrCleanupHistory, useGetVaCleanupHistory, useClearQrCleanupHistory, useClearVaCleanupHistory, getGetQrCleanupHistoryQueryKey, getGetVaCleanupHistoryQueryKey, useListMerchants, useGetQuietHoursFlushConfig, useUpdateQuietHoursFlushConfig, getGetQuietHoursFlushConfigQueryKey, getGetAlertCooldownStatusQueryOptions, getGetAlertCooldownStatusQueryKey, type AdminAuditLog, type StorageCleanupRun, type SignatureFailureAlertLogEntry, type WebhookFailureAlertLogEntry, type CleanupRunHistoryEntry, type GithubSyncHistoryEntry } from "@workspace/api-client-react";
+import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, getListAdminAuditLogsQueryKey, useGetLedgerBackfillLastRun, useRunLedgerBackfill, getGetLedgerBackfillLastRunQueryKey, useRunStorageCleanup, useListStorageCleanupRuns, getListStorageCleanupRunsQueryKey, useGetSignatureFailureAlertHistory, useClearSignatureFailureAlertHistory, getGetSignatureFailureAlertHistoryQueryKey, useGetWebhookFailureAlertHistory, useClearWebhookFailureAlertHistory, getGetWebhookFailureAlertHistoryQueryKey, useGetWebhookFailureAlertConfig, useUpdateWebhookFailureAlertConfig, getGetWebhookFailureAlertConfigQueryKey, useResetWebhookFailureAlertCooldown, useResetSignatureFailureAlertCooldown, useResetEkqrStuckAlertCooldown, useGetEkqrStuckAlertHistory, useClearEkqrStuckAlertHistory, getGetEkqrStuckAlertHistoryQueryKey, useGetCleanupStats, getGetCleanupStatsQueryKey, useGetGithubSyncConfig, useUpdateGithubSyncConfig, getGetGithubSyncConfigQueryKey, useGetGithubSyncStatus, getGetGithubSyncStatusQueryKey, useGetGithubSyncHistory, getGetGithubSyncHistoryQueryKey, useRunGithubSync, useGetGithubSyncRunLog, useGetGithubSyncDivergence, getGetGithubSyncDivergenceQueryKey, useRunGithubSyncLogCleanup, useGetGithubSyncLastCleanup, getGetGithubSyncLastCleanupQueryKey, useGetGithubSyncCleanupAlertSnooze, useSetGithubSyncCleanupAlertSnooze, getGetGithubSyncCleanupAlertSnoozeQueryKey, useGetQrCleanupHistory, useGetVaCleanupHistory, useClearQrCleanupHistory, useClearVaCleanupHistory, getGetQrCleanupHistoryQueryKey, getGetVaCleanupHistoryQueryKey, useListMerchants, useGetQuietHoursFlushConfig, useUpdateQuietHoursFlushConfig, getGetQuietHoursFlushConfigQueryKey, getGetAlertCooldownStatusQueryOptions, getGetAlertCooldownStatusQueryKey, type AdminAuditLog, type StorageCleanupRun, type SignatureFailureAlertLogEntry, type WebhookFailureAlertLogEntry, type EkqrSyncAlertLogEntry, type CleanupRunHistoryEntry, type GithubSyncHistoryEntry } from "@workspace/api-client-react";
 import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send, Calendar, Bell, Wifi, WifiOff, Trash2, Server, Eye, EyeOff, History, XCircle, HardDrive, RotateCcw, ShieldAlert, KeyRound, RefreshCw, Wrench, GitBranch, Zap, FlaskConical, ChevronDown, ChevronUp, Clock, X } from "lucide-react";
 
 function formatTimeAgo(isoString: string): string {
@@ -1036,8 +1036,25 @@ export default function AdminSettings() {
       onSuccess: () => {
         toast.success("EKQR stuck-QR alert cooldown reset — next stuck-QR event will trigger a fresh alert");
         qc.invalidateQueries({ queryKey: getGetAlertCooldownStatusQueryKey() });
+        qc.invalidateQueries({ queryKey: getGetEkqrStuckAlertHistoryQueryKey() });
       },
       onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to reset cooldown")),
+    },
+  });
+
+  const { data: ekqrAlertHistoryData, refetch: refetchEkqrAlertHistory } = useGetEkqrStuckAlertHistory(undefined, { query: { staleTime: 30_000 } } as any);
+  const ekqrAlertHistory: EkqrSyncAlertLogEntry[] = ekqrAlertHistoryData?.data ?? [];
+  const ekqrAlertHistoryCount = ekqrAlertHistoryData?.total ?? 0;
+
+  const { mutate: clearEkqrAlertHistory, isPending: clearingEkqrAlertHistory } = useClearEkqrStuckAlertHistory({
+    mutation: {
+      onSuccess: () => {
+        toast.success("EKQR stuck-QR alert history cleared");
+        qc.invalidateQueries({ queryKey: getGetEkqrStuckAlertHistoryQueryKey() });
+        qc.invalidateQueries({ queryKey: getGetAlertCooldownStatusQueryKey() });
+        void refetchEkqrAlertHistory();
+      },
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to clear history")),
     },
   });
 
@@ -3194,6 +3211,136 @@ export default function AdminSettings() {
                 );
                 })}
               </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* EKQR Stuck-QR Alert History */}
+      <Card className="border-border/50">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Zap className="w-4 h-4 text-muted-foreground" />
+              <CardTitle className="text-base">EKQR Stuck-QR Alert History</CardTitle>
+            </div>
+            {ekqrAlertHistoryCount > 0 && (
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => resetEkqrCooldown()}
+                  disabled={resettingEkqrCooldown || clearingEkqrAlertHistory}
+                  title="Clear the cooldown so the next stuck-QR event triggers a fresh alert email"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
+                  {resettingEkqrCooldown ? "Resetting…" : "Reset Cooldown"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-destructive hover:text-destructive border-destructive/40 hover:bg-destructive/10"
+                  onClick={() => clearEkqrAlertHistory()}
+                  disabled={clearingEkqrAlertHistory || resettingEkqrCooldown}
+                >
+                  <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                  {clearingEkqrAlertHistory ? "Clearing…" : `Clear history (${ekqrAlertHistoryCount})`}
+                </Button>
+              </>
+            )}
+          </div>
+          <CardDescription className="text-sm">
+            A record of every EKQR stuck-QR alert event, including alerts that were suppressed by the cooldown window. Suppressed entries show when an alert would have fired but was held back.
+          </CardDescription>
+          {(() => {
+            const ekqr = alertCooldownStatus?.ekqr;
+            if (!ekqr) return null;
+            const remaining = ekqr.cooldownActive && ekqr.cooldownExpiresAt
+              ? formatTimeRemaining(ekqr.cooldownExpiresAt, now)
+              : null;
+            if (remaining) {
+              return (
+                <span
+                  className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 px-2.5 py-1 text-xs text-amber-400"
+                  title={`Cooldown active — next alert possible after ${new Date(ekqr.cooldownExpiresAt!).toLocaleString()}`}
+                >
+                  <Clock className="w-3 h-3 shrink-0" />
+                  Cooldown active — next alert in {remaining}
+                </span>
+              );
+            }
+            if (ekqrAlertHistoryCount > 0) {
+              return (
+                <span className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-1 text-xs text-emerald-400">
+                  <CheckCircle2 className="w-3 h-3 shrink-0" />
+                  Ready — no active cooldown
+                </span>
+              );
+            }
+            return null;
+          })()}
+        </CardHeader>
+        <CardContent>
+          {ekqrAlertHistory.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-2">No EKQR stuck-QR alert events recorded yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {ekqrAlertHistory.map((entry, idx) => (
+                <div
+                  key={entry.id}
+                  className={`rounded-lg border px-4 py-3 space-y-1.5 ${
+                    entry.suppressed
+                      ? "border-amber-500/20 bg-amber-500/5"
+                      : "border-border/50 bg-muted/5"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-medium">
+                        {new Date(entry.sentAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+                      </span>
+                      {entry.suppressed ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 text-xs text-amber-400">
+                          <Clock className="w-3 h-3 shrink-0" />
+                          Suppressed by cooldown
+                        </span>
+                      ) : (
+                        idx === 0 && alertCooldownStatus?.ekqr?.cooldownActive && alertCooldownStatus.ekqr.cooldownExpiresAt && (() => {
+                          const remaining = formatTimeRemaining(alertCooldownStatus.ekqr!.cooldownExpiresAt, now);
+                          return remaining ? (
+                            <span
+                              className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 text-xs text-amber-400"
+                              title={`Cooldown from this alert — next alert possible after ${new Date(alertCooldownStatus.ekqr!.cooldownExpiresAt!).toLocaleString()}`}
+                            >
+                              <Clock className="w-3 h-3 shrink-0" />
+                              Next in {remaining}
+                            </span>
+                          ) : null;
+                        })()
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                      <span>{entry.stuckCount} stuck QR{entry.stuckCount !== 1 ? "s" : ""}</span>
+                      {!entry.suppressed && (
+                        <span>{entry.recipientCount} recipient{entry.recipientCount !== 1 ? "s" : ""}</span>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Threshold: {entry.threshold} · Stale after: {entry.staleMinutes}min · Cooldown:{" "}
+                    {entry.cooldownHours != null ? (
+                      <>{entry.cooldownHours}h</>
+                    ) : (
+                      <span className="italic" title="Cooldown value not recorded">—</span>
+                    )}
+                  </p>
+                  {!entry.suppressed && entry.recipientEmails.length > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      Sent to: {entry.recipientEmails.join(", ")}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
           )}
         </CardContent>
       </Card>
