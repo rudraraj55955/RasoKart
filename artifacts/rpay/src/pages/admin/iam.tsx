@@ -1,16 +1,17 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useHasPermission } from "@/hooks/use-has-permission";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, ShieldCheck, Users, Lock, ScrollText, RefreshCw } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ShieldCheck, Users, Lock, ScrollText, RefreshCw, Search } from "lucide-react";
 import {
   useGetIamMigrationStatus,
   useGetIamPermissions,
@@ -216,8 +217,21 @@ function RoleTemplatesPanel() {
 // ── User overrides panel ──────────────────────────────────────────────────────
 
 function UserOverridesPanel() {
-  const { data, isLoading } = useGetIamUsers({ limit: 100 });
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Debounce: fire server search 350 ms after the user stops typing.
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => setDebouncedSearch(search.trim()), 350);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [search]);
+
+  const searchParams = debouncedSearch ? { limit: 100, search: debouncedSearch } : { limit: 100 };
+  const { data, isLoading } = useGetIamUsers(searchParams);
+
   const { data: userPerms, isLoading: permsLoading } = useGetIamUsersUserIdPermissions(
     selectedUserId ?? 0,
     { query: { enabled: !!selectedUserId, queryKey: getGetIamUsersUserIdPermissionsQueryKey(selectedUserId ?? 0) } },
@@ -250,17 +264,36 @@ function UserOverridesPanel() {
     },
   });
 
+  const users: any[] = (data as any)?.users ?? [];
+  const total: number = (data as any)?.total ?? 0;
+
   if (isLoading) return <Skeleton className="h-64 w-full" />;
 
-  const users = (data as any)?.users ?? [];
   const ud = userPerms as any;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
       <Card className="lg:col-span-1">
-        <CardHeader><CardTitle className="text-sm flex items-center gap-2"><Users className="w-4 h-4" /> Users ({users.length})</CardTitle></CardHeader>
-        <CardContent className="p-0">
-          <div className="divide-y divide-white/5 max-h-[500px] overflow-y-auto">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Users className="w-4 h-4" />
+            Users ({users.length}{total > users.length ? ` of ${total}` : ""})
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="px-3 pb-2 pt-0">
+          <div className="relative mb-2">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Filter by email or role…"
+              className="pl-8 h-8 text-xs"
+            />
+          </div>
+          <div className="divide-y divide-white/5 max-h-[460px] overflow-y-auto">
+            {users.length === 0 && debouncedSearch && (
+              <div className="py-6 text-center text-xs text-muted-foreground">No users match "{debouncedSearch}"</div>
+            )}
             {users.map((u: any) => (
               <button
                 key={u.id}

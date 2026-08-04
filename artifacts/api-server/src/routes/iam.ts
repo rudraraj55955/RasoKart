@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, usersTable, iamMigrationLogTable, rolePermissionsTable, userPermissionsTable, permissionsTable, auditLogsTable } from "@workspace/db";
-import { eq, and, count, desc, like } from "drizzle-orm";
+import { eq, and, count, desc, like, ilike, or } from "drizzle-orm";
 import { requireAuth, requireAdmin, requirePermission } from "../middlewares/auth";
 import { ALL_PERMISSION_KEYS, PERMISSIONS, ROLE_DEFAULT_PERMISSIONS, SUPER_ADMIN_ONLY_PERMISSIONS } from "../permissions";
 
@@ -492,6 +492,14 @@ router.get(
       const page = Math.max(1, parseInt((req.query["page"] as string) || "1", 10));
       const limit = Math.min(100, Math.max(1, parseInt((req.query["limit"] as string) || "50", 10)));
       const offset = (page - 1) * limit;
+      const searchQ = ((req.query["search"] as string) || "").trim().toLowerCase();
+
+      const baseWhere = searchQ
+        ? or(
+            ilike(usersTable.email, `%${searchQ}%`),
+            ilike(usersTable.role, `%${searchQ}%`),
+          )
+        : undefined;
 
       const users = await db
         .select({
@@ -504,6 +512,7 @@ router.get(
           createdAt: usersTable.createdAt,
         })
         .from(usersTable)
+        .where(baseWhere)
         .limit(limit)
         .offset(offset)
         .orderBy(usersTable.createdAt);
@@ -516,7 +525,7 @@ router.get(
       const overrideMap: Record<number, number> = {};
       for (const row of overrideCounts) overrideMap[row.userId] = Number(row.c);
 
-      const [totalRow] = await db.select({ c: count() }).from(usersTable);
+      const [totalRow] = await db.select({ c: count() }).from(usersTable).where(baseWhere);
 
       res.json({
         users: users.map((u) => ({

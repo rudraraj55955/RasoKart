@@ -12004,6 +12004,11 @@ paths:
           in: query
           schema:
             type: integer
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Filter users by email or role (case-insensitive substring)
       responses:
         "200":
           description: User list

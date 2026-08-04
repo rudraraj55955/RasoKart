@@ -8700,6 +8700,7 @@ export type PutIamRolesRolePermissionKey200 = {
 export type GetIamUsersParams = {
 page?: number;
 limit?: number;
+search?: string;
 };
 
 export type GetIamUsers200UsersItem = {
