@@ -156,8 +156,6 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
     let dailyTotal: number;
     try {
       const startOfDay = new Date();
-
-    const dailySpent = await getMerchantDailyPaidTotal(user.merchantId, startOfDay).catch(() => null);
       startOfDay.setHours(0, 0, 0, 0);
       dailyTotal = await getMerchantDailyPaidTotal(merchantId, startOfDay);
       req.log.info({ event: "payin_daily_limit_check_success", merchantId, dailyTotal }, "payin_daily_limit_check_success");
@@ -394,7 +392,7 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
         continue;
       }
 
-    const publicOrderId = req.params["publicOrderId"] as string;
+    const publicOrderId = `RKPAYIN_${merchantId}_${Date.now()}`;
       const startedAt = Date.now();
       const gatewayResult = await createCustomGatewayOrder(integration, {
         publicOrderId,
@@ -550,7 +548,7 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
       return;
     }
 
-    const publicOrderId = req.params["publicOrderId"] as string;
+    const publicOrderId = `RKPAYIN_${merchantId}_${Date.now()}`;
 
     let raw: string;
     let parsed: Awaited<ReturnType<typeof cashfreeCreateOrder>>["parsed"];
