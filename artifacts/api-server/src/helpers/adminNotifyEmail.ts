@@ -962,6 +962,39 @@ export function buildCredentialRotationHtml(opts: {
 </html>`;
 }
 
+export function buildCredentialRotationText(opts: {
+  gateway: string;
+  changedFields: string[];
+  actorEmail: string;
+  timestamp: string;
+  isTest?: boolean;
+}): string {
+  const { gateway, changedFields, actorEmail, timestamp, isTest } = opts;
+  const gatewayLabel = GATEWAY_LABELS[gateway] ?? gateway;
+  const settingsLink = `${APP_DOMAIN}/admin/payment-gateways`;
+
+  const testBanner = isTest
+    ? `[TEST] THIS IS A TEST — no credentials were changed\nThis email was sent manually from Admin Settings to verify delivery. It does not indicate any real credential rotation event.\n\n`
+    : "";
+
+  return `${testBanner}RasoKart — Gateway Credentials Changed
+${gatewayLabel} credentials were rotated
+
+Credentials for the ${gatewayLabel} payment gateway were changed. If this wasn't expected, investigate immediately.
+
+For security, the new values are never included in this email. Review the change in the admin portal and confirm it was authorized.
+
+Gateway:        ${gatewayLabel}
+Fields Changed: ${changedFields.join(", ")}
+Changed By:     ${actorEmail}
+Timestamp:      ${timestamp}
+
+Review Payment Gateway Settings:
+${settingsLink}
+
+This is a mandatory security alert sent to all admins whenever gateway credentials are rotated. It cannot be disabled.`;
+}
+
 // Optional additional distribution list for credential rotation alerts (e.g. a
 // dedicated security team inbox). This is purely additive — it can never replace
 // or suppress the mandatory "all active admins" recipient list above.

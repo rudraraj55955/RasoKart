@@ -8,6 +8,7 @@ import {
   buildReportScheduleResumedHtml,
   buildStuckEkqrHtml,
   buildCredentialRotationHtml,
+  buildCredentialRotationText,
 } from "./adminNotifyEmail";
 
 const TEST_BANNER_TEXT = "THIS IS A TEST";
@@ -173,6 +174,36 @@ describe("buildStuckEkqrHtml", () => {
 
   it("omits the TEST banner when isTest is omitted", () => {
     assertBannerAbsent(buildStuckEkqrHtml(base), "isTest omitted");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildCredentialRotationText
+// ---------------------------------------------------------------------------
+
+const TEXT_BANNER_MARKER = "[TEST] THIS IS A TEST";
+
+describe("buildCredentialRotationText", () => {
+  const base = {
+    gateway: "cashfree",
+    changedFields: ["clientId", "clientSecret"],
+    actorEmail: "admin@rasokart.com",
+    timestamp: "2026-07-21T10:00:00.000Z",
+  };
+
+  it("includes the plain-text TEST banner when isTest is true", () => {
+    const text = buildCredentialRotationText({ ...base, isTest: true });
+    assert.ok(text.includes(TEXT_BANNER_MARKER), "isTest:true — expected plain-text banner marker to be present");
+  });
+
+  it("omits the plain-text TEST banner when isTest is false", () => {
+    const text = buildCredentialRotationText({ ...base, isTest: false });
+    assert.equal(text.includes(TEXT_BANNER_MARKER), false, "isTest:false — expected plain-text banner marker to be absent");
+  });
+
+  it("omits the plain-text TEST banner when isTest is omitted", () => {
+    const text = buildCredentialRotationText(base);
+    assert.equal(text.includes(TEXT_BANNER_MARKER), false, "isTest omitted — expected plain-text banner marker to be absent");
   });
 });
 
