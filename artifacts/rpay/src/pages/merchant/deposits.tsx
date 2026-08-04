@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { checkDailyCapacity } from "@/lib/payin-capacity-guard";
 import { useSearch } from "wouter";
 import { useCrossTabSync } from "@/hooks/use-cross-tab-sync";
 import { AllFiltersSheet } from "@/components/merchant/all-filters-sheet";
@@ -1099,12 +1100,10 @@ export default function MerchantDeposits() {
     }
     // Client-side daily capacity guard — prevents a guaranteed 400 when the
     // merchant has already hit (or would exceed) their daily limit.
-    if (payinStatusData?.dailyLimit != null && payinStatusData?.dailyLimitUsed != null) {
-      const remaining = payinStatusData.dailyLimit - payinStatusData.dailyLimitUsed;
-      if (depositAmt > remaining) {
-        toast.error(`Amount exceeds your remaining daily deposit capacity of ₹${remaining.toLocaleString()}`);
-        return;
-      }
+    const capacityCheck = checkDailyCapacity(depositAmt, payinStatusData);
+    if (capacityCheck.blocked) {
+      toast.error(capacityCheck.message);
+      return;
     }
     setCfCreating(true);
     try {
