@@ -53,23 +53,30 @@ const MERCHANT1_EMAIL = "merchant@demo.com";
  * The endpoint verify logic picks the LATEST row for an identifier+purpose,
  * so this seeded row will be what the API checks.
  *
- * opts.backdate      — shorthand for backdateSeconds: 120 (past the resend cooldown)
- * opts.backdateSeconds — explicit backdate in seconds; when > 600 the resulting
- *                        expiresAt falls in the past, producing an expired OTP.
+ * opts.backdate            — shorthand for backdateSeconds: 120 (past the resend cooldown)
+ * opts.backdateSeconds     — explicit backdate in seconds; when > 600 the resulting
+ *                            expiresAt falls in the past, producing an expired OTP.
+ * opts.expireOverrideSeconds — keeps createdAt=now (so this row is newest and wins
+ *                            ORDER BY created_at DESC) but sets expiresAt=now-<secs>,
+ *                            making the row already expired.  Use this when the UI has
+ *                            already triggered the API to create a row and the seeded
+ *                            row must both win the ORDER BY and be expired.
  */
 function seedOtp(
   identifier: string,
   otp: string,
   purpose: "LOGIN" | "PASSWORD_RESET",
-  opts: { backdate?: boolean; backdateSeconds?: number } = {},
+  opts: { backdate?: boolean; backdateSeconds?: number; expireOverrideSeconds?: number } = {},
 ): void {
-  let backdateFlag: string | null = null;
-  if (opts.backdateSeconds != null) {
-    backdateFlag = `--backdate=${opts.backdateSeconds}`;
+  let extraFlag: string | null = null;
+  if (opts.expireOverrideSeconds != null) {
+    extraFlag = `--expire-override=${opts.expireOverrideSeconds}`;
+  } else if (opts.backdateSeconds != null) {
+    extraFlag = `--backdate=${opts.backdateSeconds}`;
   } else if (opts.backdate) {
-    backdateFlag = "--backdate";
+    extraFlag = "--backdate";
   }
-  const args = [identifier, otp, purpose, ...(backdateFlag ? [backdateFlag] : [])];
+  const args = [identifier, otp, purpose, ...(extraFlag ? [extraFlag] : [])];
   // Quote each argument to handle special chars like @
   const quoted = args.map((a) => `'${a.replace(/'/g, "'\\''")}'`).join(" ");
   execSync(`tsx src/seed-test-otp.ts ${quoted}`, {
@@ -366,7 +373,76 @@ test("forgot password: expired OTP shows error toast, not a dashboard redirect",
   expect(page.url()).toContain("/merchant/login");
 });
 
-// ── Test group 5: resend invalidates old OTP ──────────────────────────────────
+// ── Test group 5: expired LOGIN OTP shows error toast ─────────────────────────
+
+test("OTP login: expired OTP shows error toast, not a dashboard redirect", async ({
+  page,
+}) => {
+  // Guards /auth/merchant/otp/verify against silent failures when a user
+  // waits too long to enter their login code (OTP expires after 10 minutes).
+  //
+  // Strategy:
+  //   1. Request a login code via the UI (advances to the OTP entry form).
+  //   2. Seed an expired OTP row using expireOverrideSeconds: 60.
+  //      This keeps createdAt=now so the seeded row is NEWER than the row the
+  //      API just created (and therefore wins ORDER BY created_at DESC), while
+  //      setting expiresAt=now-60s so the verify endpoint sees it as expired.
+  //   3. Submit the form with the seeded code.
+  //   4. Assert an error toast appears and the user is NOT redirected to the
+  //      dashboard.
+
+  const EXPIRED_OTP = "444333";
+
+  // ── Step 1: navigate to OTP tab and request a login code ─────────────────
+  await page.goto(`${BASE}/merchant/login`);
+  await page.getByRole("tab", { name: "OTP" }).click();
+  await page.getByLabel("Email or mobile number").fill(MERCHANT3_EMAIL);
+  await page.getByRole("button", { name: "Send login code" }).click();
+
+  // Wait for the OTP entry stage (form advances after the API responds)
+  const otpInput = page.locator('input[autocomplete="one-time-code"]');
+  await expect(otpInput).toBeVisible({ timeout: 10_000 });
+
+  // ── Step 2: seed an expired OTP row ──────────────────────────────────────
+  // expireOverrideSeconds keeps createdAt=now so this row wins ORDER BY
+  // created_at DESC (it is newer than the row the "Send login code" API call
+  // created above), while setting expiresAt=now-60s so the row is already
+  // expired when the verify endpoint checks it.
+  seedOtp(MERCHANT3_EMAIL, EXPIRED_OTP, "LOGIN", { expireOverrideSeconds: 60 });
+
+  // ── Step 3: fill the expired code and submit ──────────────────────────────
+  await otpInput.fill(EXPIRED_OTP);
+
+  // Intercept the verify request before clicking so we can assert the status
+  // regardless of response timing.
+  const verifyRespPromise = page.waitForResponse(
+    (r) =>
+      r.url().includes("/auth/merchant/otp/verify") &&
+      r.request().method() === "POST",
+    { timeout: 20_000 },
+  );
+
+  await page.getByRole("button", { name: "Verify & sign in" }).click();
+  const verifyResp = await verifyRespPromise;
+
+  // ── Step 4a: API must return 400 for an expired OTP ──────────────────────
+  expect(verifyResp.status()).toBe(400);
+
+  // ── Step 4b: an error toast must be visible — not a dashboard redirect ────
+  // Shadcn/sonner toasts are rendered in a [data-sonner-toaster] container.
+  // Matching any toast that mentions "expired", "invalid", "otp", or "code"
+  // avoids coupling the test to the exact wording.
+  const errorToast = page.locator("[data-sonner-toaster] li").filter({
+    hasText: /expired|invalid|otp|code/i,
+  });
+  await expect(errorToast).toBeVisible({ timeout: 8_000 });
+
+  // User must still be on the login page — no redirect to dashboard
+  await expect(page).not.toHaveURL(/\/merchant\/dashboard/);
+  expect(page.url()).toContain("/merchant/login");
+});
+
+// ── Test group 6: resend invalidates old OTP ──────────────────────────────────
 
 test("old OTP is rejected after resend issues a new one", async () => {
   // Use merchant@demo.com to avoid interfering with the OTP rows from test 2.

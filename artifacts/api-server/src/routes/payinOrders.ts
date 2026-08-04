@@ -392,7 +392,7 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
         continue;
       }
 
-      const publicOrderId = `RKPAYIN_${merchantId}_${Date.now()}`;
+    const publicOrderId = req.params["publicOrderId"] as string;
       const startedAt = Date.now();
       const gatewayResult = await createCustomGatewayOrder(integration, {
         publicOrderId,
@@ -548,7 +548,7 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
       return;
     }
 
-    const publicOrderId = `RKPAYIN_${merchantId}_${Date.now()}`;
+    const publicOrderId = req.params["publicOrderId"] as string;
 
     let raw: string;
     let parsed: Awaited<ReturnType<typeof cashfreeCreateOrder>>["parsed"];
