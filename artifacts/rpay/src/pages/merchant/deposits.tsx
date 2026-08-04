@@ -908,9 +908,14 @@ export default function MerchantDeposits() {
   const [checkoutAutoOpenFailed, setCheckoutAutoOpenFailed] = useState(false);
   const checkoutOpenAttempted = useRef(false);
 
-  const { data: payinStatusData } = useGetPayinStatus(
+  const { data: payinStatusData, refetch: refetchPayinStatus } = useGetPayinStatus(
     { query: { queryKey: getGetPayinStatusQueryKey(), refetchInterval: 30000 } },
   );
+  const openDepositDialog = () => {
+    refetchPayinStatus();
+    setShowCashfree(true);
+  };
+
   const cashfreeEnabled = payinStatusData?.enabled ?? false;
   // Default to true (no banner) until the first successful fetch so we don't
   // flash the outage banner on initial load before data arrives.
@@ -1342,7 +1347,7 @@ export default function MerchantDeposits() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => setShowCashfree(true)}
+                      onClick={() => openDepositDialog()}
                       disabled={!routingHealthy}
                       className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300 hover:border-emerald-500/50 disabled:opacity-50"
                     >
@@ -2053,7 +2058,7 @@ export default function MerchantDeposits() {
       )}
 
       {/* RasoKart UPI Deposit Dialog */}
-      <Dialog open={showCashfree} onOpenChange={(open) => { if (!open) resetPayinDialog(); else setShowCashfree(true); }}>
+      <Dialog open={showCashfree} onOpenChange={(open) => { if (!open) resetPayinDialog(); else openDepositDialog(); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
