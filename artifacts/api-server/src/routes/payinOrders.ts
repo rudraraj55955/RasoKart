@@ -7,6 +7,7 @@ import { requireAuth } from "../middlewares/auth";
 import { loadPayinConfig } from "../helpers/payinConfig";
 import { ensurePayinOrdersSchemaGuard } from "../helpers/payinSchemaGuard";
 import { getMerchantDailyPaidTotal, getStartOfDayInTimezone } from "../helpers/payinDailyLimit";
+import { getMerchantDailyActiveTotal, withMerchantPayinLock } from "../helpers/payinAdvisoryLock";
 import { insertPayinOrderWithFallback } from "../helpers/payinOrderInsert";
 import { selectProvider, recordRoutingResult, recordChainExhaustedStart, maybeNotifyGatewayRecovery, validateRoutingConfig } from "../helpers/smartRouter";
 import { maybeFireFailoverAlert } from "../helpers/payinFailoverAlert";
@@ -184,6 +185,8 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
     req.log.info({ event: "payin_daily_limit_check_started", merchantId }, "payin_daily_limit_check_started");
     let dailyTotal: number;
     let merchantTimezone: string | null = null;
+    // Hoisted so all three provider insert paths can pass it to the advisory lock re-check.
+    let startOfDay: Date = new Date();
     try {
       const [mRow] = await db
         .select({ timezone: merchantsTable.timezone })
@@ -191,7 +194,7 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
         .where(eq(merchantsTable.id, merchantId))
         .limit(1);
       merchantTimezone = mRow?.timezone ?? null;
-      const startOfDay = getStartOfDayInTimezone(merchantTimezone);
+      startOfDay = getStartOfDayInTimezone(merchantTimezone);
       dailyTotal = await getMerchantDailyPaidTotal(merchantId, startOfDay);
       req.log.info({ event: "payin_daily_limit_check_success", merchantId, dailyTotal }, "payin_daily_limit_check_success");
     } catch (limitErr) {
@@ -356,22 +359,53 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
         const ugResponseTimeMs = Date.now() - ugStartedAt;
 
         if (ugPaymentUrl) {
-          try {
-            await db.insert(cashfreePaymentOrdersTable).values({
-              merchantId,
-              publicOrderId: ugPublicOrderId,
-              providerKey: decision.providerKey,
-              cashfreeOrderId: ugPublicOrderId,
-              paymentSessionId: ugPaymentUrl,
-              amount: depositAmount.toFixed(2),
-              currency: "INR",
-              status: PAYIN_ORDER_STATUS.CREATED,
-              paymentMethod: "upi",
-              customerPhone,
-              customerEmail: customerEmail ?? null,
-              rawPayload: ugRaw,
-            }).onConflictDoNothing();
-          } catch {
+          // ── Advisory lock: re-check CREATED+PENDING+PAID total, then insert ──
+          // Two concurrent requests can both pass the pre-check (PAID total only)
+          // above, both receive payment URLs from the provider, and then race to
+          // insert. The lock serializes them: the second caller re-reads the active
+          // total (which now includes the first's CREATED row) and rejects if it
+          // would exceed the cap.
+          const ugLockResult = await withMerchantPayinLock(merchantId, async (tx) => {
+            const activeTotal = await getMerchantDailyActiveTotal(tx, merchantId, startOfDay);
+            if (activeTotal + depositAmount > cfg.dailyLimit) {
+              return { ok: false as const, reason: "global_limit_exceeded" as const };
+            }
+            const providerTotal = await getMerchantDailyActiveTotal(tx, merchantId, startOfDay, decision.providerKey);
+            if (providerTotal + depositAmount > ugCfg.dailyLimit) {
+              return { ok: false as const, reason: "provider_limit_exceeded" as const };
+            }
+            try {
+              await tx.insert(cashfreePaymentOrdersTable).values({
+                merchantId,
+                publicOrderId: ugPublicOrderId,
+                providerKey: decision.providerKey,
+                cashfreeOrderId: ugPublicOrderId,
+                paymentSessionId: ugPaymentUrl,
+                amount: depositAmount.toFixed(2),
+                currency: "INR",
+                status: PAYIN_ORDER_STATUS.CREATED,
+                paymentMethod: "upi",
+                customerPhone,
+                customerEmail: customerEmail ?? null,
+                rawPayload: ugRaw,
+              }).onConflictDoNothing();
+              return { ok: true as const };
+            } catch {
+              return { ok: false as const, reason: "insert_failed" as const };
+            }
+          }).catch(() => ({ ok: false as const, reason: "insert_failed" as const }));
+
+          if (!ugLockResult.ok) {
+            if (ugLockResult.reason === "global_limit_exceeded") {
+              req.log.warn({ event: "payin_daily_limit_recheck_exceeded", merchantId, provider: "upigateway" }, "payin_daily_limit_recheck_exceeded");
+              res.status(400).json({ error: "Daily deposit limit reached. Please try again tomorrow or contact support." });
+              return;
+            }
+            if (ugLockResult.reason === "provider_limit_exceeded") {
+              req.log.warn({ event: "payin_provider_limit_recheck_exceeded", merchantId, provider: "upigateway" }, "payin_provider_limit_recheck_exceeded");
+              res.status(422).json({ error: "Daily deposit limit reached for this provider. Please try again tomorrow or contact support." });
+              return;
+            }
             req.log.error({ event: "payin_deposit_order_create_failed", merchantId, safeReason: "db_insert_failed" }, "payin_deposit_order_create_failed");
             await recordRoutingResult({ routingLogId: decision.routingLogId, providerKey: decision.providerKey, result: "failed", responseTimeMs: ugResponseTimeMs, errorMessage: "db_insert_failed" });
             genericFailure();
@@ -441,22 +475,39 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
       const responseTimeMs = Date.now() - startedAt;
 
       if (gatewayResult.ok && gatewayResult.providerOrderId) {
-        try {
-          await db.insert(cashfreePaymentOrdersTable).values({
-            merchantId,
-            publicOrderId,
-            providerKey: decision.providerKey,
-            cashfreeOrderId: gatewayResult.providerOrderId,
-            paymentSessionId: gatewayResult.paymentUrl ?? gatewayResult.providerOrderId,
-            amount: depositAmount.toFixed(2),
-            currency: "INR",
-            status: PAYIN_ORDER_STATUS.CREATED,
-            paymentMethod: "upi",
-            customerPhone,
-            customerEmail: customerEmail ?? null,
-            rawPayload: gatewayResult.raw ?? null,
-          }).onConflictDoNothing();
-        } catch (insertErr) {
+        // ── Advisory lock: re-check active total, then insert ────────────────
+        const gwLockResult = await withMerchantPayinLock(merchantId, async (tx) => {
+          const activeTotal = await getMerchantDailyActiveTotal(tx, merchantId, startOfDay);
+          if (activeTotal + depositAmount > cfg.dailyLimit) {
+            return { ok: false as const, reason: "global_limit_exceeded" as const };
+          }
+          try {
+            await tx.insert(cashfreePaymentOrdersTable).values({
+              merchantId,
+              publicOrderId,
+              providerKey: decision.providerKey,
+              cashfreeOrderId: gatewayResult.providerOrderId!,
+              paymentSessionId: gatewayResult.paymentUrl ?? gatewayResult.providerOrderId!,
+              amount: depositAmount.toFixed(2),
+              currency: "INR",
+              status: PAYIN_ORDER_STATUS.CREATED,
+              paymentMethod: "upi",
+              customerPhone,
+              customerEmail: customerEmail ?? null,
+              rawPayload: gatewayResult.raw ?? null,
+            }).onConflictDoNothing();
+            return { ok: true as const };
+          } catch {
+            return { ok: false as const, reason: "insert_failed" as const };
+          }
+        }).catch(() => ({ ok: false as const, reason: "insert_failed" as const }));
+
+        if (!gwLockResult.ok) {
+          if (gwLockResult.reason === "global_limit_exceeded") {
+            req.log.warn({ event: "payin_daily_limit_recheck_exceeded", merchantId, provider: decision.providerKey }, "payin_daily_limit_recheck_exceeded");
+            res.status(400).json({ error: "Daily deposit limit reached. Please try again tomorrow or contact support." });
+            return;
+          }
           req.log.error({ event: "payin_deposit_order_create_failed", merchantId, safeReason: "db_insert_failed" }, "payin_deposit_order_create_failed");
           await recordRoutingResult({ routingLogId: decision.routingLogId, providerKey: decision.providerKey, result: "failed", responseTimeMs, errorMessage: "db_insert_failed" });
           genericFailure();
@@ -615,16 +666,48 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
       return;
     }
 
-    const insertResult = await insertPayinOrderWithFallback({
-      merchantId,
-      publicOrderId,
-      cashfreeOrderId: parsed.order_id ?? publicOrderId,
-      paymentSessionId: parsed.payment_session_id,
-      amount: depositAmount.toFixed(2),
-      customerPhone,
-      customerEmail: customerEmail ?? null,
-      rawPayload: raw,
-    }, req.log);
+    // ── Advisory lock: re-check active total, then insert (Cashfree path) ──────
+    // The Cashfree provider call already completed above. Now serialize the
+    // definitive limit re-check + DB insert so a concurrent request that also
+    // passed the pre-check cannot slip through.
+    let insertResult: import("../helpers/payinOrderInsert").PayinOrderInsertResult = { ok: false };
+    try {
+      const cfLockResult = await withMerchantPayinLock(merchantId, async (tx) => {
+        const activeTotal = await getMerchantDailyActiveTotal(tx, merchantId, startOfDay);
+        if (activeTotal + depositAmount > cfg.dailyLimit) {
+          return { ok: false as const, reason: "global_limit_exceeded" as const };
+        }
+        const r = await insertPayinOrderWithFallback({
+          merchantId,
+          publicOrderId,
+          cashfreeOrderId: parsed.order_id ?? publicOrderId,
+          paymentSessionId: parsed.payment_session_id ?? "",
+          amount: depositAmount.toFixed(2),
+          customerPhone,
+          customerEmail: customerEmail ?? null,
+          rawPayload: raw,
+        }, req.log, tx);
+        return r.ok
+          ? { ok: true as const }
+          : { ok: false as const, reason: "insert_failed" as const };
+      }).catch(() => ({ ok: false as const, reason: "insert_failed" as const }));
+
+      if (!cfLockResult.ok) {
+        if (cfLockResult.reason === "global_limit_exceeded") {
+          req.log.warn({ event: "payin_daily_limit_recheck_exceeded", merchantId, provider: "cashfree" }, "payin_daily_limit_recheck_exceeded");
+          res.status(400).json({ error: "Daily deposit limit reached. Please try again tomorrow or contact support." });
+          return;
+        }
+        req.log.error({ event: "payin_deposit_order_create_failed", merchantId, safeReason: "db_insert_failed" }, "payin_deposit_order_create_failed");
+        genericFailure();
+        return;
+      }
+      insertResult = { ok: true, mode: "full" };
+    } catch {
+      req.log.error({ event: "payin_deposit_order_create_failed", merchantId, safeReason: "lock_failed" }, "payin_deposit_order_create_failed");
+      genericFailure();
+      return;
+    }
 
     if (!insertResult.ok) {
       req.log.error({ event: "payin_deposit_order_create_failed", merchantId, safeReason: "db_insert_failed" }, "payin_deposit_order_create_failed");

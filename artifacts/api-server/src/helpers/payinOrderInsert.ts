@@ -29,16 +29,23 @@ export type PayinOrderInsertResult =
  *
  * Never logs raw provider payloads, secrets, or DB error message/detail —
  * only sanitized schema-identifier fields (code/table/column/constraint).
+ *
+ * @param client  Drizzle db or transaction handle. Pass the transaction object
+ *                from withMerchantPayinLock so the insert runs within the same
+ *                advisory-locked transaction that re-checked the daily limit.
+ *                Defaults to the global `db` for non-locked call sites.
  */
 export async function insertPayinOrderWithFallback(
   input: PayinOrderInsertInput,
   log: Logger,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  client: any = db,
 ): Promise<PayinOrderInsertResult> {
   const { merchantId } = input;
 
   log.info({ event: "payin_db_insert_started", merchantId }, "payin_db_insert_started");
   try {
-    await db.insert(cashfreePaymentOrdersTable).values({
+    await client.insert(cashfreePaymentOrdersTable).values({
       merchantId,
       publicOrderId: input.publicOrderId,
       providerKey: "cashfree",
@@ -60,7 +67,7 @@ export async function insertPayinOrderWithFallback(
 
   log.info({ event: "payin_db_insert_minimal_retry_started", merchantId }, "payin_db_insert_minimal_retry_started");
   try {
-    await db.insert(cashfreePaymentOrdersTable).values({
+    await client.insert(cashfreePaymentOrdersTable).values({
       merchantId,
       publicOrderId: input.publicOrderId,
       providerKey: "cashfree",
