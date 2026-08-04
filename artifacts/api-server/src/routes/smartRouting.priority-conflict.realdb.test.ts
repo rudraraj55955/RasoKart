@@ -129,6 +129,39 @@ describe(
         const rows = await db.select().from(routingRulesTable).where(eq(routingRulesTable.configId, configId));
         const atPriority7 = rows.filter((r) => r.priority === 7 && r.isEnabled);
         assert.equal(atPriority7.length, 1, "Exactly one enabled rule at priority 7 should exist in the DB after the race");
+
+        // --- suggestedPriority is fresh, not stale ---
+        // The 409 body must carry a suggestedPriority that is different from the
+        // conflicting priority (7) that was just inserted into the DB.
+        const suggested = rejected.body["suggestedPriority"];
+        assert.ok(
+          typeof suggested === "number",
+          `409 body must include a numeric suggestedPriority, got: ${JSON.stringify(suggested)}`,
+        );
+        assert.notEqual(
+          suggested,
+          7,
+          `suggestedPriority must not equal the conflicting priority 7 (getNextFreePriority returned a stale value)`,
+        );
+
+        // Use the suggested priority for a third POST — it must succeed (200),
+        // proving that getNextFreePriority returned a slot that is actually free
+        // after the concurrent race resolved.
+        const winner = a.status === 200 ? a : b;
+        const winnerProvider = (winner.body as Record<string, unknown>)["providerKey"] as string;
+        // Pick a provider that wasn't used by either of the first two POSTs.
+        const thirdProvider = winnerProvider === "cashfree" ? "razorpay" : "cashfree";
+        const third = await post(
+          server,
+          `/api/smart-routing/configs/${configId}/rules`,
+          { providerKey: thirdProvider, priority: suggested },
+          token,
+        );
+        assert.equal(
+          third.status,
+          200,
+          `Third POST using suggestedPriority=${suggested} must succeed (200) but got ${third.status}: ${JSON.stringify(third.body)}`,
+        );
       },
     );
   },
