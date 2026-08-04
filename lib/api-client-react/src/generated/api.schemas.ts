@@ -4826,6 +4826,10 @@ export interface PayinOrderStatusCheck {
   effectiveMinAmount: number;
   /** Narrowest maximum deposit amount across all currently-active providers. Use this for client-side validation so the merchant never hits a provider-level rejection after submitting. */
   effectiveMaxAmount: number;
+  /** Amount already deposited by this merchant today (towards the admin-configured daily limit). Use together with dailyLimit for client-side remaining-capacity warnings. */
+  dailyLimitUsed: number;
+  /** Admin-configured maximum total deposit amount per merchant per day. */
+  dailyLimit: number;
 }
 
 export interface AdminPayinOrderRow {

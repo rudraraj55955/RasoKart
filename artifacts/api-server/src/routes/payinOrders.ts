@@ -58,6 +58,19 @@ router.get("/payin/status", requireAuth, async (req, res, next) => {
       ? Math.min(cfg.maxAmount, ugCfg.maxAmount)
       : cfg.maxAmount;
 
+    // Fetch today's paid total for this merchant so the frontend can show
+    // remaining daily capacity and block submission before it hits the server.
+    // Fail-open: if the query throws we still return a valid status response —
+    // the server-side enforcement in POST /payin/orders remains authoritative.
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    let dailyLimitUsed = 0;
+    try {
+      dailyLimitUsed = await getMerchantDailyPaidTotal(user.merchantId, startOfDay);
+    } catch {
+      // non-fatal — frontend warning is best-effort; server enforces on POST
+    }
+
     res.json({
       enabled: cfg.enabled && cfg.upiEnabled && cfg.merchantPayinEnabled,
       minAmount: cfg.minAmount,
@@ -67,6 +80,8 @@ router.get("/payin/status", requireAuth, async (req, res, next) => {
       upigatewayMaxAmount: ugCfg.enabled ? ugCfg.maxAmount : null,
       effectiveMinAmount,
       effectiveMaxAmount,
+      dailyLimitUsed,
+      dailyLimit: cfg.dailyLimit,
     });
   } catch (err) { next(err); }
 });

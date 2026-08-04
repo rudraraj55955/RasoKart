@@ -8462,7 +8462,9 @@ export const GetPayinStatusResponse = zod.object({
   "upigatewayMinAmount": zod.number().nullish().describe('EkQR\/UPI Gateway minimum deposit amount configured by admin. Null when the gateway is disabled.'),
   "upigatewayMaxAmount": zod.number().nullish().describe('EkQR\/UPI Gateway maximum deposit amount configured by admin. Null when the gateway is disabled.'),
   "effectiveMinAmount": zod.number().describe('Narrowest minimum deposit amount across all currently-active providers. Use this for client-side validation so the merchant never hits a provider-level rejection after submitting.'),
-  "effectiveMaxAmount": zod.number().describe('Narrowest maximum deposit amount across all currently-active providers. Use this for client-side validation so the merchant never hits a provider-level rejection after submitting.')
+  "effectiveMaxAmount": zod.number().describe('Narrowest maximum deposit amount across all currently-active providers. Use this for client-side validation so the merchant never hits a provider-level rejection after submitting.'),
+  "dailyLimitUsed": zod.number().describe('Amount already deposited by this merchant today (towards the admin-configured daily limit). Use together with dailyLimit for client-side remaining-capacity warnings.'),
+  "dailyLimit": zod.number().describe('Admin-configured maximum total deposit amount per merchant per day.')
 })
 
 

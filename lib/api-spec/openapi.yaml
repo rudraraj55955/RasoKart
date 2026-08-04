@@ -18124,7 +18124,7 @@ components:
 
     PayinOrderStatusCheck:
       type: object
-      required: [enabled, minAmount, maxAmount, routingHealthy, effectiveMinAmount, effectiveMaxAmount]
+      required: [enabled, minAmount, maxAmount, routingHealthy, effectiveMinAmount, effectiveMaxAmount, dailyLimitUsed, dailyLimit]
       properties:
         enabled:
           type: boolean
@@ -18149,6 +18149,12 @@ components:
         effectiveMaxAmount:
           type: number
           description: Narrowest maximum deposit amount across all currently-active providers. Use this for client-side validation so the merchant never hits a provider-level rejection after submitting.
+        dailyLimitUsed:
+          type: number
+          description: Amount already deposited by this merchant today (towards the admin-configured daily limit). Use together with dailyLimit for client-side remaining-capacity warnings.
+        dailyLimit:
+          type: number
+          description: Admin-configured maximum total deposit amount per merchant per day.
 
     AdminPayinOrderRow:
       type: object

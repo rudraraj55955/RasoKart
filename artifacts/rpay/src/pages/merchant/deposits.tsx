@@ -1097,6 +1097,15 @@ export default function MerchantDeposits() {
       toast.error(`Amount must not exceed ₹${effMax.toLocaleString()}`);
       return;
     }
+    // Client-side daily capacity guard — prevents a guaranteed 400 when the
+    // merchant has already hit (or would exceed) their daily limit.
+    if (payinStatusData?.dailyLimit != null && payinStatusData?.dailyLimitUsed != null) {
+      const remaining = payinStatusData.dailyLimit - payinStatusData.dailyLimitUsed;
+      if (depositAmt > remaining) {
+        toast.error(`Amount exceeds your remaining daily deposit capacity of ₹${remaining.toLocaleString()}`);
+        return;
+      }
+    }
     setCfCreating(true);
     try {
       const result: any = await createPayinOrder.mutateAsync({
@@ -2084,6 +2093,21 @@ export default function MerchantDeposits() {
                       Min ₹{payinStatusData.effectiveMinAmount.toLocaleString()} · Max ₹{payinStatusData.effectiveMaxAmount.toLocaleString()}
                     </p>
                   )}
+                  {payinStatusData?.dailyLimit != null && payinStatusData?.dailyLimitUsed != null && (() => {
+                    const remaining = payinStatusData.dailyLimit - payinStatusData.dailyLimitUsed;
+                    const enteredAmt = Number(cfAmount) || 0;
+                    const wouldExceed = enteredAmt > 0 && enteredAmt > remaining;
+                    return wouldExceed ? (
+                      <p className="text-xs text-amber-400 flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3 shrink-0" />
+                        Exceeds remaining daily capacity of ₹{remaining.toLocaleString()}
+                      </p>
+                    ) : remaining < payinStatusData.dailyLimit ? (
+                      <p className="text-xs text-muted-foreground">
+                        Daily capacity remaining: ₹{remaining.toLocaleString()}
+                      </p>
+                    ) : null;
+                  })()}
                 </div>
                 {cfCreateError && (
                   <div className="flex items-start gap-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2.5">
