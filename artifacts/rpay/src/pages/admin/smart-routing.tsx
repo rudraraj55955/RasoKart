@@ -623,6 +623,19 @@ export default function AdminSmartRouting() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const resequenceM = useMutation({
+    mutationFn: () => apiReq(`/configs/${selectedConfigId}/resequence`, "POST"),
+    onSuccess: (data: { resequenced: number }) => {
+      qc.invalidateQueries({ queryKey: ["smart-routing-rules", selectedConfigId] });
+      if (data.resequenced === 0) {
+        toast.info("Priorities are already sequential — nothing to change");
+      } else {
+        toast.success(`Re-sequenced ${data.resequenced} rule${data.resequenced === 1 ? "" : "s"} — priorities are now 1, 2, 3, …`);
+      }
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   // Open edit config dialog
   function openEditConfig(cfg: RoutingConfig) {
     setEditingConfig(cfg);
@@ -1076,6 +1089,19 @@ export default function AdminSmartRouting() {
                   }, {});
                   const clashes = Object.entries(priorityCounts).filter(([, keys]) => keys.length > 1);
                   const allFallback = enabledRules.length > 0 && enabledRules.every(r => r.isFallbackOnly);
+
+                  // Detect gaps in the enabled priority sequence (e.g. 1, 2, 5 → missing 3, 4)
+                  const sortedEnabledPriorities = [...enabledRules]
+                    .sort((a, b) => a.priority - b.priority)
+                    .map(r => r.priority);
+                  const priorityGaps: number[] = [];
+                  for (let i = 0; i < sortedEnabledPriorities.length - 1; i++) {
+                    const cur = sortedEnabledPriorities[i]!;
+                    const next = sortedEnabledPriorities[i + 1]!;
+                    for (let g = cur + 1; g < next; g++) priorityGaps.push(g);
+                  }
+                  const hasSequenceGap = priorityGaps.length > 0;
+
                   return (
                     <>
                       {allFallback && (
@@ -1102,6 +1128,36 @@ export default function AdminSmartRouting() {
                               ))}
                             </ul>
                           </div>
+                        </div>
+                      )}
+                      {hasSequenceGap && (
+                        <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-500/10 border border-blue-500/30 mb-2">
+                          <Info className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-blue-300">Priority sequence has gaps</p>
+                            <p className="text-xs text-blue-200/70 mt-0.5">
+                              Enabled rules use priorities{" "}
+                              <span className="font-mono font-semibold">{sortedEnabledPriorities.join(", ")}</span>
+                              {" "}— missing{" "}
+                              <span className="font-mono font-semibold">
+                                {priorityGaps.length <= 5
+                                  ? priorityGaps.join(", ")
+                                  : `${priorityGaps.slice(0, 5).join(", ")} … (${priorityGaps.length} total)`}
+                              </span>
+                              . Gaps don't affect routing correctness but can make the sequence harder to read.
+                            </p>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={resequenceM.isPending}
+                            onClick={() => resequenceM.mutate()}
+                            className="shrink-0 border-blue-500/40 text-blue-300 hover:text-blue-200 hover:border-blue-400 text-xs h-7 px-2.5"
+                          >
+                            {resequenceM.isPending
+                              ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" />Re-sequencing…</>
+                              : <><ArrowUpDown className="w-3 h-3 mr-1" />Re-sequence</>}
+                          </Button>
                         </div>
                       )}
                       {coverageCheckQ.data?.hasGaps && (

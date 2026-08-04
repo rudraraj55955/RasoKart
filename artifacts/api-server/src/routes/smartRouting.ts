@@ -379,6 +379,70 @@ router.delete("/rules/:id", async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ── Re-sequence ───────────────────────────────────────────────────────────────
+
+/**
+ * POST /api/smart-routing/configs/:id/resequence
+ *
+ * Renumbers all **enabled** rules for the given config so their priorities
+ * become 1, 2, 3, … in their current order (sorted by the existing priority
+ * value, then by id as a tie-break).  Disabled rules are left untouched.
+ *
+ * Returns { resequenced: number } — count of rules that were actually updated
+ * (rules that were already at the correct sequential position are skipped).
+ */
+router.post("/configs/:id/resequence", async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+    const configId = parseInt(req.params["id"] as string);
+
+    const [config] = await db.select().from(routingConfigsTable).where(eq(routingConfigsTable.id, configId)).limit(1);
+    if (!config) { res.status(404).json({ error: "Config not found" }); return; }
+
+    // Fetch all enabled rules for this config, ordered by their current priority then id.
+    const enabledRules = await db
+      .select({ id: routingRulesTable.id, priority: routingRulesTable.priority, providerKey: routingRulesTable.providerKey })
+      .from(routingRulesTable)
+      .where(and(eq(routingRulesTable.configId, configId), eq(routingRulesTable.isEnabled, true)))
+      .orderBy(asc(routingRulesTable.priority), asc(routingRulesTable.id));
+
+    if (enabledRules.length === 0) {
+      res.json({ resequenced: 0 });
+      return;
+    }
+
+    // Check whether there are actually any gaps — if priorities are already 1, 2, 3, … skip.
+    const alreadySequential = enabledRules.every((r, idx) => r.priority === idx + 1);
+    if (alreadySequential) {
+      res.json({ resequenced: 0 });
+      return;
+    }
+
+    // Update only the rules whose priority needs to change.
+    let resequenced = 0;
+    for (let i = 0; i < enabledRules.length; i++) {
+      const newPriority = i + 1;
+      const rule = enabledRules[i]!;
+      if (rule.priority !== newPriority) {
+        await db.update(routingRulesTable)
+          .set({ priority: newPriority })
+          .where(eq(routingRulesTable.id, rule.id));
+        resequenced++;
+      }
+    }
+
+    await db.insert(auditLogsTable).values({
+      adminId: user.id, adminEmail: user.email,
+      action: "routing_rules_resequenced", targetType: "routing_config", targetId: configId,
+      details: JSON.stringify({ configId, rulesResequenced: resequenced, totalEnabled: enabledRules.length }),
+      ipAddress: (req as any).ip ?? null,
+    });
+
+    req.log.info({ configId, resequenced }, "Routing rules re-sequenced");
+    res.json({ resequenced });
+  } catch (err) { next(err); }
+});
+
 // ── Coverage Check ────────────────────────────────────────────────────────────
 
 /**
