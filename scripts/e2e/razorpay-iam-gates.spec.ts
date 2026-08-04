@@ -441,4 +441,126 @@ test.describe("Razorpay IAM Gates", () => {
       },
     );
   });
+
+  // ── 13. Granular permission grant — razorpay_refunds_view only ────────────
+  //
+  // Because razorpay_refunds_view is SA-only, the IAM API guard would block an
+  // ALLOW grant via the REST endpoint (→ 403, access-envelope guard).  Instead
+  // we bypass the API guard with a direct DB insert so we can confirm the
+  // *route-level* permission checks work correctly:
+  //
+  //   - GET  /api/admin/razorpay/refunds  → 200  (razorpay_refunds_view matches)
+  //   - POST /api/admin/razorpay/refunds  → 403  (needs razorpay_refunds_manage)
+  //   - GET  /api/admin/razorpay/config   → 403  (needs razorpay_settings_view)
+
+  test("admin with only razorpay_refunds_view: GET /refunds → 200, POST /refunds → 403, GET /config → 403", async () => {
+    // Fail loudly if setup didn't produce the plain admin — skipping would hide the
+    // real issue (broken beforeAll) and give false confidence.
+    if (!plainAdminId || !plainAdminToken) {
+      throw new Error(
+        "Plain admin fixture missing (plainAdminId or plainAdminToken not set). " +
+        "The beforeAll setup must have failed — check the test output above for the root cause.",
+      );
+    }
+
+    // Insert the ALLOW override directly into user_permissions so we can verify
+    // the *route-level* permission checks independently of the API-layer guard
+    // (which intentionally blocks SA-only grants via the REST endpoint).
+    execSync(
+      `psql "${process.env["DATABASE_URL"]}" -c "INSERT INTO user_permissions (user_id, permission_key, effect) VALUES (${plainAdminId}, 'razorpay_refunds_view', 'ALLOW') ON CONFLICT (user_id, permission_key) DO UPDATE SET effect = 'ALLOW';"`,
+      { stdio: "pipe" },
+    );
+
+    // Re-login after the DB insert so the permission resolver picks up the new
+    // override on a clean request cycle — eliminates any concern about stale
+    // state from a previous login context.
+    execSync(`psql "${process.env["DATABASE_URL"]}" -c "DELETE FROM rate_limit_hits;"`, { stdio: "pipe" });
+    let freshToken: string;
+    try {
+      freshToken = await login(TEST_PLAIN_ADMIN_EMAIL, TEST_PASS);
+    } catch (err) {
+      // Clean up before re-throwing so the override doesn't leak
+      try {
+        execSync(
+          `psql "${process.env["DATABASE_URL"]}" -c "DELETE FROM user_permissions WHERE user_id = ${plainAdminId} AND permission_key = 'razorpay_refunds_view';"`,
+          { stdio: "pipe" },
+        );
+      } catch { /* best-effort */ }
+      throw new Error(`Re-login for granular permission test failed: ${err}`);
+    }
+
+    try {
+      // The route guard is:  requirePermission(["admin_razorpay", "razorpay_refunds_view"])
+      // Either key satisfies the OR check — razorpay_refunds_view alone must be enough.
+
+      // GET /refunds → 200 (has razorpay_refunds_view)
+      const ctx = await apiRequest.newContext();
+      const getRefunds = await ctx.get(`${API}/admin/razorpay/refunds`, {
+        headers: { Authorization: `Bearer ${freshToken}` },
+      });
+      const getRefundsStatus = getRefunds.status();
+      const getRefundsBody = await getRefunds.json() as { data: unknown[]; total: number };
+      await ctx.dispose();
+
+      expect(getRefundsStatus).toBe(200);
+      expect(Array.isArray(getRefundsBody.data)).toBe(true);
+      expect(typeof getRefundsBody.total).toBe("number");
+
+      // POST /refunds → 403 (needs razorpay_refunds_manage, not razorpay_refunds_view)
+      const ctx2 = await apiRequest.newContext();
+      const postRefunds = await ctx2.post(`${API}/admin/razorpay/refunds`, {
+        data: { razorpayPaymentId: "pay_test_e2e", orderId: 99999, amount: 100 },
+        headers: { Authorization: `Bearer ${freshToken}` },
+      });
+      const postRefundsStatus = postRefunds.status();
+      await postRefunds.text();
+      await ctx2.dispose();
+
+      expect(postRefundsStatus).toBe(403);
+
+      // GET /config → 403 (needs razorpay_settings_view or admin_razorpay; neither granted)
+      const ctx3 = await apiRequest.newContext();
+      const getConfig = await ctx3.get(`${API}/admin/razorpay/config`, {
+        headers: { Authorization: `Bearer ${freshToken}` },
+      });
+      const getConfigStatus = getConfig.status();
+      await getConfig.text();
+      await ctx3.dispose();
+
+      expect(getConfigStatus).toBe(403);
+    } finally {
+      // Always clean up the override row so the plain admin is back to zero Razorpay perms
+      try {
+        execSync(
+          `psql "${process.env["DATABASE_URL"]}" -c "DELETE FROM user_permissions WHERE user_id = ${plainAdminId} AND permission_key = 'razorpay_refunds_view';"`,
+          { stdio: "pipe" },
+        );
+      } catch { /* best-effort */ }
+    }
+  });
+
+  // ── 14. Super Admin — verify all endpoints remain accessible ─────────────
+  //
+  // Explicit named test for the task's "Super Admin can still access all
+  // endpoints" requirement (complements the loop in section 2).
+
+  test("super admin: GET /refunds → 200, POST /refunds → non-403, GET /config → 200", async ({ request }) => {
+    const getRefunds = await request.get(`${API}/admin/razorpay/refunds`, {
+      headers: { Authorization: `Bearer ${saToken}` },
+    });
+    expect(getRefunds.status()).toBe(200);
+
+    const postRefunds = await request.post(`${API}/admin/razorpay/refunds`, {
+      data: { razorpayPaymentId: "pay_test_sa_e2e", orderId: 99998, amount: 100 },
+      headers: { Authorization: `Bearer ${saToken}` },
+    });
+    // SA bypasses IAM — response is a domain error (400/404/500) but never 401/403
+    expect(postRefunds.status()).not.toBe(403);
+    expect(postRefunds.status()).not.toBe(401);
+
+    const getConfig = await request.get(`${API}/admin/razorpay/config`, {
+      headers: { Authorization: `Bearer ${saToken}` },
+    });
+    expect(getConfig.status()).toBe(200);
+  });
 });
