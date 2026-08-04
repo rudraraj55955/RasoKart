@@ -1584,6 +1584,15 @@ router.put("/cashfree", async (req, res, next) => {
 
     const oldConfig = await getCashfreeConfig();
 
+    // Read the raw (unmasked) stored clientId so we can suppress the audit
+    // entry when the submitted value is identical to what is already stored.
+    const [_cfClientIdRow] = await db
+      .select({ value: systemConfigTable.value })
+      .from(systemConfigTable)
+      .where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.CASHFREE_CLIENT_ID))
+      .limit(1);
+    const storedCashfreeClientId = _cfClientIdRow?.value ?? "";
+
     async function upsert(key: string, value: string) {
       await db.insert(systemConfigTable)
         .values({ key, value, updatedByEmail: user.email })
@@ -1622,7 +1631,8 @@ router.put("/cashfree", async (req, res, next) => {
     if (dailyLimit !== undefined) await upsert(SYSTEM_CONFIG_KEYS.CASHFREE_DAILY_LIMIT, String(dailyLimit));
 
     const auditDetails: Record<string, unknown> = { section: "cashfree" };
-    if (clientId !== undefined) auditDetails.clientIdUpdated = true;
+    // Only record clientId in the audit log when the value actually changed.
+    if (clientId !== undefined && storedCashfreeClientId !== clientId) auditDetails.clientIdUpdated = true;
     if (clientSecret !== undefined) auditDetails.clientSecretUpdated = true;
     if (webhookSecret !== undefined) auditDetails.webhookSecretUpdated = true;
     if (enabled !== undefined && oldConfig.enabled !== enabled) auditDetails.enabled = { from: oldConfig.enabled, to: enabled };
@@ -1819,6 +1829,15 @@ router.put("/cashfree-payout", async (req, res, next) => {
 
     const oldPayoutConfig = await getCashfreePayoutConfig();
 
+    // Read the raw (unmasked) stored clientId so we can suppress the audit
+    // entry when the submitted value is identical to what is already stored.
+    const [_cfpClientIdRow] = await db
+      .select({ value: systemConfigTable.value })
+      .from(systemConfigTable)
+      .where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_CLIENT_ID))
+      .limit(1);
+    const storedCashfreePayoutClientId = _cfpClientIdRow?.value ?? "";
+
     async function upsert(key: string, value: string) {
       await db.insert(systemConfigTable)
         .values({ key, value, updatedByEmail: user.email })
@@ -1852,7 +1871,8 @@ router.put("/cashfree-payout", async (req, res, next) => {
     if (dailyLimit !== undefined) await upsert(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_DAILY_LIMIT, String(dailyLimit));
 
     const auditPayoutDetails: Record<string, unknown> = { section: "cashfree_payout" };
-    if (clientId !== undefined) auditPayoutDetails.clientIdUpdated = true;
+    // Only record clientId in the audit log when the value actually changed.
+    if (clientId !== undefined && storedCashfreePayoutClientId !== clientId) auditPayoutDetails.clientIdUpdated = true;
     if (clientSecret !== undefined) auditPayoutDetails.clientSecretUpdated = true;
     if (fundsourceId !== undefined) auditPayoutDetails.fundsourceIdUpdated = true;
     if (webhookSecret !== undefined) auditPayoutDetails.webhookSecretUpdated = true;

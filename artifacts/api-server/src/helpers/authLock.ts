@@ -26,6 +26,12 @@ export const WINDOWS_BEFORE_FIRST_LOCK = 3;
 const DEFAULT_WINDOW_MS = 60 * 60 * 1000;
 
 /**
+ * Fixed namespace integer used as the first argument to pg_advisory_xact_lock so
+ * auth-lock locks cannot collide with advisory locks taken elsewhere in the codebase.
+ */
+const ADVISORY_LOCK_NAMESPACE = 0x41555448; // hex for "AUTH"
+
+/**
  * Returns whether the identifier currently has an active soft-lock.
  * Fails open (returns `{ locked: false }`) if the table is unavailable so a
  * DB blip never permanently blocks legitimate users.
@@ -67,9 +73,13 @@ export async function checkAuthLock(identifierHash: string): Promise<{ locked: b
  *    progressive soft-lock is applied; it escalates with each additional
  *    exhaustion and expires automatically.
  *
- * The entire operation is expressed as a single INSERT … ON CONFLICT using a
- * CTE so the window-boundary check, count computation, and locked_until
- * derivation are atomic.
+ * **Concurrency safety:**
+ * The function acquires `pg_advisory_xact_lock(NAMESPACE, hashtext(identifier))`
+ * inside a transaction before reading any row state.  Advisory locks are
+ * namespaced to this module and are automatically released at transaction end.
+ * Unlike `SELECT … FOR UPDATE`, advisory locks serialize concurrent callers even
+ * when no row exists yet (first exhaustion for a previously unseen identifier),
+ * eliminating the new-row insert race entirely.
  *
  * @param identifierHash  HMAC hash of the identifier (email/phone/IP).
  * @param windowMs        Size of one rate-limit window in ms (default 1 hour).
@@ -80,83 +90,95 @@ export async function recordWindowExhaustion(
   identifierHash: string,
   windowMs: number = DEFAULT_WINDOW_MS,
 ): Promise<void> {
-  const windowSeconds = windowMs / 1000;
-
   try {
-    // ── SQL design ──────────────────────────────────────────────────────────
-    //
-    // cur_window_start  = floor(epoch_now / windowSeconds) * windowSeconds
-    // prev_window_start = cur_window_start - windowSeconds
-    //
-    // Given the current row's last_exhaustion_at (= "last"):
-    //   last >= cur_window_start  → same window → nc.val = NULL → skip INSERT
-    //   last >= prev_window_start → consecutive  → nc.val = count + 1
-    //   otherwise (gap > 1 window or NULL/no row) → nc.val = 1 (reset)
-    //
-    // The WHERE nc.val IS NOT NULL on the INSERT ensures the same-window
-    // no-op: no rows are emitted from the CTE, so neither an INSERT nor
-    // an ON CONFLICT update happens.
-    //
-    // For the ON CONFLICT case (row exists, new window):
-    //   - window_exhaustion_count ← nc.val
-    //   - locked_until ← new progressive lock IF nc.val >= threshold,
-    //                   else preserve existing locked_until (it may still
-    //                   be active from a prior lock)
-    //   - last_exhaustion_at ← NOW()
-    // ────────────────────────────────────────────────────────────────────────
-    await db.execute(sql`
-      WITH
-        win AS (
-          SELECT
-            to_timestamp(floor(extract(epoch FROM NOW()) / ${windowSeconds}) * ${windowSeconds}) AS cur,
-            to_timestamp((floor(extract(epoch FROM NOW()) / ${windowSeconds}) - 1) * ${windowSeconds}) AS prev
-        ),
-        cur_state AS (
-          SELECT window_exhaustion_count AS cnt, last_exhaustion_at AS last_at
-          FROM merchant_auth_locks
-          WHERE identifier_hash = ${identifierHash}
-        ),
-        nc AS (
-          SELECT
-            CASE
-              WHEN (SELECT last_at FROM cur_state) >= (SELECT cur FROM win)
-              THEN NULL  -- same window: sentinel → WHERE below skips the INSERT
-              WHEN (SELECT last_at FROM cur_state) >= (SELECT prev FROM win)
-              THEN COALESCE((SELECT cnt FROM cur_state), 0) + 1  -- consecutive window
-              ELSE 1                                              -- gap or new identifier
-            END AS val
+    await db.transaction(async (tx) => {
+      // ── 1. Serialize all concurrent callers for this identifier ─────────────
+      // pg_advisory_xact_lock blocks until the advisory lock is free, then
+      // holds it for the lifetime of the transaction.  hashtext() maps the
+      // identifier string to a 32-bit integer; combined with the fixed
+      // ADVISORY_LOCK_NAMESPACE it produces a globally unique (class, id) pair
+      // that cannot collide with other advisory locks in the codebase.
+      // This works for new rows as well as existing ones — no row is needed.
+      await tx.execute(sql`
+        SELECT pg_advisory_xact_lock(${ADVISORY_LOCK_NAMESPACE}, hashtext(${identifierHash}))
+      `);
+
+      // ── 2. Read current state (no race — advisory lock is held) ────────────
+      const stateRows = await tx.execute<{
+        window_exhaustion_count: number;
+        last_exhaustion_at: string | null;
+        locked_until: string | null;
+      }>(sql`
+        SELECT window_exhaustion_count, last_exhaustion_at, locked_until
+        FROM merchant_auth_locks
+        WHERE identifier_hash = ${identifierHash}
+      `);
+      const existing = (stateRows as any).rows?.[0] ?? (stateRows as any)[0] ?? null;
+
+      // ── 3. Compute new window exhaustion count ──────────────────────────────
+      const now = Date.now();
+      const curWindowStart = Math.floor(now / windowMs) * windowMs;
+      const prevWindowStart = curWindowStart - windowMs;
+
+      let newCount: number;
+
+      if (!existing) {
+        // New identifier — first exhausted window.
+        newCount = 1;
+      } else {
+        const lastAt = existing.last_exhaustion_at
+          ? new Date(existing.last_exhaustion_at).getTime()
+          : null;
+
+        if (lastAt !== null && lastAt >= curWindowStart) {
+          // Same window: already recorded this exhaustion — no-op.
+          return;
+        } else if (lastAt !== null && lastAt >= prevWindowStart) {
+          // Consecutive window: increment from the current persisted count.
+          newCount = (existing.window_exhaustion_count ?? 0) + 1;
+        } else {
+          // Gap of more than one window, or null: reset streak to 1.
+          newCount = 1;
+        }
+      }
+
+      // ── 4. Compute locked_until ─────────────────────────────────────────────
+      const nowDate = new Date(now);
+      let newLockedUntil: Date | null = null;
+
+      if (newCount >= WINDOWS_BEFORE_FIRST_LOCK) {
+        const tier = Math.min(
+          newCount - WINDOWS_BEFORE_FIRST_LOCK,
+          LOCK_DURATIONS_MS.length - 1,
+        );
+        newLockedUntil = new Date(now + LOCK_DURATIONS_MS[tier]);
+      } else if (existing?.locked_until) {
+        // Preserve any still-active lock from a prior escalation tier.
+        const existingLock = new Date(existing.locked_until);
+        if (existingLock > nowDate) {
+          newLockedUntil = existingLock;
+        }
+      }
+
+      // ── 5. Persist ──────────────────────────────────────────────────────────
+      await tx.execute(sql`
+        INSERT INTO merchant_auth_locks
+          (identifier_hash, window_exhaustion_count, locked_until, last_exhaustion_at, updated_at)
+        VALUES (
+          ${identifierHash},
+          ${newCount},
+          ${newLockedUntil},
+          ${nowDate},
+          ${nowDate}
         )
-      INSERT INTO merchant_auth_locks
-        (identifier_hash, window_exhaustion_count, locked_until, last_exhaustion_at, updated_at)
-      SELECT
-        ${identifierHash},
-        nc.val,
-        CASE
-          WHEN nc.val >= ${WINDOWS_BEFORE_FIRST_LOCK}
-          THEN NOW() + (
-            CASE
-              WHEN nc.val - ${WINDOWS_BEFORE_FIRST_LOCK} = 0 THEN ${LOCK_DURATIONS_MS[0]}
-              WHEN nc.val - ${WINDOWS_BEFORE_FIRST_LOCK} = 1 THEN ${LOCK_DURATIONS_MS[1]}
-              ELSE ${LOCK_DURATIONS_MS[2]}
-            END || ' milliseconds'
-          )::interval
-          ELSE NULL
-        END,
-        NOW(),
-        NOW()
-      FROM nc
-      WHERE nc.val IS NOT NULL
-      ON CONFLICT (identifier_hash) DO UPDATE
-        SET
-          window_exhaustion_count = EXCLUDED.window_exhaustion_count,
-          locked_until = CASE
-            WHEN EXCLUDED.locked_until IS NOT NULL
-            THEN EXCLUDED.locked_until                  -- new lock imposed: use it
-            ELSE merchant_auth_locks.locked_until       -- below threshold: preserve any active lock
-          END,
-          last_exhaustion_at = EXCLUDED.last_exhaustion_at,
-          updated_at         = EXCLUDED.updated_at
-    `);
+        ON CONFLICT (identifier_hash) DO UPDATE SET
+          window_exhaustion_count = ${newCount},
+          locked_until            = ${newLockedUntil},
+          last_exhaustion_at      = ${nowDate},
+          updated_at              = ${nowDate}
+      `);
+    });
+
     logger.info({ identifierHash }, "auth_lock_window_exhaustion_recorded");
   } catch (err) {
     logger.warn({ err, identifierHash }, "auth_lock_record_failed");
