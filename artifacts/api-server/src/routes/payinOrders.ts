@@ -7,7 +7,7 @@ import { requireAuth } from "../middlewares/auth";
 import { loadPayinConfig } from "../helpers/payinConfig";
 import { ensurePayinOrdersSchemaGuard } from "../helpers/payinSchemaGuard";
 import { getMerchantDailyPaidTotal, getStartOfDayInTimezone } from "../helpers/payinDailyLimit";
-import { getMerchantDailyActiveTotal, withMerchantPayinLock } from "../helpers/payinAdvisoryLock";
+import { getMerchantDailyActiveTotal, getProviderDailyActiveTotal, withMerchantPayinLock, withProviderPayinLock } from "../helpers/payinAdvisoryLock";
 import { insertPayinOrderWithFallback } from "../helpers/payinOrderInsert";
 import { selectProvider, recordRoutingResult, recordChainExhaustedStart, maybeNotifyGatewayRecovery, validateRoutingConfig } from "../helpers/smartRouter";
 import { maybeFireFailoverAlert } from "../helpers/payinFailoverAlert";
@@ -312,15 +312,25 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
         }
 
         // ── UPIGateway provider-scoped daily volume check ──
-        // Count only deposits already routed through this provider today so the
-        // EKQR-specific daily cap is enforced independently of the global limit.
+        // Count deposits already routed through this provider today across ALL
+        // merchants — not just this merchant — because EKQR/UPIGateway has a
+        // single shared provider-level daily cap.
+        //
+        // Day boundary: UTC midnight (getStartOfDayInTimezone(null)).  The
+        // provider cap is a shared resource; using each requesting merchant's
+        // local timezone would make the window start at a different UTC instant
+        // for each merchant — two merchants in different timezones would compute
+        // different "today" windows, allowing orders near the boundary to be
+        // double-counted or missed entirely.  A single UTC anchor eliminates
+        // this ambiguity.
+        //
         // Fail-closed: if the lookup throws we cannot safely determine headroom,
         // so we reject rather than allow a potentially over-limit order through.
-        // Reuses the merchant's timezone fetched for the global limit check above.
         let ekqrDailyTotal: number;
+        // Hoisted so the advisory-lock re-check uses the same UTC anchor.
+        const providerStartOfDay = getStartOfDayInTimezone(null);
         try {
-          const ekqrStartOfDay = getStartOfDayInTimezone(merchantTimezone);
-          ekqrDailyTotal = await getMerchantDailyPaidTotal(merchantId, ekqrStartOfDay, decision.providerKey);
+          ekqrDailyTotal = await getProviderDailyActiveTotal(db, providerStartOfDay, decision.providerKey);
         } catch (err) {
           req.log.error({ event: "payin_upigateway_daily_check_error", merchantId, err }, "payin_upigateway_daily_check_error");
           res.status(422).json({ error: "Unable to verify daily deposit limit. Please try again later." });
@@ -359,18 +369,28 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
         const ugResponseTimeMs = Date.now() - ugStartedAt;
 
         if (ugPaymentUrl) {
-          // ── Advisory lock: re-check CREATED+PENDING+PAID total, then insert ──
-          // Two concurrent requests can both pass the pre-check (PAID total only)
-          // above, both receive payment URLs from the provider, and then race to
-          // insert. The lock serializes them: the second caller re-reads the active
-          // total (which now includes the first's CREATED row) and rejects if it
-          // would exceed the cap.
-          const ugLockResult = await withMerchantPayinLock(merchantId, async (tx) => {
+          // ── Provider advisory lock: re-check totals, then insert ─────────────
+          // Two concurrent requests from DIFFERENT merchants can both pass the
+          // pre-check above (both read the same stale provider total before
+          // either commits), both receive payment URLs, and then race to insert.
+          //
+          // withProviderPayinLock serializes ALL merchants for this providerKey
+          // inside a single Postgres transaction.  The second caller blocks on
+          // pg_advisory_xact_lock until the first commits, at which point it
+          // re-reads the provider total and sees the first's CREATED row.
+          //
+          // A per-merchant lock (withMerchantPayinLock) is NOT sufficient here:
+          // different merchantIds produce different lock keys, so A and B would
+          // never block each other — exactly the race we need to prevent.
+          const ugLockResult = await withProviderPayinLock(decision.providerKey, async (tx) => {
+            // Global per-merchant re-check (uses merchant's local day boundary).
             const activeTotal = await getMerchantDailyActiveTotal(tx, merchantId, startOfDay);
             if (activeTotal + depositAmount > cfg.dailyLimit) {
               return { ok: false as const, reason: "global_limit_exceeded" as const };
             }
-            const providerTotal = await getMerchantDailyActiveTotal(tx, merchantId, startOfDay, decision.providerKey);
+            // Provider-wide re-check — uses the same UTC anchor as the pre-check
+            // so the window is consistent across all merchants at insert time.
+            const providerTotal = await getProviderDailyActiveTotal(tx, providerStartOfDay, decision.providerKey);
             if (providerTotal + depositAmount > ugCfg.dailyLimit) {
               return { ok: false as const, reason: "provider_limit_exceeded" as const };
             }
