@@ -121,6 +121,39 @@ export async function cashfreeGetOrder(
 }
 
 /**
+ * Cancel / expire a Cashfree payment order (best-effort).
+ *
+ * Sends a PATCH to /pg/orders/{order_id} with order_expiry_time set to a
+ * past timestamp, which causes Cashfree to mark the order as expired/terminated
+ * immediately rather than waiting for the natural TTL.
+ *
+ * This call is deliberately best-effort — it should always be fire-and-forget
+ * (void + .catch). A non-2xx response or network error is logged by the caller
+ * but never propagated to the merchant request.
+ */
+export async function cashfreeCancelOrder(
+  clientId: string,
+  clientSecret: string,
+  env: CashfreeEnv,
+  orderId: string,
+  options?: CashfreeRequestOptions,
+): Promise<{ ok: boolean; status: number; raw: string }> {
+  // Set expiry to a fixed past date — Cashfree will immediately mark the order
+  // as expired when it sees expiry_time in the past.
+  const pastExpiry = "2020-01-01T00:00:00Z";
+  const res = await fetch(
+    `${resolveBaseUrl(env, options?.baseUrl)}/orders/${encodeURIComponent(orderId)}`,
+    {
+      method: "PATCH",
+      headers: headers(clientId, clientSecret, options?.apiVersion),
+      body: JSON.stringify({ order_expiry_time: pastExpiry }),
+    },
+  );
+  const raw = await res.text();
+  return { ok: res.ok, status: res.status, raw };
+}
+
+/**
  * Verify a Cashfree webhook signature.
  *
  * Cashfree computes:

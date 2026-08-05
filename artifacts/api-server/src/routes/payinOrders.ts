@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db, cashfreePaymentOrdersTable, providerIntegrationsTable, PAYIN_ORDER_STATUS, routingLogsTable, systemConfigTable, SYSTEM_CONFIG_KEYS, merchantsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
-import { cashfreeCreateOrder, cashfreeGetOrder } from "../helpers/cashfree";
+import { cashfreeCreateOrder, cashfreeGetOrder, cashfreeCancelOrder } from "../helpers/cashfree";
 import { decryptSecret } from "../helpers/cryptoUtils";
 import { requireAuth } from "../middlewares/auth";
 import { loadPayinConfig } from "../helpers/payinConfig";
@@ -91,7 +91,7 @@ router.get("/payin/status", requireAuth, async (req, res, next) => {
       .from(merchantsTable)
       .where(eq(merchantsTable.id, user.merchantId))
       .limit(1);
-    const startOfDay = getStartOfDayInTimezone(merchantRow?.timezone);
+    let startOfDay: Date = new Date();
     let dailyLimitUsed = 0;
     try {
       dailyLimitUsed = await getMerchantDailyPaidTotal(user.merchantId, startOfDay);
@@ -418,6 +418,16 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
           if (!ugLockResult.ok) {
             if (ugLockResult.reason === "global_limit_exceeded") {
               req.log.warn({ event: "payin_daily_limit_recheck_exceeded", merchantId, provider: "upigateway" }, "payin_daily_limit_recheck_exceeded");
+              // Best-effort: log the orphaned UPIGateway order so ops can reconcile.
+              // UPIGateway has no cancel API — the order will expire on the provider
+              // side naturally. We record the ID here so it is visible in server logs.
+              req.log.warn({
+                event: "payin_orphaned_provider_order",
+                merchantId,
+                provider: "upigateway",
+                orphanedOrderId: ugPublicOrderId,
+                reason: "global_limit_exceeded_after_provider_call",
+              }, "payin_orphaned_provider_order: UPIGateway order created but not recorded — will expire naturally");
               res.status(400).json({ code: "CONCURRENT_LIMIT_EXCEEDED", error: "Your deposit couldn't be placed because another deposit request completed at the same time. Please check your remaining daily limit." });
               return;
             }
@@ -525,6 +535,17 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
         if (!gwLockResult.ok) {
           if (gwLockResult.reason === "global_limit_exceeded") {
             req.log.warn({ event: "payin_daily_limit_recheck_exceeded", merchantId, provider: decision.providerKey }, "payin_daily_limit_recheck_exceeded");
+            // Best-effort: log the orphaned custom-gateway order so ops can reconcile.
+            // Custom gateways have no standard cancel API — the order will expire on the
+            // provider side naturally. We record the provider order ID here so it is
+            // visible in server logs for manual reconciliation if needed.
+            req.log.warn({
+              event: "payin_orphaned_provider_order",
+              merchantId,
+              provider: decision.providerKey,
+              orphanedOrderId: gatewayResult.providerOrderId,
+              reason: "global_limit_exceeded_after_provider_call",
+            }, "payin_orphaned_provider_order: custom-gateway order created but not recorded — will expire naturally");
             res.status(400).json({ code: "CONCURRENT_LIMIT_EXCEEDED", error: "Your deposit couldn't be placed because another deposit request completed at the same time. Please check your remaining daily limit." });
             return;
           }
@@ -545,6 +566,7 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
 
         req.log.info({ event: "payin_deposit_order_created", merchantId, amount: depositAmount, routedVia: "custom_gateway", providerKey: decision.providerKey, attempt }, "payin_deposit_order_created");
         void maybeNotifyGatewayRecovery(req.log);
+
 
         const customCheckoutUrl =
           gatewayResult.paymentUrl && /^https?:\/\//i.test(gatewayResult.paymentUrl)
@@ -715,6 +737,35 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
       if (!cfLockResult.ok) {
         if (cfLockResult.reason === "global_limit_exceeded") {
           req.log.warn({ event: "payin_daily_limit_recheck_exceeded", merchantId, provider: "cashfree" }, "payin_daily_limit_recheck_exceeded");
+          // Best-effort: cancel the orphaned Cashfree order so it does not sit
+          // open on the provider dashboard or count toward provider-side rate limits.
+          // Fire-and-forget — never block or alter the merchant-facing 400 response.
+          void cashfreeCancelOrder(
+            cfg.clientId,
+            decrypted.value,
+            cfg.env,
+            publicOrderId,
+            { baseUrl: cfg.baseUrl, apiVersion: cfg.apiVersion },
+          ).then((cancelResult) => {
+            req.log.info({
+              event: "payin_orphaned_order_cancel_attempted",
+              merchantId,
+              provider: "cashfree",
+              orphanedOrderId: publicOrderId,
+              cancelOk: cancelResult.ok,
+              cancelStatus: cancelResult.status,
+            }, cancelResult.ok
+              ? "payin_orphaned_order_cancel_attempted: Cashfree order cancelled successfully"
+              : "payin_orphaned_order_cancel_attempted: Cashfree cancel returned non-2xx — order will expire naturally");
+          }).catch((err: unknown) => {
+            req.log.warn({
+              event: "payin_orphaned_order_cancel_failed",
+              merchantId,
+              provider: "cashfree",
+              orphanedOrderId: publicOrderId,
+              err: err instanceof Error ? err.message : String(err),
+            }, "payin_orphaned_order_cancel_failed: cancel call threw — order will expire naturally");
+          });
           res.status(400).json({ code: "CONCURRENT_LIMIT_EXCEEDED", error: "Your deposit couldn't be placed because another deposit request completed at the same time. Please check your remaining daily limit." });
           return;
         }
