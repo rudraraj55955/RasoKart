@@ -1160,6 +1160,14 @@ export default function MerchantDeposits() {
             : "All payment gateways are currently unavailable. Our team has been notified. Please try again in a few minutes or contact support.",
           { duration: 8000 },
         );
+      } else if ((status === 400 || status === 422) && err?.data?.code === "CONCURRENT_LIMIT_EXCEEDED") {
+        // Race with another concurrent deposit — a different session consumed the
+        // remaining daily headroom milliseconds before this request completed.
+        // Show a specific message so the merchant doesn't think they hit the
+        // limit before actually reaching it.
+        setCfCreateError(
+          "Your deposit couldn't be placed because another deposit request completed at the same time. Please check your remaining daily limit.",
+        );
       } else if ((status === 400 || status === 422) && serverError) {
         // Rejection due to admin-configured limits (min/max amount, daily cap) or
         // routing misconfiguration — surface the exact reason inline in the form

@@ -398,7 +398,7 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
           if (!ugLockResult.ok) {
             if (ugLockResult.reason === "global_limit_exceeded") {
               req.log.warn({ event: "payin_daily_limit_recheck_exceeded", merchantId, provider: "upigateway" }, "payin_daily_limit_recheck_exceeded");
-              res.status(400).json({ error: "Daily deposit limit reached. Please try again tomorrow or contact support." });
+              res.status(400).json({ code: "CONCURRENT_LIMIT_EXCEEDED", error: "Your deposit couldn't be placed because another deposit request completed at the same time. Please check your remaining daily limit." });
               return;
             }
             if (ugLockResult.reason === "provider_limit_exceeded") {
@@ -505,7 +505,7 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
         if (!gwLockResult.ok) {
           if (gwLockResult.reason === "global_limit_exceeded") {
             req.log.warn({ event: "payin_daily_limit_recheck_exceeded", merchantId, provider: decision.providerKey }, "payin_daily_limit_recheck_exceeded");
-            res.status(400).json({ error: "Daily deposit limit reached. Please try again tomorrow or contact support." });
+            res.status(400).json({ code: "CONCURRENT_LIMIT_EXCEEDED", error: "Your deposit couldn't be placed because another deposit request completed at the same time. Please check your remaining daily limit." });
             return;
           }
           req.log.error({ event: "payin_deposit_order_create_failed", merchantId, safeReason: "db_insert_failed" }, "payin_deposit_order_create_failed");
@@ -695,7 +695,7 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
       if (!cfLockResult.ok) {
         if (cfLockResult.reason === "global_limit_exceeded") {
           req.log.warn({ event: "payin_daily_limit_recheck_exceeded", merchantId, provider: "cashfree" }, "payin_daily_limit_recheck_exceeded");
-          res.status(400).json({ error: "Daily deposit limit reached. Please try again tomorrow or contact support." });
+          res.status(400).json({ code: "CONCURRENT_LIMIT_EXCEEDED", error: "Your deposit couldn't be placed because another deposit request completed at the same time. Please check your remaining daily limit." });
           return;
         }
         req.log.error({ event: "payin_deposit_order_create_failed", merchantId, safeReason: "db_insert_failed" }, "payin_deposit_order_create_failed");
