@@ -4514,6 +4514,21 @@ export interface UpigatewaySettings {
   lastUpdatedAt?: string | null;
 }
 
+export interface UpigatewayCapUsage {
+  /** Sum of CREATED+PENDING+PAID UPIGateway order amounts for today (cross-merchant) */
+  todayTotal: number;
+  /** Configured shared daily cap in INR */
+  dailyLimit: number;
+  /**
+     * Current utilization as a percentage (0-100)
+     * @minimum 0
+     * @maximum 100
+     */
+  utilizationPct: number;
+  /** Percentage at which a warning badge is shown (e.g. 80) */
+  warningThreshold: number;
+}
+
 /**
  * Gateway environment
  */
@@ -8700,6 +8715,9 @@ export type PutIamRolesRolePermissionKey200 = {
 export type GetIamUsersParams = {
 page?: number;
 limit?: number;
+/**
+ * Filter users by email or role (case-insensitive substring)
+ */
 search?: string;
 };
 

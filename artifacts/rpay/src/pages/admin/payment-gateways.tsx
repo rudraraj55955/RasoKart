@@ -7,6 +7,7 @@ import {
   getGetEkqrConfigQueryKey,
   useGetUpigatewaySettings, useUpdateUpigatewaySettings, getGetUpigatewaySettingsQueryKey,
   useTestUpigatewayCredentials, useTestUpigatewayOrder, useCheckUpigatewayStatus,
+  useGetUpigatewayCapUsage,
   useListProviderIntegrations, useUpdateProviderIntegration, useDeleteProviderIntegration,
   getListProviderIntegrationsQueryKey,
   useGetPayinChargeSettings, useUpdatePayinChargeSettings, getGetPayinChargeSettingsQueryKey,
@@ -1353,6 +1354,8 @@ function UpigatewayPayinPanel() {
   const [checkStatusResult, setCheckStatusResult] = useState<{ ok: boolean; message: string; data?: { status: string; amount: string; upiTxnId?: string | null } | null } | null>(null);
   const [checkTxnId, setCheckTxnId] = useState("");
 
+  const { data: capUsage, isLoading: capLoading } = useGetUpigatewayCapUsage({ request: { headers: authHeader() } } as any);
+
   const currentEnabled = enabled !== null ? enabled : (cfg?.enabled ?? false);
   const currentEnv: "test" | "live" = env !== null ? env : ((cfg?.env as "test" | "live") ?? "test");
   const currentMerchantAccess = merchantAccess !== null ? merchantAccess : (cfg?.merchantAccess ?? false);
@@ -1449,6 +1452,68 @@ function UpigatewayPayinPanel() {
           {!isLoading && cfg && <StatusBadge enabled={cfg.enabled} />}
           {!isLoading && cfg && <EnvBadge env={cfg.env} />}
         </div>
+      </div>
+
+      {/* Daily cap utilization */}
+      <div className="rounded-lg border border-border/40 bg-muted/10 p-4 space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Shared Daily Cap</p>
+          {!capLoading && capUsage && capUsage.utilizationPct >= capUsage.warningThreshold && (
+            <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25">
+              <AlertCircle className="w-3 h-3 shrink-0" />
+              {capUsage.utilizationPct}% used — near limit
+            </span>
+          )}
+          {!capLoading && capUsage && capUsage.utilizationPct >= 100 && (
+            <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-destructive/15 text-destructive border border-destructive/25">
+              <AlertCircle className="w-3 h-3 shrink-0" />
+              Cap reached
+            </span>
+          )}
+        </div>
+        {capLoading ? (
+          <div className="h-8 animate-pulse rounded bg-muted/40" />
+        ) : capUsage ? (
+          <>
+            <div className="flex items-end justify-between gap-2">
+              <div>
+                <p className="text-base font-semibold tabular-nums">
+                  ₹{capUsage.todayTotal.toLocaleString("en-IN")}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  of ₹{capUsage.dailyLimit.toLocaleString("en-IN")} daily cap
+                </p>
+              </div>
+              <p className={`text-sm font-semibold tabular-nums ${
+                capUsage.utilizationPct >= 100
+                  ? "text-destructive"
+                  : capUsage.utilizationPct >= capUsage.warningThreshold
+                  ? "text-amber-400"
+                  : "text-emerald-400"
+              }`}>
+                {capUsage.utilizationPct}%
+              </p>
+            </div>
+            {/* Progress bar */}
+            <div className="h-2 rounded-full bg-muted/40 overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-300 ${
+                  capUsage.utilizationPct >= 100
+                    ? "bg-destructive"
+                    : capUsage.utilizationPct >= capUsage.warningThreshold
+                    ? "bg-amber-400"
+                    : "bg-emerald-500"
+                }`}
+                style={{ width: `${Math.min(100, capUsage.utilizationPct)}%` }}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Counts CREATED + PENDING + PAID orders today (UTC). Resets at midnight UTC.
+            </p>
+          </>
+        ) : (
+          <p className="text-xs text-muted-foreground">Could not load cap data.</p>
+        )}
       </div>
 
       {/* Webhook URL */}

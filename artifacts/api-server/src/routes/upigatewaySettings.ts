@@ -17,6 +17,7 @@ import { inArray, eq } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { encryptSecret } from "../helpers/cryptoUtils";
 import { loadUpigatewayConfig, upigatewayCreateOrder, upigatewayCheckStatus, upigatewayFormatDate } from "../helpers/upigatewayPayin";
+import { getProviderDailyActiveTotal } from "../helpers/payinAdvisoryLock";
 import { notifyAdminsOfCredentialRotation } from "../helpers/adminNotifyEmail";
 
 const router = Router();
@@ -128,6 +129,27 @@ router.put("/settings", async (req, res, next) => {
       checkStatusEndpoint: cfg.checkStatusEndpoint, webhookSecretSet: cfg.webhookSecretSet,
       minAmount: cfg.minAmount, maxAmount: cfg.maxAmount, merchantAccess: cfg.merchantAccess,
       lastUpdatedByEmail: cfg.lastUpdatedByEmail, lastUpdatedAt: cfg.lastUpdatedAt,
+    });
+  } catch (err) { next(err); }
+});
+
+// ── GET /cap-usage ────────────────────────────────────────────────────────────
+router.get("/cap-usage", async (req, res, next) => {
+  try {
+    const cfg = await loadUpigatewayConfig();
+    // Use start of today in UTC for consistency with the payin enforcement logic
+    const startOfDay = new Date();
+    startOfDay.setUTCHours(0, 0, 0, 0);
+    const todayTotal = await getProviderDailyActiveTotal(db, startOfDay, "upigateway");
+    const dailyLimit = cfg.dailyLimit;
+    const utilizationPct = dailyLimit > 0 ? Math.min(100, Math.round((todayTotal / dailyLimit) * 100)) : 0;
+    // Warning threshold: 80% (configurable in future; hard-coded here to keep scope narrow)
+    const warningThreshold = 80;
+    res.json({
+      todayTotal,
+      dailyLimit,
+      utilizationPct,
+      warningThreshold,
     });
   } catch (err) { next(err); }
 });

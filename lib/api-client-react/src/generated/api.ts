@@ -483,6 +483,7 @@ import type {
   UpiGatewayMerchantAssignment,
   UpiGatewayTestResult,
   UpiGatewayUpdateBody,
+  UpigatewayCapUsage,
   UpigatewayCheckStatusInput,
   UpigatewayCheckStatusResult,
   UpigatewaySettings,
@@ -24585,6 +24586,83 @@ export const useUpdateUpigatewaySettings = <TError = ErrorType<void>,
       > => {
       return useMutation(getUpdateUpigatewaySettingsMutationOptions(options));
     }
+
+export const getGetUpigatewayCapUsageUrl = () => {
+
+
+
+
+  return `/api/admin/upigateway/cap-usage`
+}
+
+/**
+ * @summary Get today's EKQR/UPIGateway shared daily cap utilization (admin only)
+ */
+export const getUpigatewayCapUsage = async ( options?: RequestInit): Promise<UpigatewayCapUsage> => {
+
+  return customFetch<UpigatewayCapUsage>(getGetUpigatewayCapUsageUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetUpigatewayCapUsageQueryKey = () => {
+    return [
+    `/api/admin/upigateway/cap-usage`
+    ] as const;
+    }
+
+
+export const getGetUpigatewayCapUsageQueryOptions = <TData = Awaited<ReturnType<typeof getUpigatewayCapUsage>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getUpigatewayCapUsage>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetUpigatewayCapUsageQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getUpigatewayCapUsage>>> = ({ signal }) => getUpigatewayCapUsage({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getUpigatewayCapUsage>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetUpigatewayCapUsageQueryResult = NonNullable<Awaited<ReturnType<typeof getUpigatewayCapUsage>>>
+export type GetUpigatewayCapUsageQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get today's EKQR/UPIGateway shared daily cap utilization (admin only)
+ */
+
+export function useGetUpigatewayCapUsage<TData = Awaited<ReturnType<typeof getUpigatewayCapUsage>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getUpigatewayCapUsage>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetUpigatewayCapUsageQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getTestUpigatewayCredentialsUrl = () => {
 

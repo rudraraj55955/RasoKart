@@ -9,4 +9,8 @@
 export type GetIamUsersParams = {
 page?: number;
 limit?: number;
+/**
+ * Filter users by email or role (case-insensitive substring)
+ */
+search?: string;
 };

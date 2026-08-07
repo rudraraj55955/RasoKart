@@ -740,6 +740,7 @@ export * from './upiGateway';
 export * from './upiGatewayAssignMerchantsBody';
 export * from './upiGatewayAssignMerchantsBodyMode';
 export * from './upiGatewayAssignMerchantsBodyPerMerchantItem';
+export * from './upigatewayCapUsage';
 export * from './upiGatewayCategory';
 export * from './upigatewayCheckStatusInput';
 export * from './upigatewayCheckStatusResult';

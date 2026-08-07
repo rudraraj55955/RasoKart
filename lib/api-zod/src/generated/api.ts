@@ -7466,7 +7466,8 @@ export const GetWebhookFailureAlertHistoryResponse = zod.object({
   "failedUrl": zod.string().describe('The webhook URL that failed'),
   "attemptCount": zod.number().describe('Total delivery attempts made before the webhook was marked permanently failed'),
   "recipientCount": zod.number().describe('Number of admin emails the alert was successfully delivered to'),
-  "recipientEmails": zod.array(zod.string()).describe('List of admin email addresses the alert was sent to')
+  "recipientEmails": zod.array(zod.string()).describe('List of admin email addresses the alert was sent to'),
+  "cooldownHours": zod.number().nullish().describe('Cooldown window (hours) that was active when this alert was sent. Null for rows that pre-date this column (value would be a meaningless backfill default).')
 })),
   "total": zod.number()
 })
@@ -8102,6 +8103,22 @@ export const UpdateUpigatewaySettingsResponse = zod.object({
   "merchantAccess": zod.boolean().describe('Whether merchants can view UPIGateway payin orders in their portal'),
   "lastUpdatedByEmail": zod.string().nullish().describe('Email of the admin who last changed this config'),
   "lastUpdatedAt": zod.coerce.date().nullish().describe('Timestamp of the most recent config change')
+})
+
+
+/**
+ * @summary Get today's EKQR/UPIGateway shared daily cap utilization (admin only)
+ */
+export const getUpigatewayCapUsageResponseUtilizationPctMin = 0;
+export const getUpigatewayCapUsageResponseUtilizationPctMax = 100;
+
+
+
+export const GetUpigatewayCapUsageResponse = zod.object({
+  "todayTotal": zod.number().describe('Sum of CREATED+PENDING+PAID UPIGateway order amounts for today (cross-merchant)'),
+  "dailyLimit": zod.number().describe('Configured shared daily cap in INR'),
+  "utilizationPct": zod.number().min(getUpigatewayCapUsageResponseUtilizationPctMin).max(getUpigatewayCapUsageResponseUtilizationPctMax).describe('Current utilization as a percentage (0-100)'),
+  "warningThreshold": zod.number().describe('Percentage at which a warning badge is shown (e.g. 80)')
 })
 
 
@@ -10944,7 +10961,8 @@ export const PutIamRolesRolePermissionKeyResponse = zod.object({
  */
 export const GetIamUsersQueryParams = zod.object({
   "page": zod.coerce.number().optional(),
-  "limit": zod.coerce.number().optional()
+  "limit": zod.coerce.number().optional(),
+  "search": zod.coerce.string().optional().describe('Filter users by email or role (case-insensitive substring)')
 })
 
 export const GetIamUsersResponse = zod.object({

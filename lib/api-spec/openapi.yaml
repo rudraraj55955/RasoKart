@@ -8484,6 +8484,25 @@ paths:
         "403":
           description: Forbidden
 
+  /admin/upigateway/cap-usage:
+    get:
+      operationId: getUpigatewayCapUsage
+      tags: [system-config]
+      summary: Get today's EKQR/UPIGateway shared daily cap utilization (admin only)
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Daily cap utilization snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpigatewayCapUsage"
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+
   /admin/upigateway/test-credentials:
     post:
       operationId: testUpigatewayCredentials
@@ -17780,6 +17799,25 @@ components:
           format: date-time
           nullable: true
           description: Timestamp of the most recent config change
+
+    UpigatewayCapUsage:
+      type: object
+      required: [todayTotal, dailyLimit, utilizationPct, warningThreshold]
+      properties:
+        todayTotal:
+          type: number
+          description: Sum of CREATED+PENDING+PAID UPIGateway order amounts for today (cross-merchant)
+        dailyLimit:
+          type: number
+          description: Configured shared daily cap in INR
+        utilizationPct:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Current utilization as a percentage (0-100)
+        warningThreshold:
+          type: integer
+          description: Percentage at which a warning badge is shown (e.g. 80)
 
     UpigatewaySettingsInput:
       type: object
