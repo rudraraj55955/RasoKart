@@ -506,6 +506,34 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
 
       if (gatewayResult.ok && gatewayResult.providerOrderId) {
         // ── Advisory lock: re-check active total, then insert ────────────────
+        //
+        // CROSS-MERCHANT PROVIDER CAP GAP — documented boundary (2026-08-07)
+        //
+        // This block uses withMerchantPayinLock (keyed on merchantId), which
+        // correctly serializes concurrent requests from the SAME merchant.
+        // However, two requests from DIFFERENT merchants acquire different lock
+        // keys and never block each other.
+        //
+        // The re-check below calls only getMerchantDailyActiveTotal (per-
+        // merchant, filters by merchantId). There is NO corresponding call to
+        // getProviderDailyActiveTotal, which would aggregate usage across all
+        // merchants for this providerKey.
+        //
+        // Consequence: if a custom gateway ever receives a provider-level daily
+        // cap (stored in provider_integrations.daily_limit), two merchants can
+        // independently pass their per-merchant check, each receive a payment
+        // URL from the provider, and together exceed that cap — the same two-
+        // merchant race gap that existed for EKQR before withProviderPayinLock
+        // was introduced.
+        //
+        // The EKQR/UPIGateway path above uses withProviderPayinLock + a pre-
+        // check call to getProviderDailyActiveTotal to prevent this. Replicating
+        // that pattern here requires knowing the provider's configured dailyLimit
+        // (from provider_integrations.daily_limit) at the time of dispatch and
+        // replacing withMerchantPayinLock with withProviderPayinLock.
+        //
+        // See payinOrders.customGateway.test.ts for a test that explicitly
+        // documents and asserts the current (unfixed) behavior.
         const gwLockResult = await withMerchantPayinLock(merchantId, async (tx) => {
           const activeTotal = await getMerchantDailyActiveTotal(tx, merchantId, startOfDay);
           if (activeTotal + depositAmount > cfg.dailyLimit) {
