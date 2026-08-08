@@ -786,12 +786,16 @@ export function buildStuckEkqrHtml(opts: {
 
 const EKQR_SYNC_ALERT_LAST_SENT_KEY = "ekqr_sync_alert_last_sent_at";
 
-export async function notifyAdminsOfStuckEkqrQrCodes(opts: {
-  stuck: number;
-  threshold: number;
-  staleMinutes: number;
-  cooldownHours: number;
-}): Promise<void> {
+export async function notifyAdminsOfStuckEkqrQrCodes(
+  opts: {
+    stuck: number;
+    threshold: number;
+    staleMinutes: number;
+    cooldownHours: number;
+  },
+  // Injected in tests to intercept outbound mail without real SMTP.
+  _sendMail: typeof sendMail = sendMail,
+): Promise<void> {
   try {
     const recipients = await getAdminEmails("ekqrSyncAlertEmails");
 
@@ -833,7 +837,7 @@ export async function notifyAdminsOfStuckEkqrQrCodes(opts: {
     const subject = `[RasoKart] 🔴 ${opts.stuck} EKQR QR Code${opts.stuck !== 1 ? "s" : ""} Stuck — Auto-retry Threshold Exceeded`;
 
     const results = await Promise.allSettled(
-      recipients.map(email => sendMail({ to: email, subject, html }))
+      recipients.map(email => _sendMail({ to: email, subject, html }))
     );
 
     const sent = results.filter(r => r.status === "fulfilled" && r.value).length;
