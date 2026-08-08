@@ -1023,6 +1023,143 @@ export type CredentialRotationAlertResult = {
   failedEmails: string[];
 };
 
+// ---------------------------------------------------------------------------
+// EKQR / UPIGateway daily cap full alert emails
+// ---------------------------------------------------------------------------
+
+export function buildEkqrCapFullHtml(opts: {
+  todayTotal: number;
+  dailyLimit: number;
+  resetsAt: string;
+}): string {
+  const { todayTotal, dailyLimit, resetsAt } = opts;
+  const gatewayLink = `${APP_DOMAIN}/admin/payment-gateways`;
+  const resetsAtFormatted = new Date(resetsAt).toUTCString();
+
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; background: #0f0f0f; color: #e5e5e5; margin: 0; padding: 24px;">
+  <div style="max-width: 600px; margin: 0 auto; background: #1a1a1a; border-radius: 8px; overflow: hidden; border: 1px solid #2a2a2a;">
+    <div style="background: #7c1d1d; padding: 20px 24px;">
+      <h1 style="margin: 0; font-size: 20px; color: #fff; letter-spacing: 0.5px;">RasoKart — EKQR Daily Cap Reached</h1>
+      <p style="margin: 4px 0 0; color: #fca5a5; font-size: 13px;">UPIGateway provider daily limit is full — new orders are being rejected</p>
+    </div>
+    <div style="padding: 24px;">
+      <p style="margin: 0 0 16px; color: #f87171; font-size: 14px; font-weight: 600;">
+        🔴 The EKQR / UPIGateway daily cap has been reached. All new merchant deposit requests via this provider are currently returning errors.
+      </p>
+      <p style="margin: 0 0 20px; color: #a1a1aa; font-size: 13px;">
+        Consider raising the daily cap in Payment Gateway settings or informing affected merchants. The cap resets automatically at UTC midnight.
+      </p>
+
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
+        <tr style="background: #111;">
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px; width: 50%;">Today's Total</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; font-weight: 600; color: #f87171;">${formatAmount(todayTotal)}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">Daily Cap</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; font-weight: 600;">${formatAmount(dailyLimit)}</td>
+        </tr>
+        <tr style="background: #111;">
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">Resets At</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; color: #60a5fa;">${resetsAtFormatted}</td>
+        </tr>
+      </table>
+
+      <div style="text-align: center; margin-bottom: 20px;">
+        <a href="${gatewayLink}"
+           style="display: inline-block; background: #7c3aed; color: #fff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-size: 14px; font-weight: 600; letter-spacing: 0.3px;">
+          Open Payment Gateway Settings
+        </a>
+      </div>
+
+      <p style="margin: 0; color: #71717a; font-size: 12px;">
+        If the link above doesn't work, copy this URL into your browser:<br>
+        <span style="color: #818cf8;">${gatewayLink}</span>
+      </p>
+    </div>
+    <div style="padding: 14px 24px; background: #111; border-top: 1px solid #2a2a2a;">
+      <p style="margin: 0; color: #52525b; font-size: 11px;">
+        This is a one-per-day automated alert sent by RasoKart when the EKQR daily cap is reached.
+      </p>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+/**
+ * Sends a one-per-UTC-day alert to all active admins when the EKQR /
+ * UPIGateway provider daily cap is full.
+ *
+ * Deduplication: reads/writes `upigateway_cap_alert_last_sent_date` in
+ * system_config (a YYYY-MM-DD UTC date string).  If the stored date matches
+ * today's UTC date the alert is suppressed silently — no email, no DB write.
+ * This prevents spamming on every rejected order while still guaranteeing one
+ * notification per calendar day the cap is hit.
+ *
+ * Fire-and-forget safe: all errors are caught and logged; the caller should
+ * call this without awaiting or with .catch() to avoid blocking the request.
+ */
+export async function notifyAdminsOfEkqrCapFull(opts: {
+  todayTotal: number;
+  dailyLimit: number;
+  resetsAt: string;
+}): Promise<void> {
+  try {
+    // ── Dedup: one alert per UTC calendar day ──────────────────────────────
+    const todayUtcDate = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
+    const existingRows = await db
+      .select({ value: systemConfigTable.value })
+      .from(systemConfigTable)
+      .where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.UPIGATEWAY_CAP_ALERT_LAST_SENT_DATE))
+      .limit(1);
+
+    if (existingRows[0]?.value === todayUtcDate) {
+      logger.info({ todayUtcDate }, "EKQR cap alert suppressed — already sent today");
+      return;
+    }
+
+    const recipients = await getAllActiveAdminEmails();
+
+    if (recipients.length === 0) {
+      logger.info("No active admins found — skipping EKQR cap full alert");
+      return;
+    }
+
+    const html = buildEkqrCapFullHtml(opts);
+    const subject = `[RasoKart] 🔴 EKQR Daily Cap Reached — ${formatAmount(opts.todayTotal)} of ${formatAmount(opts.dailyLimit)} used`;
+
+    const results = await Promise.allSettled(
+      recipients.map(email => sendMail({ to: email, subject, html }))
+    );
+
+    const sent = results.filter(r => r.status === "fulfilled" && r.value).length;
+    const failed = results.length - sent;
+
+    // Persist the dedup flag only after at least one email was dispatched.
+    if (sent > 0) {
+      await db
+        .insert(systemConfigTable)
+        .values({ key: SYSTEM_CONFIG_KEYS.UPIGATEWAY_CAP_ALERT_LAST_SENT_DATE, value: todayUtcDate })
+        .onConflictDoUpdate({
+          target: systemConfigTable.key,
+          set: { value: todayUtcDate },
+        });
+    }
+
+    logger.info(
+      { todayTotal: opts.todayTotal, dailyLimit: opts.dailyLimit, totalAdmins: recipients.length, sent, failed },
+      "Admin EKQR cap full alert emails dispatched"
+    );
+  } catch (err) {
+    logger.error({ err }, "Failed to send EKQR cap full alert emails");
+  }
+}
+
 export async function notifyAdminsOfCredentialRotation(opts: {
   gateway: string;
   changedFields: string[];

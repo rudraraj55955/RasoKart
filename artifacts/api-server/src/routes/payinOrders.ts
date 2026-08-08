@@ -13,6 +13,7 @@ import { selectProvider, recordRoutingResult, recordChainExhaustedStart, maybeNo
 import { maybeFireFailoverAlert } from "../helpers/payinFailoverAlert";
 import { createCustomGatewayOrder } from "../helpers/customGatewayClient";
 import { loadUpigatewayConfig, upigatewayCreateOrder } from "../helpers/upigatewayPayin";
+import { notifyAdminsOfEkqrCapFull } from "../helpers/adminNotifyEmail";
 
 const router = Router();
 
@@ -338,6 +339,11 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
         }
         if (ekqrDailyTotal + depositAmount > ugCfg.dailyLimit) {
           req.log.warn({ event: "payin_upigateway_daily_limit_rejected", merchantId, ekqrDailyTotal, depositAmount, dailyLimit: ugCfg.dailyLimit }, "payin_upigateway_daily_limit_rejected");
+          // Cap-full alert — fire-and-forget, one per UTC day (deduped in helper).
+          const resetsAt = new Date(providerStartOfDay);
+          resetsAt.setUTCDate(resetsAt.getUTCDate() + 1);
+          notifyAdminsOfEkqrCapFull({ todayTotal: ekqrDailyTotal, dailyLimit: ugCfg.dailyLimit, resetsAt: resetsAt.toISOString() })
+            .catch(err => req.log.error({ err }, "Failed to dispatch EKQR cap full alert"));
           res.status(422).json({ error: "Daily deposit limit reached for this provider. Please try again tomorrow or contact support." });
           return;
         }
@@ -433,6 +439,11 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
             }
             if (ugLockResult.reason === "provider_limit_exceeded") {
               req.log.warn({ event: "payin_provider_limit_recheck_exceeded", merchantId, provider: "upigateway" }, "payin_provider_limit_recheck_exceeded");
+              // Cap-full alert — fire-and-forget, one per UTC day (deduped in helper).
+              const recheckResetsAt = new Date(providerStartOfDay);
+              recheckResetsAt.setUTCDate(recheckResetsAt.getUTCDate() + 1);
+              notifyAdminsOfEkqrCapFull({ todayTotal: ugCfg.dailyLimit, dailyLimit: ugCfg.dailyLimit, resetsAt: recheckResetsAt.toISOString() })
+                .catch(err => req.log.error({ err }, "Failed to dispatch EKQR cap full alert (recheck)"));
               res.status(422).json({ error: "Daily deposit limit reached for this provider. Please try again tomorrow or contact support." });
               return;
             }

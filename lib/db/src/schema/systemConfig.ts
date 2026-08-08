@@ -159,6 +159,11 @@ export const SYSTEM_CONFIG_KEYS = {
   RAZORPAY_SETTLEMENT_BALANCE: "razorpay_settlement_balance",
   RAZORPAY_SETTLEMENT_LAST_UTR: "razorpay_settlement_last_utr",
   RAZORPAY_SETTLEMENT_LAST_UPDATED_AT: "razorpay_settlement_last_updated_at",
+  // EKQR / UPIGateway daily cap alert dedup flag.
+  // Stores the UTC date string (YYYY-MM-DD) of the last alert send.
+  // Compared against today's UTC date to enforce once-per-day deduplication
+  // without requiring a separate table or cron job.
+  UPIGATEWAY_CAP_ALERT_LAST_SENT_DATE: "upigateway_cap_alert_last_sent_date",
 } as const;
 
 export const SYSTEM_CONFIG_DEFAULTS = {
