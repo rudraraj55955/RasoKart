@@ -17,6 +17,7 @@ export const usersTable = pgTable("users", {
   signatureFailureAlertEmails: boolean("signature_failure_alert_emails").notNull().default(true),
   webhookFailureEmails: boolean("webhook_failure_emails").notNull().default(true),
   ekqrSyncAlertEmails: boolean("ekqr_sync_alert_emails").notNull().default(true),
+  ekqrCapAlertEmails: boolean("ekqr_cap_alert_emails").notNull().default(true),
   reportFailureAlertEmails: boolean("report_failure_alert_emails").notNull().default(true),
   githubSyncFailureAlertEmails: boolean("github_sync_failure_alert_emails").notNull().default(true),
   weeklyDeliveryDigestEmails: boolean("weekly_delivery_digest_emails").notNull().default(true),

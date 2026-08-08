@@ -30,4 +30,10 @@ export interface UpigatewaySettingsInput {
   maxAmount?: number;
   /** Whether merchants can view UPIGateway payin orders */
   merchantAccess?: boolean;
+  /**
+     * Shared daily cap in INR for all UPIGateway payin orders (omit to leave unchanged). Must be a positive integer between 1 and 100,000,000.
+     * @minimum 1
+     * @maximum 100000000
+     */
+  dailyLimit?: number;
 }

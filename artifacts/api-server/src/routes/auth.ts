@@ -749,6 +749,7 @@ router.get("/me", requireAuth, async (req, res, next) => {
         reportScheduleChangedEmails: usersTable.reportScheduleChangedEmails,
         settlementStateChangedEmails: usersTable.settlementStateChangedEmails,
         ekqrSyncAlertEmails: usersTable.ekqrSyncAlertEmails,
+        ekqrCapAlertEmails: usersTable.ekqrCapAlertEmails,
         planChangeEmails: usersTable.planChangeEmails,
         reconciliationAlertNotifs: usersTable.reconciliationAlertNotifs,
         planExpiryAlertNotifs: usersTable.planExpiryAlertNotifs,
@@ -832,6 +833,7 @@ router.get("/me", requireAuth, async (req, res, next) => {
       reportScheduleChangedEmails: row?.reportScheduleChangedEmails ?? true,
       settlementStateChangedEmails: row?.settlementStateChangedEmails ?? true,
       ekqrSyncAlertEmails: row?.ekqrSyncAlertEmails ?? true,
+      ekqrCapAlertEmails: row?.ekqrCapAlertEmails ?? true,
       planChangeEmails: row?.planChangeEmails ?? true,
       reconciliationAlertNotifs: row?.reconciliationAlertNotifs ?? true,
       planExpiryAlertNotifs: row?.planExpiryAlertNotifs ?? true,
@@ -868,7 +870,7 @@ router.get("/me", requireAuth, async (req, res, next) => {
 router.put("/preferences", requireAuth, prefChangeLimiter, async (req, res, next) => {
   try {
     const user = (req as any).user;
-    const { reconciliationAlertEmails, planExpiryAlertEmails, settlementStateEmails, signatureFailureAlertEmails, webhookFailureEmails, reportFailureAlertEmails, githubSyncFailureAlertEmails, weeklyDeliveryDigestEmails, apiKeyGeneratedEmails, apiKeyRevokedEmails, loginAlertEmails, reportScheduleChangedEmails, settlementStateChangedEmails, ekqrSyncAlertEmails, planChangeEmails, reconciliationAlertNotifs, planExpiryAlertNotifs, settlementStateNotifs, signatureFailureAlertNotifs, webhookFailureNotifs, ekqrSyncAlertNotifs, reportFailureAlertNotifs, weeklyDeliveryDigestNotifs, apiKeyGeneratedNotifs, apiKeyRevokedNotifs, loginAlertNotifs, reportScheduleChangedNotifs, settlementStateChangedNotifs, planChangeNotifs, quietHoursStart, quietHoursEnd, quietHoursTimezone, notificationSoundEnabled, notificationVibrationEnabled } = req.body;
+    const { reconciliationAlertEmails, planExpiryAlertEmails, settlementStateEmails, signatureFailureAlertEmails, webhookFailureEmails, reportFailureAlertEmails, githubSyncFailureAlertEmails, weeklyDeliveryDigestEmails, apiKeyGeneratedEmails, apiKeyRevokedEmails, loginAlertEmails, reportScheduleChangedEmails, settlementStateChangedEmails, ekqrSyncAlertEmails, ekqrCapAlertEmails, planChangeEmails, reconciliationAlertNotifs, planExpiryAlertNotifs, settlementStateNotifs, signatureFailureAlertNotifs, webhookFailureNotifs, ekqrSyncAlertNotifs, reportFailureAlertNotifs, weeklyDeliveryDigestNotifs, apiKeyGeneratedNotifs, apiKeyRevokedNotifs, loginAlertNotifs, reportScheduleChangedNotifs, settlementStateChangedNotifs, planChangeNotifs, quietHoursStart, quietHoursEnd, quietHoursTimezone, notificationSoundEnabled, notificationVibrationEnabled } = req.body;
 
     const patch: Record<string, boolean | Date | string | null | Record<string, string>> = {};
 
@@ -984,6 +986,14 @@ router.put("/preferences", requireAuth, prefChangeLimiter, async (req, res, next
       patch["ekqrSyncAlertEmails"] = ekqrSyncAlertEmails;
     }
 
+    if (ekqrCapAlertEmails !== undefined) {
+      if (typeof ekqrCapAlertEmails !== "boolean") {
+        res.status(400).json({ error: "ekqrCapAlertEmails must be a boolean" });
+        return;
+      }
+      patch["ekqrCapAlertEmails"] = ekqrCapAlertEmails;
+    }
+
     if (planChangeEmails !== undefined) {
       if (typeof planChangeEmails !== "boolean") {
         res.status(400).json({ error: "planChangeEmails must be a boolean" });
@@ -1086,6 +1096,7 @@ router.put("/preferences", requireAuth, prefChangeLimiter, async (req, res, next
       "reportScheduleChangedEmails",
       "settlementStateChangedEmails",
       "ekqrSyncAlertEmails",
+      "ekqrCapAlertEmails",
       "planChangeEmails",
       "reconciliationAlertNotifs",
       "planExpiryAlertNotifs",
@@ -1119,6 +1130,7 @@ router.put("/preferences", requireAuth, prefChangeLimiter, async (req, res, next
         reportScheduleChangedEmails: usersTable.reportScheduleChangedEmails,
         settlementStateChangedEmails: usersTable.settlementStateChangedEmails,
         ekqrSyncAlertEmails: usersTable.ekqrSyncAlertEmails,
+        ekqrCapAlertEmails: usersTable.ekqrCapAlertEmails,
         planChangeEmails: usersTable.planChangeEmails,
         reconciliationAlertNotifs: usersTable.reconciliationAlertNotifs,
         planExpiryAlertNotifs: usersTable.planExpiryAlertNotifs,
@@ -1283,6 +1295,7 @@ router.put("/preferences", requireAuth, prefChangeLimiter, async (req, res, next
       reportScheduleChangedEmails: updated.reportScheduleChangedEmails,
       settlementStateChangedEmails: updated.settlementStateChangedEmails,
       ekqrSyncAlertEmails: updated.ekqrSyncAlertEmails,
+      ekqrCapAlertEmails: updated.ekqrCapAlertEmails,
       planChangeEmails: updated.planChangeEmails,
       reconciliationAlertNotifs: updated.reconciliationAlertNotifs,
       planExpiryAlertNotifs: updated.planExpiryAlertNotifs,

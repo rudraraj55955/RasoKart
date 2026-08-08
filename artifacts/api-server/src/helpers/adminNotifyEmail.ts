@@ -10,7 +10,7 @@ function formatAmount(val: string | number | null | undefined): string {
   return `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-export async function getAdminEmails(preference: "planExpiryAlertEmails" | "settlementStateEmails" | "webhookFailureEmails" | "ekqrSyncAlertEmails" | "reportFailureAlertEmails"): Promise<string[]> {
+export async function getAdminEmails(preference: "planExpiryAlertEmails" | "settlementStateEmails" | "webhookFailureEmails" | "ekqrSyncAlertEmails" | "ekqrCapAlertEmails" | "reportFailureAlertEmails"): Promise<string[]> {
   const admins = await db
     .select({ email: usersTable.email })
     .from(usersTable)
@@ -1123,10 +1123,10 @@ export async function notifyAdminsOfEkqrCapFull(opts: {
       return;
     }
 
-    const recipients = await getAllActiveAdminEmails();
+    const recipients = await getAdminEmails("ekqrCapAlertEmails");
 
     if (recipients.length === 0) {
-      logger.info("No active admins found — skipping EKQR cap full alert");
+      logger.info("No admins opted in to EKQR cap alert emails — skipping");
       return;
     }
 

@@ -41,6 +41,26 @@ async function waitForServer(timeoutMs = 30_000): Promise<void> {
   throw new Error("API server did not become ready within 30 seconds");
 }
 
+/**
+ * Wait for the rpay frontend (Vite dev server) to be ready.
+ * The validation workflow may start both the API server and rpay frontend in
+ * parallel; without this guard, Playwright navigates to /admin before the Vite
+ * server is up, gets a 502 from the proxy, and the whole test run fails.
+ */
+async function waitForFrontend(timeoutMs = 60_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(BASE, { method: "HEAD" });
+      if (res.status < 500) return; // 200 or any non-server-error means Vite is serving
+    } catch {
+      // not yet listening
+    }
+    await new Promise((r) => setTimeout(r, 1_000));
+  }
+  throw new Error("Frontend (rpay) did not become ready within 60 seconds");
+}
+
 async function login(email: string, password: string): Promise<string> {
   const res = await fetch(`${API}/auth/login`, {
     method: "POST",
@@ -146,6 +166,7 @@ const isMerchantRun = process.argv.some((arg) => arg.includes("merchant-settings
 
 export default async function globalSetup(): Promise<void> {
   await waitForServer();
+  await waitForFrontend();
   const adminToken = await login("admin@rasokart.com", "Admin@123456");
   writeFileSync(ADMIN_TOKEN_CACHE_PATH, JSON.stringify({ token: adminToken }));
 

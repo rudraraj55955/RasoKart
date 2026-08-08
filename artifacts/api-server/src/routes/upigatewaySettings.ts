@@ -163,11 +163,14 @@ router.get("/cap-usage", async (req, res, next) => {
     const utilizationPct = dailyLimit > 0 ? Math.min(100, Math.round((todayTotal / dailyLimit) * 100)) : 0;
     // Warning threshold: 80% (configurable in future; hard-coded here to keep scope narrow)
     const warningThreshold = 80;
+    const resetsAt = new Date(startOfDay);
+    resetsAt.setUTCDate(resetsAt.getUTCDate() + 1);
     res.json({
       todayTotal,
       dailyLimit,
       utilizationPct,
       warningThreshold,
+      resetsAt: resetsAt.toISOString(),
     });
   } catch (err) { next(err); }
 });

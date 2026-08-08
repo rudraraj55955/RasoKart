@@ -7,7 +7,7 @@ import {
   getGetEkqrConfigQueryKey,
   useGetUpigatewaySettings, useUpdateUpigatewaySettings, getGetUpigatewaySettingsQueryKey,
   useTestUpigatewayCredentials, useTestUpigatewayOrder, useCheckUpigatewayStatus,
-  useGetUpigatewayCapUsage,
+  useGetUpigatewayCapUsage, getGetUpigatewayCapUsageQueryKey,
   useListProviderIntegrations, useUpdateProviderIntegration, useDeleteProviderIntegration,
   getListProviderIntegrationsQueryKey,
   useGetPayinChargeSettings, useUpdatePayinChargeSettings, getGetPayinChargeSettingsQueryKey,

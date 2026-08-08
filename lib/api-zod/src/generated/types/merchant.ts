@@ -73,6 +73,8 @@ export interface Merchant {
   weeklyDeliveryDigestEmails?: boolean;
   /** Whether the merchant will receive EKQR sync alert emails. Defaults to true. */
   ekqrSyncAlertEmails?: boolean;
+  /** Whether the admin will receive EKQR daily cap alert emails. Defaults to true. */
+  ekqrCapAlertEmails?: boolean;
   /** Whether the merchant will receive plan change emails. Defaults to true. */
   planChangeEmails?: boolean;
   /** Whether the merchant has enabled in-app notifications for reconciliation alerts. Defaults to true. */

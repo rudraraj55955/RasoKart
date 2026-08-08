@@ -32,6 +32,8 @@ export interface UpigatewaySettings {
   maxAmount: number;
   /** Whether merchants can view UPIGateway payin orders in their portal */
   merchantAccess: boolean;
+  /** Shared daily cap in INR for all UPIGateway payin orders */
+  dailyLimit: number;
   /** Email of the admin who last changed this config */
   lastUpdatedByEmail?: string | null;
   /** Timestamp of the most recent config change */

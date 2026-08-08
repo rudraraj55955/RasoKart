@@ -321,6 +321,9 @@ paths:
                 ekqrSyncAlertEmails:
                   type: boolean
                   description: Whether the merchant wants an email when an EKQR synchronisation issue is detected.
+                ekqrCapAlertEmails:
+                  type: boolean
+                  description: Whether the admin wants an email when the EKQR daily cap is reached.
                 planChangeEmails:
                   type: boolean
                   description: Whether the merchant wants an email when their subscription plan is changed by an admin.
@@ -13110,6 +13113,9 @@ components:
         ekqrSyncAlertEmails:
           type: boolean
           description: Whether the merchant wants an email when an EKQR synchronisation issue is detected. Defaults to true.
+        ekqrCapAlertEmails:
+          type: boolean
+          description: Whether the admin wants an email when the EKQR daily cap is reached. Defaults to true.
         planChangeEmails:
           type: boolean
           description: Whether the merchant wants an email when their subscription plan is changed by an admin. Defaults to true.
@@ -13282,6 +13288,9 @@ components:
         ekqrSyncAlertEmails:
           type: boolean
           description: Whether the merchant will receive EKQR sync alert emails. Defaults to true.
+        ekqrCapAlertEmails:
+          type: boolean
+          description: Whether the admin will receive EKQR daily cap alert emails. Defaults to true.
         planChangeEmails:
           type: boolean
           description: Whether the merchant will receive plan change emails. Defaults to true.

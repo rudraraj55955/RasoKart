@@ -411,6 +411,7 @@ export default function AdminSettings() {
   const webhookFailureEnabled = me?.webhookFailureEmails ?? true;
   const reportFailureEnabled = (me as any)?.reportFailureAlertEmails ?? true;
   const ekqrSyncAlertEnabled = (me as any)?.ekqrSyncAlertEmails ?? true;
+  const ekqrCapAlertEnabled = (me as any)?.ekqrCapAlertEmails ?? true;
   const githubSyncFailureEnabled = (me as any)?.githubSyncFailureAlertEmails ?? true;
   const weeklyDigestEnabled = me?.weeklyDeliveryDigestEmails ?? true;
 
@@ -3698,6 +3699,28 @@ export default function AdminSettings() {
             <p className="text-xs text-amber-400 flex items-center gap-1.5">
               <AlertCircle className="w-3.5 h-3.5 shrink-0" />
               You will not receive alerts when EKQR QR codes are stuck beyond the threshold.
+            </p>
+          )}
+
+          <div className="flex items-center justify-between rounded-lg border border-border/50 bg-muted/5 px-4 py-3">
+            <div className="space-y-0.5">
+              <p className="text-sm font-medium">EKQR daily cap alert emails</p>
+              <p className="text-xs text-muted-foreground">
+                Receive an email when the EKQR / UPIGateway daily cap is reached and new merchant deposits are being rejected. Sent at most once per UTC calendar day.
+              </p>
+            </div>
+            <Switch
+              checked={ekqrCapAlertEnabled}
+              onCheckedChange={val =>
+                updatePrefs({ data: { ekqrCapAlertEmails: val } as any })
+              }
+              disabled={savingPrefs || me === undefined}
+            />
+          </div>
+          {!ekqrCapAlertEnabled && (
+            <p className="text-xs text-amber-400 flex items-center gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              You will not receive alerts when the EKQR daily cap is reached.
             </p>
           )}
 

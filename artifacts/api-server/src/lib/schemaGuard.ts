@@ -1570,6 +1570,7 @@ async function runGuard(): Promise<void> {
   // ── notification sound / vibration preference columns ────────────────────────
   await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_sound_enabled BOOLEAN NOT NULL DEFAULT TRUE`);
   await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_vibration_enabled BOOLEAN NOT NULL DEFAULT TRUE`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS ekqr_cap_alert_emails BOOLEAN NOT NULL DEFAULT TRUE`);
 
   // ── provider_products: full table + capability audit columns ─────────────
   // CREATE TABLE handles fresh DBs; ALTER TABLEs below are no-ops on existing tables.

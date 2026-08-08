@@ -530,6 +530,8 @@ export interface User {
   settlementStateChangedEmails?: boolean;
   /** Whether the merchant wants an email when an EKQR synchronisation issue is detected. Defaults to true. */
   ekqrSyncAlertEmails?: boolean;
+  /** Whether the admin wants an email when the EKQR daily cap is reached. Defaults to true. */
+  ekqrCapAlertEmails?: boolean;
   /** Whether the merchant wants an email when their subscription plan is changed by an admin. Defaults to true. */
   planChangeEmails?: boolean;
   /** Whether the merchant wants in-app notifications for reconciliation alerts. Defaults to true. */
@@ -707,6 +709,8 @@ export interface Merchant {
   weeklyDeliveryDigestEmails?: boolean;
   /** Whether the merchant will receive EKQR sync alert emails. Defaults to true. */
   ekqrSyncAlertEmails?: boolean;
+  /** Whether the admin will receive EKQR daily cap alert emails. Defaults to true. */
+  ekqrCapAlertEmails?: boolean;
   /** Whether the merchant will receive plan change emails. Defaults to true. */
   planChangeEmails?: boolean;
   /** Whether the merchant has enabled in-app notifications for reconciliation alerts. Defaults to true. */
@@ -4568,10 +4572,10 @@ export interface UpigatewaySettingsInput {
   /** Whether merchants can view UPIGateway payin orders */
   merchantAccess?: boolean;
   /**
-   * Shared daily cap in INR for all UPIGateway payin orders (omit to leave unchanged). Must be a positive integer between 1 and 100,000,000.
-   * @minimum 1
-   * @maximum 100000000
-   */
+     * Shared daily cap in INR for all UPIGateway payin orders (omit to leave unchanged). Must be a positive integer between 1 and 100,000,000.
+     * @minimum 1
+     * @maximum 100000000
+     */
   dailyLimit?: number;
 }
 
@@ -6349,6 +6353,8 @@ export type UpdateMyPreferencesBody = {
   settlementStateChangedEmails?: boolean;
   /** Whether the merchant wants an email when an EKQR synchronisation issue is detected. */
   ekqrSyncAlertEmails?: boolean;
+  /** Whether the admin wants an email when the EKQR daily cap is reached. */
+  ekqrCapAlertEmails?: boolean;
   /** Whether the merchant wants an email when their subscription plan is changed by an admin. */
   planChangeEmails?: boolean;
   /** Whether the merchant wants in-app notifications for reconciliation alerts. */
@@ -8860,3 +8866,4 @@ export type GetIamAudit200 = {
   page?: number;
   limit?: number;
 };
+
