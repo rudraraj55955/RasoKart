@@ -8118,7 +8118,8 @@ export const GetUpigatewayCapUsageResponse = zod.object({
   "todayTotal": zod.number().describe('Sum of CREATED+PENDING+PAID UPIGateway order amounts for today (cross-merchant)'),
   "dailyLimit": zod.number().describe('Configured shared daily cap in INR'),
   "utilizationPct": zod.number().min(getUpigatewayCapUsageResponseUtilizationPctMin).max(getUpigatewayCapUsageResponseUtilizationPctMax).describe('Current utilization as a percentage (0-100)'),
-  "warningThreshold": zod.number().describe('Percentage at which a warning badge is shown (e.g. 80)')
+  "warningThreshold": zod.number().describe('Percentage at which a warning badge is shown (e.g. 80)'),
+  "resetsAt": zod.coerce.date().describe('ISO timestamp of when the daily cap resets (midnight UTC of the next day)')
 })
 
 

@@ -17802,7 +17802,7 @@ components:
 
     UpigatewayCapUsage:
       type: object
-      required: [todayTotal, dailyLimit, utilizationPct, warningThreshold]
+      required: [todayTotal, dailyLimit, utilizationPct, warningThreshold, resetsAt]
       properties:
         todayTotal:
           type: number
@@ -17818,6 +17818,10 @@ components:
         warningThreshold:
           type: integer
           description: Percentage at which a warning badge is shown (e.g. 80)
+        resetsAt:
+          type: string
+          format: date-time
+          description: ISO timestamp of when the daily cap resets (midnight UTC of the next day)
 
     UpigatewaySettingsInput:
       type: object

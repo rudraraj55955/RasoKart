@@ -1356,6 +1356,23 @@ function UpigatewayPayinPanel() {
 
   const { data: capUsage, isLoading: capLoading } = useGetUpigatewayCapUsage({ request: { headers: authHeader() } } as any);
 
+  const [capResetCountdown, setCapResetCountdown] = useState<string | null>(null);
+
+  useEffect(() => {
+    function computeCountdown() {
+      if (!capUsage?.resetsAt) { setCapResetCountdown(null); return; }
+      const msLeft = new Date(capUsage.resetsAt).getTime() - Date.now();
+      if (msLeft <= 0) { setCapResetCountdown(null); return; }
+      const totalMinutes = Math.floor(msLeft / 60_000);
+      const hours = Math.floor(totalMinutes / 60);
+      const minutes = totalMinutes % 60;
+      setCapResetCountdown(hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`);
+    }
+    computeCountdown();
+    const timer = setInterval(computeCountdown, 60_000);
+    return () => clearInterval(timer);
+  }, [capUsage?.resetsAt]);
+
   const currentEnabled = enabled !== null ? enabled : (cfg?.enabled ?? false);
   const currentEnv: "test" | "live" = env !== null ? env : ((cfg?.env as "test" | "live") ?? "test");
   const currentMerchantAccess = merchantAccess !== null ? merchantAccess : (cfg?.merchantAccess ?? false);
@@ -1507,9 +1524,16 @@ function UpigatewayPayinPanel() {
                 style={{ width: `${Math.min(100, capUsage.utilizationPct)}%` }}
               />
             </div>
-            <p className="text-xs text-muted-foreground">
-              Counts CREATED + PENDING + PAID orders today (UTC). Resets at midnight UTC.
-            </p>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs text-muted-foreground">
+                Counts CREATED + PENDING + PAID orders today (UTC). Resets at midnight UTC.
+              </p>
+              {capUsage.utilizationPct >= capUsage.warningThreshold && capResetCountdown && (
+                <span className="shrink-0 text-xs text-muted-foreground whitespace-nowrap">
+                  Resets in <span className="font-medium text-foreground">{capResetCountdown}</span>
+                </span>
+              )}
+            </div>
           </>
         ) : (
           <p className="text-xs text-muted-foreground">Could not load cap data.</p>

@@ -19,4 +19,6 @@ export interface UpigatewayCapUsage {
   utilizationPct: number;
   /** Percentage at which a warning badge is shown (e.g. 80) */
   warningThreshold: number;
+  /** ISO timestamp of when the daily cap resets (midnight UTC of the next day) */
+  resetsAt: Date;
 }

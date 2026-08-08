@@ -140,6 +140,9 @@ router.get("/cap-usage", async (req, res, next) => {
     // Use start of today in UTC for consistency with the payin enforcement logic
     const startOfDay = new Date();
     startOfDay.setUTCHours(0, 0, 0, 0);
+    // Cap resets at the start of the next UTC day
+    const resetsAt = new Date(startOfDay);
+    resetsAt.setUTCDate(resetsAt.getUTCDate() + 1);
     const todayTotal = await getProviderDailyActiveTotal(db, startOfDay, "upigateway");
     const dailyLimit = cfg.dailyLimit;
     const utilizationPct = dailyLimit > 0 ? Math.min(100, Math.round((todayTotal / dailyLimit) * 100)) : 0;
@@ -150,6 +153,7 @@ router.get("/cap-usage", async (req, res, next) => {
       dailyLimit,
       utilizationPct,
       warningThreshold,
+      resetsAt: resetsAt.toISOString(),
     });
   } catch (err) { next(err); }
 });
