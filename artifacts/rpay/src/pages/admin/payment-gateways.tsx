@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import {
@@ -1354,8 +1354,30 @@ function UpigatewayPayinPanel() {
   const [checkStatusResult, setCheckStatusResult] = useState<{ ok: boolean; message: string; data?: { status: string; amount: string; upiTxnId?: string | null } | null } | null>(null);
   const [checkTxnId, setCheckTxnId] = useState("");
 
-  const { data: capUsage, isLoading: capLoading } = useGetUpigatewayCapUsage({ request: { headers: authHeader() } } as any);
+  // Cap bar: auto-refresh every 30s (paused when tab hidden)
+  const [capSecondsAgo, setCapSecondsAgo] = useState(0);
+  const capTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const { data: capUsage, isLoading: capLoading, dataUpdatedAt: capDataUpdatedAt } = useGetUpigatewayCapUsage({
+    request: { headers: authHeader() },
+    query: {
+      refetchInterval: 30_000,
+      refetchIntervalInBackground: false,
+    },
+  } as any);
+
+  // Reset "updated ago" counter on every successful fetch (dataUpdatedAt changes even when payload is identical)
+  useEffect(() => {
+    if (!capDataUpdatedAt) return;
+    setCapSecondsAgo(0);
+    if (capTickRef.current) clearInterval(capTickRef.current);
+    capTickRef.current = setInterval(() => {
+      setCapSecondsAgo(Math.floor((Date.now() - capDataUpdatedAt) / 1000));
+    }, 1000);
+    return () => { if (capTickRef.current) clearInterval(capTickRef.current); };
+  }, [capDataUpdatedAt]);
+
+  // Cap reset countdown (#2448)
   const [capResetCountdown, setCapResetCountdown] = useState<string | null>(null);
 
   useEffect(() => {
