@@ -17751,7 +17751,7 @@ components:
 
     UpigatewaySettings:
       type: object
-      required: [enabled, env, baseUrl, apiKeySet, apiKeyMasked, merchantId, createOrderEndpoint, checkStatusEndpoint, webhookSecretSet, minAmount, maxAmount, merchantAccess]
+      required: [enabled, env, baseUrl, apiKeySet, apiKeyMasked, merchantId, createOrderEndpoint, checkStatusEndpoint, webhookSecretSet, minAmount, maxAmount, dailyLimit, merchantAccess]
       properties:
         enabled:
           type: boolean
@@ -17790,6 +17790,9 @@ components:
         merchantAccess:
           type: boolean
           description: Whether merchants can view UPIGateway payin orders in their portal
+        dailyLimit:
+          type: integer
+          description: Shared daily cap in INR for all UPIGateway payin orders
         lastUpdatedByEmail:
           type: string
           nullable: true
@@ -17860,6 +17863,11 @@ components:
         merchantAccess:
           type: boolean
           description: Whether merchants can view UPIGateway payin orders
+        dailyLimit:
+          type: integer
+          minimum: 1
+          maximum: 100000000
+          description: Shared daily cap in INR for all UPIGateway payin orders (omit to leave unchanged). Must be a positive integer between 1 and 100,000,000.
 
     UpigatewayTestResult:
       type: object
@@ -20286,4 +20294,3 @@ components:
           type: integer
         limit:
           type: integer
-

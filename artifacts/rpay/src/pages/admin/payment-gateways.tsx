@@ -1345,6 +1345,8 @@ function UpigatewayPayinPanel() {
   const [checkStatusEndpoint, setCheckStatusEndpoint] = useState("");
   const [minAmount, setMinAmount] = useState("");
   const [maxAmount, setMaxAmount] = useState("");
+  const [dailyCapInput, setDailyCapInput] = useState("");
+  const [dailyCapError, setDailyCapError] = useState("");
   const [merchantAccess, setMerchantAccess] = useState<boolean | null>(null);
 
   const [showKey, setShowKey] = useState(false);
@@ -1401,7 +1403,7 @@ function UpigatewayPayinPanel() {
 
   const unchanged = apiKey === "" && webhookSecret === "" && enabled === null && env === null
     && baseUrl === "" && merchantId === "" && createOrderEndpoint === "" && checkStatusEndpoint === ""
-    && minAmount === "" && maxAmount === "" && merchantAccess === null;
+    && minAmount === "" && maxAmount === "" && dailyCapInput === "" && merchantAccess === null;
 
   const { mutate: saveSettings, isPending: saving } = useUpdateUpigatewaySettings({
     mutation: {
@@ -1409,8 +1411,9 @@ function UpigatewayPayinPanel() {
         toast.success("UPIGateway Payin settings saved");
         setApiKey(""); setWebhookSecret(""); setEnabled(null); setEnv(null);
         setBaseUrl(""); setMerchantId(""); setCreateOrderEndpoint(""); setCheckStatusEndpoint("");
-        setMinAmount(""); setMaxAmount(""); setMerchantAccess(null);
+        setMinAmount(""); setMaxAmount(""); setDailyCapInput(""); setDailyCapError(""); setMerchantAccess(null);
         qc.invalidateQueries({ queryKey: getGetUpigatewaySettingsQueryKey() });
+        qc.invalidateQueries({ queryKey: getGetUpigatewayCapUsageQueryKey() });
       },
       onError: (err: Error) => toast.error(err.message),
     },
@@ -1461,6 +1464,15 @@ function UpigatewayPayinPanel() {
     if (checkStatusEndpoint.trim()) body.checkStatusEndpoint = checkStatusEndpoint.trim();
     if (minAmount.trim()) body.minAmount = parseInt(minAmount);
     if (maxAmount.trim()) body.maxAmount = parseInt(maxAmount);
+    if (dailyCapInput.trim()) {
+      const parsedCap = Math.round(Number(dailyCapInput));
+      if (!Number.isFinite(parsedCap) || parsedCap <= 0 || parsedCap > 100_000_000) {
+        setDailyCapError("Must be a whole number between 1 and 10,00,00,000");
+        return;
+      }
+      setDailyCapError("");
+      body.dailyLimit = parsedCap;
+    }
     if (apiKey !== "") body.apiKey = apiKey.trim();
     if (webhookSecret !== "") body.webhookSecret = webhookSecret.trim();
     saveSettings({ data: body as any });
@@ -1560,6 +1572,26 @@ function UpigatewayPayinPanel() {
         ) : (
           <p className="text-xs text-muted-foreground">Could not load cap data.</p>
         )}
+        {/* Inline daily cap editor */}
+        <div className="pt-2 border-t border-border/30 space-y-1.5">
+          <Label className="text-xs">Daily Cap (₹)</Label>
+          <Input
+            type="number"
+            min={1}
+            step={1}
+            max={100000000}
+            className={`h-8 text-xs ${dailyCapError ? "border-destructive focus-visible:ring-destructive" : ""}`}
+            placeholder={String(cfg?.dailyLimit ?? capUsage?.dailyLimit ?? 1000000)}
+            value={dailyCapInput}
+            onChange={e => { setDailyCapInput(e.target.value); if (dailyCapError) setDailyCapError(""); }}
+          />
+          {dailyCapError
+            ? <p className="text-[11px] text-destructive">{dailyCapError}</p>
+            : <p className="text-[11px] text-muted-foreground">
+                Shared limit across all UPIGateway payin orders for the day. Saved with the settings form below.
+              </p>
+          }
+        </div>
       </div>
 
       {/* Webhook URL */}

@@ -39,6 +39,7 @@ router.get("/settings", async (req, res, next) => {
       webhookSecretSet: cfg.webhookSecretSet,
       minAmount: cfg.minAmount,
       maxAmount: cfg.maxAmount,
+      dailyLimit: cfg.dailyLimit,
       merchantAccess: cfg.merchantAccess,
       lastUpdatedByEmail: cfg.lastUpdatedByEmail,
       lastUpdatedAt: cfg.lastUpdatedAt,
@@ -52,14 +53,28 @@ router.put("/settings", async (req, res, next) => {
     const user = (req as any).user;
     const {
       enabled, env, baseUrl, apiKey, webhookSecret, merchantId,
-      createOrderEndpoint, checkStatusEndpoint, minAmount, maxAmount, merchantAccess,
+      createOrderEndpoint, checkStatusEndpoint, minAmount, maxAmount, merchantAccess, dailyLimit,
     } = req.body as {
       enabled?: boolean; env?: "test" | "live"; baseUrl?: string;
       apiKey?: string; webhookSecret?: string; merchantId?: string;
       createOrderEndpoint?: string; checkStatusEndpoint?: string;
       minAmount?: number | string; maxAmount?: number | string;
-      merchantAccess?: boolean;
+      merchantAccess?: boolean; dailyLimit?: number | string;
     };
+
+    // Validate dailyLimit before any writes
+    if (dailyLimit !== undefined) {
+      const parsedDailyLimit = Number(dailyLimit);
+      if (
+        !Number.isFinite(parsedDailyLimit) ||
+        !Number.isInteger(parsedDailyLimit) ||
+        parsedDailyLimit <= 0 ||
+        parsedDailyLimit > 100_000_000
+      ) {
+        res.status(400).json({ error: "dailyLimit must be a positive integer between 1 and 100,000,000" });
+        return;
+      }
+    }
 
     const oldCfg = await loadUpigatewayConfig();
 
@@ -78,6 +93,7 @@ router.put("/settings", async (req, res, next) => {
     if (minAmount !== undefined) await upsert(SYSTEM_CONFIG_KEYS.UPIGATEWAY_MIN_AMOUNT, String(minAmount));
     if (maxAmount !== undefined) await upsert(SYSTEM_CONFIG_KEYS.UPIGATEWAY_MAX_AMOUNT, String(maxAmount));
     if (merchantAccess !== undefined) await upsert(SYSTEM_CONFIG_KEYS.UPIGATEWAY_MERCHANT_ACCESS, merchantAccess ? "true" : "false");
+    if (dailyLimit !== undefined) await upsert(SYSTEM_CONFIG_KEYS.UPIGATEWAY_DAILY_LIMIT, String(Number(dailyLimit)));
 
     const credentialFields: string[] = [];
     if (apiKey !== undefined) {
@@ -105,6 +121,7 @@ router.put("/settings", async (req, res, next) => {
     if (env !== undefined && oldCfg.env !== env) auditDetails.env = { from: oldCfg.env, to: env };
     if (minAmount !== undefined && oldCfg.minAmount !== Number(minAmount)) auditDetails.minAmount = { from: oldCfg.minAmount, to: Number(minAmount) };
     if (maxAmount !== undefined && oldCfg.maxAmount !== Number(maxAmount)) auditDetails.maxAmount = { from: oldCfg.maxAmount, to: Number(maxAmount) };
+    if (dailyLimit !== undefined && oldCfg.dailyLimit !== Number(dailyLimit)) auditDetails.dailyLimit = { from: oldCfg.dailyLimit, to: Number(dailyLimit) };
 
     if (Object.keys(auditDetails).length > 1) {
       await db.insert(auditLogsTable).values({
@@ -120,14 +137,15 @@ router.put("/settings", async (req, res, next) => {
         .catch(err => req.log.error({ err }, "Failed to dispatch upigateway credential rotation alert"));
     }
 
-    req.log.info({ enabled, env, apiKeyUpdated: apiKey !== undefined }, "upigateway config updated");
+    req.log.info({ enabled, env, apiKeyUpdated: apiKey !== undefined, dailyLimitUpdated: dailyLimit !== undefined }, "upigateway config updated");
     const cfg = await loadUpigatewayConfig();
     res.json({
       enabled: cfg.enabled, env: cfg.env, baseUrl: cfg.baseUrl,
       apiKeySet: cfg.apiKeySet, apiKeyMasked: cfg.apiKeyMasked,
       merchantId: cfg.merchantId, createOrderEndpoint: cfg.createOrderEndpoint,
       checkStatusEndpoint: cfg.checkStatusEndpoint, webhookSecretSet: cfg.webhookSecretSet,
-      minAmount: cfg.minAmount, maxAmount: cfg.maxAmount, merchantAccess: cfg.merchantAccess,
+      minAmount: cfg.minAmount, maxAmount: cfg.maxAmount, dailyLimit: cfg.dailyLimit,
+      merchantAccess: cfg.merchantAccess,
       lastUpdatedByEmail: cfg.lastUpdatedByEmail, lastUpdatedAt: cfg.lastUpdatedAt,
     });
   } catch (err) { next(err); }
@@ -140,9 +158,6 @@ router.get("/cap-usage", async (req, res, next) => {
     // Use start of today in UTC for consistency with the payin enforcement logic
     const startOfDay = new Date();
     startOfDay.setUTCHours(0, 0, 0, 0);
-    // Cap resets at the start of the next UTC day
-    const resetsAt = new Date(startOfDay);
-    resetsAt.setUTCDate(resetsAt.getUTCDate() + 1);
     const todayTotal = await getProviderDailyActiveTotal(db, startOfDay, "upigateway");
     const dailyLimit = cfg.dailyLimit;
     const utilizationPct = dailyLimit > 0 ? Math.min(100, Math.round((todayTotal / dailyLimit) * 100)) : 0;
@@ -153,7 +168,6 @@ router.get("/cap-usage", async (req, res, next) => {
       dailyLimit,
       utilizationPct,
       warningThreshold,
-      resetsAt: resetsAt.toISOString(),
     });
   } catch (err) { next(err); }
 });

@@ -4508,6 +4508,8 @@ export interface UpigatewaySettings {
   maxAmount: number;
   /** Whether merchants can view UPIGateway payin orders in their portal */
   merchantAccess: boolean;
+  /** Shared daily cap in INR for all UPIGateway payin orders */
+  dailyLimit: number;
   /** Email of the admin who last changed this config */
   lastUpdatedByEmail?: string | null;
   /** Timestamp of the most recent config change */
@@ -4565,6 +4567,12 @@ export interface UpigatewaySettingsInput {
   maxAmount?: number;
   /** Whether merchants can view UPIGateway payin orders */
   merchantAccess?: boolean;
+  /**
+   * Shared daily cap in INR for all UPIGateway payin orders (omit to leave unchanged). Must be a positive integer between 1 and 100,000,000.
+   * @minimum 1
+   * @maximum 100000000
+   */
+  dailyLimit?: number;
 }
 
 export interface UpigatewayTestResult {
@@ -8852,4 +8860,3 @@ export type GetIamAudit200 = {
   page?: number;
   limit?: number;
 };
-
