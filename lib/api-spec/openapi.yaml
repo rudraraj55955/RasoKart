@@ -17760,7 +17760,7 @@ components:
 
     UpigatewaySettings:
       type: object
-      required: [enabled, env, baseUrl, apiKeySet, apiKeyMasked, merchantId, createOrderEndpoint, checkStatusEndpoint, webhookSecretSet, minAmount, maxAmount, dailyLimit, merchantAccess]
+      required: [enabled, env, baseUrl, apiKeySet, apiKeyMasked, merchantId, createOrderEndpoint, checkStatusEndpoint, webhookSecretSet, minAmount, maxAmount, dailyLimit, merchantAccess, capWarningThreshold]
       properties:
         enabled:
           type: boolean
@@ -17802,6 +17802,12 @@ components:
         dailyLimit:
           type: integer
           description: Shared daily cap in INR for all UPIGateway payin orders
+        capWarningThreshold:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 80
+          description: Daily cap utilisation percentage at which the amber "near limit" badge appears (1–100, default 80)
         lastUpdatedByEmail:
           type: string
           nullable: true
@@ -17877,6 +17883,11 @@ components:
           minimum: 1
           maximum: 100000000
           description: Shared daily cap in INR for all UPIGateway payin orders (omit to leave unchanged). Must be a positive integer between 1 and 100,000,000.
+        capWarningThreshold:
+          type: integer
+          minimum: 1
+          maximum: 100
+          description: Daily cap utilisation percentage at which the amber "near limit" badge appears (1–100, default 80). Omit to leave unchanged.
 
     UpigatewayTestResult:
       type: object

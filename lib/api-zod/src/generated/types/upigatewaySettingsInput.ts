@@ -36,4 +36,10 @@ export interface UpigatewaySettingsInput {
      * @maximum 100000000
      */
   dailyLimit?: number;
+  /**
+     * Daily cap utilisation percentage at which the amber "near limit" badge appears (1–100, default 80). Omit to leave unchanged.
+     * @minimum 1
+     * @maximum 100
+     */
+  capWarningThreshold?: number;
 }

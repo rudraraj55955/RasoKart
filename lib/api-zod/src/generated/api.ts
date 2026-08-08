@@ -8071,6 +8071,11 @@ export const TestEkqrWebhookResponse = zod.object({
 /**
  * @summary Get UPIGateway payin configuration (admin only)
  */
+export const getUpigatewaySettingsResponseCapWarningThresholdDefault = 80;
+export const getUpigatewaySettingsResponseCapWarningThresholdMax = 100;
+
+
+
 export const GetUpigatewaySettingsResponse = zod.object({
   "enabled": zod.boolean().describe('Whether UPIGateway payin is enabled'),
   "env": zod.enum(['test', 'live']).describe('Gateway environment'),
@@ -8085,6 +8090,7 @@ export const GetUpigatewaySettingsResponse = zod.object({
   "maxAmount": zod.number().describe('Maximum allowed deposit amount in INR'),
   "merchantAccess": zod.boolean().describe('Whether merchants can view UPIGateway payin orders in their portal'),
   "dailyLimit": zod.number().describe('Shared daily cap in INR for all UPIGateway payin orders'),
+  "capWarningThreshold": zod.number().min(1).max(getUpigatewaySettingsResponseCapWarningThresholdMax).default(getUpigatewaySettingsResponseCapWarningThresholdDefault).describe('Daily cap utilisation percentage at which the amber \"near limit\" badge appears (1–100, default 80)'),
   "lastUpdatedByEmail": zod.string().nullish().describe('Email of the admin who last changed this config'),
   "lastUpdatedAt": zod.coerce.date().nullish().describe('Timestamp of the most recent config change')
 })
@@ -8094,6 +8100,8 @@ export const GetUpigatewaySettingsResponse = zod.object({
  * @summary Update UPIGateway payin configuration (admin only)
  */
 export const updateUpigatewaySettingsBodyDailyLimitMax = 100000000;
+
+export const updateUpigatewaySettingsBodyCapWarningThresholdMax = 100;
 
 
 
@@ -8109,8 +8117,14 @@ export const UpdateUpigatewaySettingsBody = zod.object({
   "minAmount": zod.number().optional().describe('Minimum deposit amount in INR'),
   "maxAmount": zod.number().optional().describe('Maximum deposit amount in INR'),
   "merchantAccess": zod.boolean().optional().describe('Whether merchants can view UPIGateway payin orders'),
-  "dailyLimit": zod.number().min(1).max(updateUpigatewaySettingsBodyDailyLimitMax).optional().describe('Shared daily cap in INR for all UPIGateway payin orders (omit to leave unchanged). Must be a positive integer between 1 and 100,000,000.')
+  "dailyLimit": zod.number().min(1).max(updateUpigatewaySettingsBodyDailyLimitMax).optional().describe('Shared daily cap in INR for all UPIGateway payin orders (omit to leave unchanged). Must be a positive integer between 1 and 100,000,000.'),
+  "capWarningThreshold": zod.number().min(1).max(updateUpigatewaySettingsBodyCapWarningThresholdMax).optional().describe('Daily cap utilisation percentage at which the amber \"near limit\" badge appears (1–100, default 80). Omit to leave unchanged.')
 })
+
+export const updateUpigatewaySettingsResponseCapWarningThresholdDefault = 80;
+export const updateUpigatewaySettingsResponseCapWarningThresholdMax = 100;
+
+
 
 export const UpdateUpigatewaySettingsResponse = zod.object({
   "enabled": zod.boolean().describe('Whether UPIGateway payin is enabled'),
@@ -8126,6 +8140,7 @@ export const UpdateUpigatewaySettingsResponse = zod.object({
   "maxAmount": zod.number().describe('Maximum allowed deposit amount in INR'),
   "merchantAccess": zod.boolean().describe('Whether merchants can view UPIGateway payin orders in their portal'),
   "dailyLimit": zod.number().describe('Shared daily cap in INR for all UPIGateway payin orders'),
+  "capWarningThreshold": zod.number().min(1).max(updateUpigatewaySettingsResponseCapWarningThresholdMax).default(updateUpigatewaySettingsResponseCapWarningThresholdDefault).describe('Daily cap utilisation percentage at which the amber \"near limit\" badge appears (1–100, default 80)'),
   "lastUpdatedByEmail": zod.string().nullish().describe('Email of the admin who last changed this config'),
   "lastUpdatedAt": zod.coerce.date().nullish().describe('Timestamp of the most recent config change')
 })

@@ -4514,6 +4514,12 @@ export interface UpigatewaySettings {
   merchantAccess: boolean;
   /** Shared daily cap in INR for all UPIGateway payin orders */
   dailyLimit: number;
+  /**
+     * Daily cap utilisation percentage at which the amber "near limit" badge appears (1–100, default 80)
+     * @minimum 1
+     * @maximum 100
+     */
+  capWarningThreshold: number;
   /** Email of the admin who last changed this config */
   lastUpdatedByEmail?: string | null;
   /** Timestamp of the most recent config change */
@@ -4577,6 +4583,12 @@ export interface UpigatewaySettingsInput {
      * @maximum 100000000
      */
   dailyLimit?: number;
+  /**
+     * Daily cap utilisation percentage at which the amber "near limit" badge appears (1–100, default 80). Omit to leave unchanged.
+     * @minimum 1
+     * @maximum 100
+     */
+  capWarningThreshold?: number;
 }
 
 export interface UpigatewayTestResult {

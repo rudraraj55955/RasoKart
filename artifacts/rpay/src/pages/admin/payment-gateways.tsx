@@ -1348,6 +1348,7 @@ function UpigatewayPayinPanel() {
   const [dailyCapInput, setDailyCapInput] = useState("");
   const [dailyCapError, setDailyCapError] = useState("");
   const [merchantAccess, setMerchantAccess] = useState<boolean | null>(null);
+  const [capWarningThreshold, setCapWarningThreshold] = useState("");
 
   const [showKey, setShowKey] = useState(false);
   const [showSecret, setShowSecret] = useState(false);
@@ -1403,7 +1404,7 @@ function UpigatewayPayinPanel() {
 
   const unchanged = apiKey === "" && webhookSecret === "" && enabled === null && env === null
     && baseUrl === "" && merchantId === "" && createOrderEndpoint === "" && checkStatusEndpoint === ""
-    && minAmount === "" && maxAmount === "" && dailyCapInput === "" && merchantAccess === null;
+    && minAmount === "" && maxAmount === "" && dailyCapInput === "" && merchantAccess === null && capWarningThreshold === "";
 
   const { mutate: saveSettings, isPending: saving } = useUpdateUpigatewaySettings({
     mutation: {
@@ -1411,7 +1412,7 @@ function UpigatewayPayinPanel() {
         toast.success("UPIGateway Payin settings saved");
         setApiKey(""); setWebhookSecret(""); setEnabled(null); setEnv(null);
         setBaseUrl(""); setMerchantId(""); setCreateOrderEndpoint(""); setCheckStatusEndpoint("");
-        setMinAmount(""); setMaxAmount(""); setDailyCapInput(""); setDailyCapError(""); setMerchantAccess(null);
+        setMinAmount(""); setMaxAmount(""); setDailyCapInput(""); setDailyCapError(""); setMerchantAccess(null); setCapWarningThreshold("");
         qc.invalidateQueries({ queryKey: getGetUpigatewaySettingsQueryKey() });
         qc.invalidateQueries({ queryKey: getGetUpigatewayCapUsageQueryKey() });
       },
@@ -1473,6 +1474,7 @@ function UpigatewayPayinPanel() {
       setDailyCapError("");
       body.dailyLimit = parsedCap;
     }
+    if (capWarningThreshold.trim()) body.capWarningThreshold = parseInt(capWarningThreshold);
     if (apiKey !== "") body.apiKey = apiKey.trim();
     if (webhookSecret !== "") body.webhookSecret = webhookSecret.trim();
     saveSettings({ data: body as any });
@@ -1754,6 +1756,23 @@ function UpigatewayPayinPanel() {
               />
             </div>
           </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Daily Cap Warning Threshold (%)</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                min={1}
+                max={100}
+                className="h-9 text-xs w-28"
+                placeholder={String(cfg?.capWarningThreshold ?? 80)}
+                value={capWarningThreshold}
+                onChange={e => setCapWarningThreshold(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Amber "near limit" badge appears when daily utilisation reaches this percentage of the cap (1–100). Default: 80%.
+              </p>
+            </div>
+          </div>
           <div className="flex items-center justify-between p-3 rounded-lg border border-border/40 bg-muted/10">
             <div>
               <p className="text-sm font-medium">Merchant Portal Access</p>
@@ -1830,7 +1849,7 @@ function UpigatewayPayinPanel() {
           <Button size="sm" variant="ghost" onClick={() => {
             setApiKey(""); setWebhookSecret(""); setEnabled(null); setEnv(null);
             setBaseUrl(""); setMerchantId(""); setCreateOrderEndpoint(""); setCheckStatusEndpoint("");
-            setMinAmount(""); setMaxAmount(""); setMerchantAccess(null);
+            setMinAmount(""); setMaxAmount(""); setDailyCapInput(""); setDailyCapError(""); setMerchantAccess(null); setCapWarningThreshold("");
             setTestResult(null); setTestOrderResult(null); setCheckStatusResult(null);
           }} disabled={saving}>Cancel</Button>
         )}

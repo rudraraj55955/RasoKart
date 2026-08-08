@@ -13,7 +13,7 @@
 
 import { Router } from "express";
 import { db, systemConfigTable, auditLogsTable, SYSTEM_CONFIG_KEYS } from "@workspace/db";
-import { inArray, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { encryptSecret } from "../helpers/cryptoUtils";
 import { loadUpigatewayConfig, upigatewayCreateOrder, upigatewayCheckStatus, upigatewayFormatDate } from "../helpers/upigatewayPayin";
@@ -41,6 +41,7 @@ router.get("/settings", async (req, res, next) => {
       maxAmount: cfg.maxAmount,
       dailyLimit: cfg.dailyLimit,
       merchantAccess: cfg.merchantAccess,
+      capWarningThreshold: cfg.capWarningThreshold,
       lastUpdatedByEmail: cfg.lastUpdatedByEmail,
       lastUpdatedAt: cfg.lastUpdatedAt,
     });
@@ -51,18 +52,21 @@ router.get("/settings", async (req, res, next) => {
 router.put("/settings", async (req, res, next) => {
   try {
     const user = (req as any).user;
+
     const {
       enabled, env, baseUrl, apiKey, webhookSecret, merchantId,
-      createOrderEndpoint, checkStatusEndpoint, minAmount, maxAmount, merchantAccess, dailyLimit,
+      createOrderEndpoint, checkStatusEndpoint, minAmount, maxAmount,
+      merchantAccess, dailyLimit, capWarningThreshold,
     } = req.body as {
       enabled?: boolean; env?: "test" | "live"; baseUrl?: string;
       apiKey?: string; webhookSecret?: string; merchantId?: string;
       createOrderEndpoint?: string; checkStatusEndpoint?: string;
       minAmount?: number | string; maxAmount?: number | string;
       merchantAccess?: boolean; dailyLimit?: number | string;
+      capWarningThreshold?: number | string;
     };
 
-    // Validate dailyLimit before any writes
+    // Validate dailyLimit only when supplied
     if (dailyLimit !== undefined) {
       const parsedDailyLimit = Number(dailyLimit);
       if (
@@ -94,6 +98,11 @@ router.put("/settings", async (req, res, next) => {
     if (maxAmount !== undefined) await upsert(SYSTEM_CONFIG_KEYS.UPIGATEWAY_MAX_AMOUNT, String(maxAmount));
     if (merchantAccess !== undefined) await upsert(SYSTEM_CONFIG_KEYS.UPIGATEWAY_MERCHANT_ACCESS, merchantAccess ? "true" : "false");
     if (dailyLimit !== undefined) await upsert(SYSTEM_CONFIG_KEYS.UPIGATEWAY_DAILY_LIMIT, String(Number(dailyLimit)));
+    if (capWarningThreshold !== undefined) {
+      const raw = parseInt(String(capWarningThreshold));
+      const pct = Number.isNaN(raw) ? 80 : Math.max(1, Math.min(100, raw));
+      await upsert(SYSTEM_CONFIG_KEYS.UPIGATEWAY_CAP_WARNING_THRESHOLD, String(pct));
+    }
 
     const credentialFields: string[] = [];
     if (apiKey !== undefined) {
@@ -146,6 +155,7 @@ router.put("/settings", async (req, res, next) => {
       checkStatusEndpoint: cfg.checkStatusEndpoint, webhookSecretSet: cfg.webhookSecretSet,
       minAmount: cfg.minAmount, maxAmount: cfg.maxAmount, dailyLimit: cfg.dailyLimit,
       merchantAccess: cfg.merchantAccess,
+      capWarningThreshold: cfg.capWarningThreshold,
       lastUpdatedByEmail: cfg.lastUpdatedByEmail, lastUpdatedAt: cfg.lastUpdatedAt,
     });
   } catch (err) { next(err); }
@@ -155,16 +165,14 @@ router.put("/settings", async (req, res, next) => {
 router.get("/cap-usage", async (req, res, next) => {
   try {
     const cfg = await loadUpigatewayConfig();
-    // Use start of today in UTC for consistency with the payin enforcement logic
     const startOfDay = new Date();
     startOfDay.setUTCHours(0, 0, 0, 0);
+    const resetsAt = new Date(startOfDay);
+    resetsAt.setUTCDate(resetsAt.getUTCDate() + 1);
     const todayTotal = await getProviderDailyActiveTotal(db, startOfDay, "upigateway");
     const dailyLimit = cfg.dailyLimit;
     const utilizationPct = dailyLimit > 0 ? Math.min(100, Math.round((todayTotal / dailyLimit) * 100)) : 0;
-    // Warning threshold: 80% (configurable in future; hard-coded here to keep scope narrow)
-    const warningThreshold = 80;
-    const resetsAt = new Date(startOfDay);
-    resetsAt.setUTCDate(resetsAt.getUTCDate() + 1);
+    const warningThreshold = cfg.capWarningThreshold;
     res.json({
       todayTotal,
       dailyLimit,
@@ -184,12 +192,10 @@ router.post("/test-credentials", async (req, res, next) => {
       return;
     }
 
-    // Try a reachability check on the base URL
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 6000);
       const url = `${cfg.baseUrl.replace(/\/$/, "")}${cfg.createOrderEndpoint}`;
-      // HEAD is often rejected; fall back to a minimal POST with missing params
       const testRes = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -197,7 +203,6 @@ router.post("/test-credentials", async (req, res, next) => {
         signal: controller.signal,
       });
       clearTimeout(timeout);
-      // Any HTTP response (even error) means the endpoint is reachable
       if (testRes.status < 500) {
         res.json({ ok: true, message: "Credentials configured and endpoint is reachable" });
       } else {

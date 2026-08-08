@@ -1110,15 +1110,33 @@ export async function notifyAdminsOfEkqrCapFull(opts: {
   resetsAt: string;
 }): Promise<void> {
   try {
-    // ── Dedup: one alert per UTC calendar day ──────────────────────────────
     const todayUtcDate = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
-    const existingRows = await db
-      .select({ value: systemConfigTable.value })
-      .from(systemConfigTable)
-      .where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.UPIGATEWAY_CAP_ALERT_LAST_SENT_DATE))
-      .limit(1);
 
-    if (existingRows[0]?.value === todayUtcDate) {
+    // ── Atomic dedup: one alert per UTC calendar day ───────────────────────
+    // A single INSERT … ON CONFLICT DO UPDATE … WHERE value IS DISTINCT FROM
+    // today … RETURNING is atomic at the PostgreSQL index level.
+    //
+    // ┌─────────────────────────────────────────────────────────────────────┐
+    // │ Scenario                  │ INSERT outcome  │ RETURNING rows        │
+    // │ Row absent (fresh DB)     │ INSERT wins     │ 1 row  → claim = true │
+    // │ Row exists, old date      │ conflict→UPDATE │ 1 row  → claim = true │
+    // │ Row exists, today already │ conflict, WHERE │ 0 rows → claim = false│
+    // │                           │ false → no-op   │                       │
+    // └─────────────────────────────────────────────────────────────────────┘
+    // Concurrent first-callers: PG serialises at the index — exactly one
+    // INSERT wins; the other sees a conflict and follows the WHERE-false path,
+    // getting 0 rows back and skipping.
+    const claimRows = await db.execute(
+      sql`INSERT INTO system_config (key, value)
+          VALUES (${SYSTEM_CONFIG_KEYS.UPIGATEWAY_CAP_ALERT_LAST_SENT_DATE}, ${todayUtcDate})
+          ON CONFLICT (key) DO UPDATE
+            SET value = EXCLUDED.value
+            WHERE system_config.value IS DISTINCT FROM EXCLUDED.value
+          RETURNING value`
+    );
+    const claimed = (claimRows as unknown as unknown[]).length > 0;
+
+    if (!claimed) {
       logger.info({ todayUtcDate }, "EKQR cap alert suppressed — already sent today");
       return;
     }
@@ -1139,17 +1157,6 @@ export async function notifyAdminsOfEkqrCapFull(opts: {
 
     const sent = results.filter(r => r.status === "fulfilled" && r.value).length;
     const failed = results.length - sent;
-
-    // Persist the dedup flag only after at least one email was dispatched.
-    if (sent > 0) {
-      await db
-        .insert(systemConfigTable)
-        .values({ key: SYSTEM_CONFIG_KEYS.UPIGATEWAY_CAP_ALERT_LAST_SENT_DATE, value: todayUtcDate })
-        .onConflictDoUpdate({
-          target: systemConfigTable.key,
-          set: { value: todayUtcDate },
-        });
-    }
 
     logger.info(
       { todayTotal: opts.todayTotal, dailyLimit: opts.dailyLimit, totalAdmins: recipients.length, sent, failed },

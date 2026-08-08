@@ -17,6 +17,7 @@ export interface UpigatewayConfig {
   maxAmount: number;
   dailyLimit: number;
   merchantAccess: boolean;
+  capWarningThreshold: number;
   apiKeySet: boolean;
   apiKeyMasked: string;
   webhookSecretSet: boolean;
@@ -37,6 +38,7 @@ const CONFIG_KEYS = [
   SYSTEM_CONFIG_KEYS.UPIGATEWAY_MAX_AMOUNT,
   SYSTEM_CONFIG_KEYS.UPIGATEWAY_DAILY_LIMIT,
   SYSTEM_CONFIG_KEYS.UPIGATEWAY_MERCHANT_ACCESS,
+  SYSTEM_CONFIG_KEYS.UPIGATEWAY_CAP_WARNING_THRESHOLD,
 ] as const;
 
 function maskSecret(s: string): string {
@@ -77,6 +79,7 @@ export async function loadUpigatewayConfig(): Promise<UpigatewayConfig> {
     maxAmount: parseInt(map.get(SYSTEM_CONFIG_KEYS.UPIGATEWAY_MAX_AMOUNT) ?? "200000") || 200000,
     dailyLimit: parseInt(map.get(SYSTEM_CONFIG_KEYS.UPIGATEWAY_DAILY_LIMIT) ?? "1000000") || 1000000,
     merchantAccess: (map.get(SYSTEM_CONFIG_KEYS.UPIGATEWAY_MERCHANT_ACCESS) ?? "false") === "true",
+    capWarningThreshold: parseInt(map.get(SYSTEM_CONFIG_KEYS.UPIGATEWAY_CAP_WARNING_THRESHOLD) ?? "80") || 80,
     apiKeySet: rawApiKey.length > 0,
     apiKeyMasked: maskSecret(rawApiKey),
     webhookSecretSet: rawSecret.length > 0,
