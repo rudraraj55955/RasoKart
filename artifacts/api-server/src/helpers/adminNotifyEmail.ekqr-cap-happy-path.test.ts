@@ -38,16 +38,20 @@ import { notifyAdminsOfEkqrCapFull } from "./adminNotifyEmail";
 // ── DB mock helpers ─────────────────────────────────────────────────────────
 
 /**
- * Mock db.execute to return a fixed rows array and record every call.
+ * Mock db.execute to return a pg-QueryResult-shaped object and record every call.
  *
- * The function calls db.execute exactly once with the atomic dedup INSERT.
- * Pass `rows = [{ value: TODAY_UTC }]` → claim succeeds (first alert of day).
- * Pass `rows = []`                     → already sent today (suppressed).
+ * drizzle node-postgres db.execute returns the full pg QueryResult; the function
+ * reads the claim result via `(claimRows as any).rows?.length ?? 0`.
+ *
+ * Pass `rows = [{ value: TODAY_UTC }]` → rows.length > 0 → claim succeeds.
+ * Pass `rows = []`                     → rows.length === 0 → suppressed.
  */
 function buildExecuteMock(executeLog: unknown[], rows: unknown[]) {
   (db as any).execute = (_query: unknown) => {
     executeLog.push(_query);
-    return Promise.resolve(rows);
+    // Mirror the real pg QueryResult shape so the production claim check works:
+    //   const claimed = ((claimRows as any).rows?.length ?? 0) > 0;
+    return Promise.resolve({ rows });
   };
 }
 

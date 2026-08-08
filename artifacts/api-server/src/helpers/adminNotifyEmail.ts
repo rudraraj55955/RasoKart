@@ -1104,9 +1104,9 @@ export function buildEkqrCapFullHtml(opts: {
  * PostgreSQL index level, and exactly one wins the claim.  The claim covers
  * both channels — only the first caller per UTC day dispatches anything.
  *
- * Transient-failure safety: if the claim is won but neither channel has any
- * opted-in admins, the claim is released (conditional UPDATE) so the next
- * cap-exceeded request on the same day can retry.
+ * Transient-failure safety: if the claim is won but all email sends fail,
+ * the claim is released (conditional UPDATE) so the next cap-exceeded request
+ * on the same day can retry.
  *
  * Fire-and-forget safe: all errors are caught and logged; the caller should
  * call this without awaiting or with .catch() to avoid blocking the request.
@@ -1145,7 +1145,9 @@ export async function notifyAdminsOfEkqrCapFull(
             WHERE system_config.value IS DISTINCT FROM EXCLUDED.value
           RETURNING value`
     );
-    const claimed = (claimRows as { rows: unknown[] }).rows.length > 0;
+    // drizzle node-postgres db.execute returns the full pg QueryResult whose
+    // returned rows are in result.rows (not at the top level of the object).
+    const claimed = ((claimRows as any).rows?.length ?? 0) > 0;
 
     if (!claimed) {
       logger.info({ todayUtcDate }, "EKQR cap alert suppressed — already sent today");
