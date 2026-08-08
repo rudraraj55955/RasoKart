@@ -85,10 +85,12 @@ function buildSelectMock(
 
 const originalExecute = (db as any).execute?.bind(db);
 const originalSelect = (db as any).select.bind(db);
+const originalUpdate = (db as any).update?.bind(db);
 
 afterEach(() => {
   (db as any).execute = originalExecute;
   (db as any).select = originalSelect;
+  if (originalUpdate) (db as any).update = originalUpdate;
 });
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -218,6 +220,70 @@ describe("notifyAdminsOfEkqrCapFull — happy path (at least one admin opted in)
     await assert.doesNotReject(
       () => notifyAdminsOfEkqrCapFull(SAMPLE_OPTS),
       "notifyAdminsOfEkqrCapFull must swallow db.execute errors",
+    );
+  });
+
+  it("releases the dedup claim — db.update called exactly once when all email sends fail", async () => {
+    //
+    // Scenario: dedup claim succeeds, one admin is opted in, but every SMTP send
+    // returns a falsy value (simulating a transient SMTP failure).  In this case
+    // the function must release the dedup flag so the next same-day cap-exceeded
+    // request can retry delivery.
+    //
+    // Verified:
+    //   1. db.update is called exactly once (release happens)
+    //   2. The value written via .set() is "" (the clear sentinel used by releaseClaim)
+    //
+    // The WHERE condition passed to .where() is a Drizzle SQL fragment — it targets
+    // UPIGATEWAY_CAP_ALERT_LAST_SENT_DATE where value = today's UTC date, which
+    // is the same TODAY_UTC constant used throughout this test file.
+    //
+
+    // Claim granted — first alert of the day
+    const executeLog: unknown[] = [];
+    buildExecuteMock(executeLog, [{ value: TODAY_UTC }]);
+
+    // First db.select call: email channel → one opted-in recipient
+    // Second db.select call: in-app channel → empty (skips createBulkNotifications)
+    const selectCounter = { calls: 0 };
+    buildSelectMock(
+      [
+        [{ email: "admin@rasokart.com" }], // email recipients
+        [],                                 // in-app admin rows (skips bulk notif)
+      ],
+      selectCounter,
+    );
+
+    // _sendMail always fails — returns false (emailSent will be 0)
+    const failSend = async (_args: unknown) => false as any;
+
+    // Track db.update (releaseClaim) and capture the value written via .set()
+    let updateCallCount = 0;
+    let setCaptured: unknown = undefined;
+    (db as any).update = (_table: unknown) => ({
+      set: (vals: unknown) => {
+        setCaptured = vals;
+        return {
+          where: (_cond: unknown) => {
+            updateCallCount++;
+            return Promise.resolve({ rowCount: 1 });
+          },
+        };
+      },
+    });
+
+    await notifyAdminsOfEkqrCapFull(SAMPLE_OPTS, failSend);
+
+    assert.equal(
+      updateCallCount,
+      1,
+      "db.update (releaseClaim) must be called exactly once when recipients exist but every send fails",
+    );
+
+    assert.deepEqual(
+      setCaptured,
+      { value: "" },
+      "releaseClaim must clear the dedup flag by setting the config value to an empty string",
     );
   });
 });
