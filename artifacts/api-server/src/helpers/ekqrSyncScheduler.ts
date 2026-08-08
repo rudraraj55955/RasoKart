@@ -21,7 +21,7 @@ import { and, eq, isNotNull, lt, sql } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { ekqrCheckOrderStatus, ekqrFormatDate } from "./ekqr";
 import { notifyAdminsOfStuckEkqrQrCodes } from "./adminNotifyEmail";
-import { processEkqrPayment } from "../routes/paymentWebhook";
+import { creditEkqrQrPayment } from "./ekqrCredit";
 
 let syncTask: ScheduledTask | null = null;
 
@@ -159,16 +159,14 @@ export async function runEkqrSync(
         // marks QR as used, inserts transaction + QR payment event,
         // fires merchant callbackUrl. UTR uniqueness prevents double-credit
         // if a webhook already processed the same payment.
-        const result = await processEkqrPayment(
+        const result = await creditEkqrQrPayment({
           qr,
-          data.amount,
-          data.upi_txn_id,
-          (data["txn_id"] as string | undefined),
+          amount:   data.amount,
+          upiTxnId: data.upi_txn_id,
+          ekqrId:   null,   // check_order_status response doesn't include EKQR's internal id
           rawPayload,
-          {
-            p_info: qr.label ?? qr.merchantReference ?? "QR Payment",
-          } as Record<string, string>,
-        );
+          pInfo:    qr.label ?? qr.merchantReference ?? "QR Payment",
+        });
 
         logger.info(
           { qrId: qr.id, ekqrOrderId: qr.ekqrOrderId, merchantId: qr.merchantId, processingResult: result.processingResult },

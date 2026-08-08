@@ -1,52 +1,72 @@
 import { Router } from "express";
-import { db, qrCodesTable, transactionsTable, qrPaymentEventsTable, merchantsTable, systemConfigTable, SYSTEM_CONFIG_KEYS, ekqrWebhookLogsTable, callbackLogsTable, callbackLogAttemptsTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { db, qrCodesTable, systemConfigTable, SYSTEM_CONFIG_KEYS, ekqrWebhookLogsTable } from "@workspace/db";
+import { eq, and, inArray } from "drizzle-orm";
 import { logger } from "../lib/logger";
-import { ekqrClientTxnId, verifyEkqrWebhookSignature } from "../helpers/ekqr";
+import { ekqrCheckOrderStatus, ekqrFormatDate } from "../helpers/ekqr";
+import { creditEkqrQrPayment } from "../helpers/ekqrCredit";
 
 const router = Router();
 
 /**
  * POST /api/payment/webhook
  *
- * Public endpoint — called by EKQR when a payment is confirmed.
- * Verifies the client_txn_id maps to a known QR code, marks it as used,
- * creates a pending deposit transaction, and fires the merchant callback.
+ * Public endpoint — called by EKQR when a QR payment is confirmed.
  *
- * EKQR webhook payload (documented at https://ekqr.in):
- *   { client_txn_id, amount, status, upi_txn_id, txn_id,
- *     p_info, customer_name, customer_email, customer_mobile }
+ * EKQR delivers webhooks as application/x-www-form-urlencoded.
+ * express.urlencoded({ extended: true }) is registered globally in app.ts.
  *
- * status values: SUCCESS | FAILED | PENDING
+ * Documented EKQR webhook fields (https://ekqr.in portal):
+ *   id              — EKQR internal order ID
+ *   amount          — paid amount (string, e.g. "100.00")
+ *   client_txn_id   — our reference, set at QR creation
+ *   createdAt       — order creation timestamp (EKQR side)
+ *   customer_email
+ *   customer_mobile
+ *   customer_name
+ *   customer_vpa    — customer UPI VPA
+ *   p_info          — payment info / description
+ *   redirect_url
+ *   remark          — bank/UPI remark
+ *   status          — "SUCCESS" | "FAILED" | "PENDING"
+ *   txnAt           — transaction timestamp
+ *   udf1, udf2, udf3
+ *   upi_txn_id      — UPI bank reference / UTR
+ *
+ * EKQR does NOT issue a webhook secret or HMAC signature.
+ * The EKQR_WEBHOOK_SECRET config key is retained for future use but is NOT
+ * enforced here — authentication is by client_txn_id matching a known QR.
+ *
+ * Credit path is in helpers/ekqrCredit.ts (shared with the sync scheduler).
+ * See that file for amount verification and idempotency details.
  */
 router.post("/", async (req, res) => {
-  const raw = JSON.stringify(req.body);
+  // express.urlencoded (app.ts line 93) parses the form-encoded body into req.body.
+  // JSON.stringify gives a stable log representation regardless of content-type.
+  const rawPayload = JSON.stringify(req.body ?? {});
   const body = req.body as Record<string, string>;
 
-  const { client_txn_id, amount, status, upi_txn_id, txn_id } = body;
+  // ── Extract all documented EKQR webhook fields ──────────────────────────────
+  const {
+    id: ekqrId,           // EKQR internal order ID
+    amount,
+    client_txn_id,
+    /* createdAt: ekqrCreatedAt, */ // logged via rawPayload
+    /* customer_email, customer_mobile, customer_name: logged via rawPayload */
+    customer_vpa,
+    p_info,
+    /* redirect_url: logged via rawPayload */
+    remark,
+    status,
+    /* txnAt: logged via rawPayload */
+    udf1,
+    udf2,
+    udf3,
+    upi_txn_id,           // UPI bank reference / UTR
+  } = body;
 
-  // ── Signature verification ──────────────────────────────────────────────
-  // If EKQR_WEBHOOK_SECRET is configured, verify the HMAC-SHA256 `hash` field
-  // before doing anything else. Reject unauthenticated requests immediately.
-  const [secretRow] = await db
-    .select({ value: systemConfigTable.value })
-    .from(systemConfigTable)
-    .where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.EKQR_WEBHOOK_SECRET))
-    .limit(1);
+  logger.info({ client_txn_id, ekqrId, status, upi_txn_id }, "EKQR payment webhook received");
 
-  const webhookSecret = secretRow?.value ?? "";
-  if (webhookSecret) {
-    const valid = verifyEkqrWebhookSignature(body, webhookSecret);
-    if (!valid) {
-      req.log.warn({ client_txn_id }, "EKQR webhook rejected: invalid signature");
-      res.status(401).json({ error: "Invalid webhook signature" });
-      return;
-    }
-  }
-
-  req.log.info({ client_txn_id, status }, "EKQR payment webhook received");
-
-  // Always acknowledge immediately so EKQR doesn't retry
+  // Always acknowledge immediately — EKQR retries on non-2xx.
   res.json({ success: true });
 
   let processingResult: "credited" | "duplicate" | "ignored" | "error" = "ignored";
@@ -55,93 +75,159 @@ router.post("/", async (req, res) => {
   let errorMessage: string | null = null;
 
   try {
-    // Guard: EKQR must be enabled
-    const [ekqrEnabledRow] = await db
-      .select({ value: systemConfigTable.value })
+    // ── Load config in one round-trip ─────────────────────────────────────────
+    const configRows = await db
+      .select({ key: systemConfigTable.key, value: systemConfigTable.value })
       .from(systemConfigTable)
-      .where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.EKQR_ENABLED))
-      .limit(1);
+      .where(inArray(systemConfigTable.key, [
+        SYSTEM_CONFIG_KEYS.EKQR_ENABLED,
+        SYSTEM_CONFIG_KEYS.EKQR_API_KEY,
+      ]));
+    const cfg = new Map(configRows.map(r => [r.key, r.value]));
+    const ekqrEnabled = cfg.get(SYSTEM_CONFIG_KEYS.EKQR_ENABLED) === "true";
+    const ekqrApiKey  = cfg.get(SYSTEM_CONFIG_KEYS.EKQR_API_KEY) ?? "";
 
-    if (ekqrEnabledRow?.value !== "true") {
+    // ── Guard: EKQR must be globally enabled ─────────────────────────────────
+    if (!ekqrEnabled) {
       logger.warn({ client_txn_id }, "EKQR webhook received but EKQR is disabled — ignoring");
       processingResult = "ignored";
-      await insertWebhookLog({ clientTxnId: client_txn_id ?? "", qrCodeId: null, merchantId: null, status: status ?? null, amount: amount ?? null, rawPayload: raw, processingResult, errorMessage: "EKQR disabled" });
+      await log({ client_txn_id: client_txn_id ?? "", ekqrId: ekqrId ?? null, upiTxnId: upi_txn_id ?? null, qrCodeId: null, merchantId: null, status: status ?? null, amount: amount ?? null, rawPayload, processingResult, errorMessage: "EKQR disabled" });
       return;
     }
 
-    // Only credit on success
+    // ── Guard: status must be SUCCESS ─────────────────────────────────────────
     if (!status || status.toUpperCase() !== "SUCCESS") {
-      logger.info({ client_txn_id, status }, "EKQR webhook: non-success status — ignoring");
+      logger.info({ client_txn_id, ekqrId, status }, "EKQR webhook: non-SUCCESS status — ignoring");
       processingResult = "ignored";
-      await insertWebhookLog({ clientTxnId: client_txn_id ?? "", qrCodeId: null, merchantId: null, status: status ?? null, amount: amount ?? null, rawPayload: raw, processingResult, errorMessage: "Non-success status" });
+      await log({ client_txn_id: client_txn_id ?? "", ekqrId: ekqrId ?? null, upiTxnId: upi_txn_id ?? null, qrCodeId: null, merchantId: null, status: status ?? null, amount: amount ?? null, rawPayload, processingResult, errorMessage: "Non-SUCCESS status" });
       return;
     }
 
+    // ── Guard: client_txn_id required ────────────────────────────────────────
     if (!client_txn_id) {
-      logger.warn({ body }, "EKQR webhook: missing client_txn_id");
-      processingResult = "ignored";
-      await insertWebhookLog({ clientTxnId: "", qrCodeId: null, merchantId: null, status: status ?? null, amount: amount ?? null, rawPayload: raw, processingResult, errorMessage: "Missing client_txn_id" });
+      logger.warn({ rawPayload }, "EKQR webhook: missing client_txn_id");
+      processingResult = "error";
+      errorMessage = "Missing client_txn_id";
+      await log({ client_txn_id: "", ekqrId: ekqrId ?? null, upiTxnId: upi_txn_id ?? null, qrCodeId: null, merchantId: null, status: status ?? null, amount: amount ?? null, rawPayload, processingResult, errorMessage });
       return;
     }
 
-    // Locate the QR code by ekqrOrderId (stored as our client_txn_id)
-    const [qr] = await db
-      .select()
-      .from(qrCodesTable)
-      .where(eq(qrCodesTable.ekqrOrderId, client_txn_id))
-      .limit(1);
+    // ── Locate QR code ────────────────────────────────────────────────────────
+    // Primary: ekqrOrderId stored at create-time = our client_txn_id
+    // Fallback: parse EKQR-{id} pattern (backward-compat with older QR codes)
+    const qr = await resolveQrCode(client_txn_id);
 
     if (!qr) {
-      // Fallback: try parsing qr code ID from client_txn_id pattern "EKQR-{id}"
-      const match = /^EKQR-(\d+)$/.exec(client_txn_id);
-      if (match) {
-        const qrId = parseInt(match[1]);
-        const [byId] = await db
-          .select()
-          .from(qrCodesTable)
-          .where(and(eq(qrCodesTable.id, qrId), eq(qrCodesTable.status, "active")))
-          .limit(1);
-        if (!byId) {
-          logger.warn({ client_txn_id }, "EKQR webhook: QR code not found or already used");
-          processingResult = "ignored";
-          await insertWebhookLog({ clientTxnId: client_txn_id, qrCodeId: qrId, merchantId: null, status: status ?? null, amount: amount ?? null, rawPayload: raw, processingResult, errorMessage: "QR code not found or already used" });
-          return;
-        }
-        const result = await processEkqrPayment(byId, amount, upi_txn_id, txn_id, raw, body);
-        qrCodeId = byId.id;
-        merchantId = byId.merchantId;
-        processingResult = result.processingResult;
-        errorMessage = result.errorMessage;
-      } else {
-        logger.warn({ client_txn_id }, "EKQR webhook: could not resolve QR code");
-        processingResult = "ignored";
-        await insertWebhookLog({ clientTxnId: client_txn_id, qrCodeId: null, merchantId: null, status: status ?? null, amount: amount ?? null, rawPayload: raw, processingResult, errorMessage: "Could not resolve QR code" });
-        return;
-      }
-    } else {
-      qrCodeId = qr.id;
-      merchantId = qr.merchantId;
-      const result = await processEkqrPayment(qr, amount, upi_txn_id, txn_id, raw, body);
-      processingResult = result.processingResult;
-      errorMessage = result.errorMessage;
+      logger.warn({ client_txn_id, ekqrId }, "EKQR webhook: QR code not found");
+      processingResult = "error";
+      errorMessage = "QR code not found";
+      await log({ client_txn_id, ekqrId: ekqrId ?? null, upiTxnId: upi_txn_id ?? null, qrCodeId: null, merchantId: null, status: status ?? null, amount: amount ?? null, rawPayload, processingResult, errorMessage });
+      return;
     }
 
-    await insertWebhookLog({ clientTxnId: client_txn_id, qrCodeId, merchantId, status: status ?? null, amount: amount ?? null, rawPayload: raw, processingResult, errorMessage });
+    qrCodeId  = qr.id;
+    merchantId = qr.merchantId;
+
+    // ── Optional: independent server-side confirmation ────────────────────────
+    // When EKQR_API_KEY is set, verify the payment via check_order_status before
+    // crediting. A non-SUCCESS API response aborts the credit. A transient
+    // network / timeout failure is logged and the webhook is trusted (we should
+    // not block legitimate credits on API unavailability).
+    let confirmedUpiTxnId = upi_txn_id;
+    if (ekqrApiKey) {
+      try {
+        const txnDate = ekqrFormatDate(new Date(qr.createdAt));
+        const { parsed: statusResp } = await ekqrCheckOrderStatus(ekqrApiKey, client_txn_id, txnDate);
+
+        if (statusResp.status === true && statusResp.data) {
+          const confirmedStatus = (statusResp.data.status ?? "").toUpperCase();
+          if (confirmedStatus !== "SUCCESS") {
+            logger.warn({ client_txn_id, ekqrId, confirmedStatus }, "EKQR check_order_status: not SUCCESS — aborting credit");
+            processingResult = "ignored";
+            errorMessage = `check_order_status returned: ${confirmedStatus}`;
+            await log({ client_txn_id, ekqrId: ekqrId ?? null, upiTxnId: upi_txn_id ?? null, qrCodeId: qr.id, merchantId: qr.merchantId, status: status ?? null, amount: amount ?? null, rawPayload, processingResult, errorMessage });
+            return;
+          }
+          // Use API upi_txn_id if webhook didn't carry one
+          if (statusResp.data.upi_txn_id && !confirmedUpiTxnId) {
+            confirmedUpiTxnId = statusResp.data.upi_txn_id;
+          }
+        } else {
+          logger.warn({ client_txn_id, ekqrId, msg: statusResp.msg }, "EKQR check_order_status: status=false — proceeding with webhook");
+        }
+      } catch (checkErr) {
+        logger.warn({ checkErr, client_txn_id }, "EKQR check_order_status: call failed — proceeding with webhook data");
+      }
+    }
+
+    // ── Build rich metadata payload ───────────────────────────────────────────
+    // Stores all documented EKQR fields so nothing is lost; the metadata column
+    // accepts a JSON string (see transactions schema).
+    const metadataJson = JSON.stringify({
+      ekqrId:          ekqrId          ?? null,
+      upi_txn_id:      confirmedUpiTxnId ?? null,
+      customer_vpa:    customer_vpa    ?? null,
+      customer_name:   body["customer_name"]   ?? null,
+      customer_email:  body["customer_email"]  ?? null,
+      customer_mobile: body["customer_mobile"] ?? null,
+      remark:          remark          ?? null,
+      txnAt:           body["txnAt"]   ?? null,
+      udf1:            udf1            ?? null,
+      udf2:            udf2            ?? null,
+      udf3:            udf3            ?? null,
+    });
+
+    // ── Credit ────────────────────────────────────────────────────────────────
+    const creditResult = await creditEkqrQrPayment({
+      qr,
+      amount,
+      upiTxnId: confirmedUpiTxnId,
+      ekqrId:   ekqrId ?? null,
+      rawPayload: metadataJson,
+      pInfo:    p_info ?? qr.label ?? "QR Payment",
+    });
+
+    processingResult = creditResult.processingResult;
+    errorMessage     = creditResult.errorMessage;
+
+    await log({ client_txn_id, ekqrId: ekqrId ?? null, upiTxnId: confirmedUpiTxnId ?? null, qrCodeId: qr.id, merchantId: qr.merchantId, status: status ?? null, amount: amount ?? null, rawPayload, processingResult, errorMessage });
 
   } catch (err) {
-    logger.error({ err, client_txn_id }, "EKQR webhook processing error");
     processingResult = "error";
     errorMessage = err instanceof Error ? err.message : String(err);
-    try {
-      await insertWebhookLog({ clientTxnId: client_txn_id ?? "", qrCodeId, merchantId, status: status ?? null, amount: amount ?? null, rawPayload: raw, processingResult: "error", errorMessage });
-    } catch (logErr) {
-      logger.warn({ logErr }, "EKQR webhook: failed to insert webhook log after error");
-    }
+    logger.error({ err, client_txn_id, ekqrId }, "EKQR webhook: unhandled processing error");
+    await log({ client_txn_id: client_txn_id ?? "", ekqrId: ekqrId ?? null, upiTxnId: upi_txn_id ?? null, qrCodeId, merchantId, status: status ?? null, amount: amount ?? null, rawPayload, processingResult: "error", errorMessage }).catch(() => {});
   }
 });
 
-async function insertWebhookLog(params: {
-  clientTxnId: string;
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+async function resolveQrCode(clientTxnId: string) {
+  // Primary: match by ekqrOrderId (the client_txn_id we sent at create-order time)
+  const [byOrderId] = await db
+    .select()
+    .from(qrCodesTable)
+    .where(eq(qrCodesTable.ekqrOrderId, clientTxnId))
+    .limit(1);
+  if (byOrderId) return byOrderId;
+
+  // Fallback: EKQR-{numericId} pattern used by older QR codes
+  const match = /^EKQR-(\d+)$/.exec(clientTxnId);
+  if (!match) return null;
+  const [byId] = await db
+    .select()
+    .from(qrCodesTable)
+    .where(and(
+      eq(qrCodesTable.id, parseInt(match[1])),
+    ))
+    .limit(1);
+  return byId ?? null;
+}
+
+async function log(params: {
+  client_txn_id: string;
+  ekqrId: string | null;
+  upiTxnId: string | null;
   qrCodeId: number | null;
   merchantId: number | null;
   status: string | null;
@@ -152,148 +238,20 @@ async function insertWebhookLog(params: {
 }) {
   try {
     await db.insert(ekqrWebhookLogsTable).values({
-      clientTxnId: params.clientTxnId,
-      qrCodeId: params.qrCodeId ?? undefined,
-      merchantId: params.merchantId ?? undefined,
-      status: params.status ?? undefined,
-      amount: params.amount ?? undefined,
-      rawPayload: params.rawPayload,
+      clientTxnId:      params.client_txn_id,
+      ekqrId:           params.ekqrId     ?? undefined,
+      upiTxnId:         params.upiTxnId   ?? undefined,
+      qrCodeId:         params.qrCodeId   ?? undefined,
+      merchantId:       params.merchantId ?? undefined,
+      status:           params.status     ?? undefined,
+      amount:           params.amount     ?? undefined,
+      rawPayload:       params.rawPayload,
       processingResult: params.processingResult,
-      errorMessage: params.errorMessage ?? undefined,
+      errorMessage:     params.errorMessage ?? undefined,
     });
   } catch (err) {
     logger.warn({ err }, "EKQR webhook: failed to insert webhook log");
   }
 }
-
-async function processEkqrPayment(
-  qr: typeof qrCodesTable.$inferSelect,
-  amount: string | undefined,
-  upiTxnId: string | undefined,
-  ekqrTxnId: string | undefined,
-  rawPayload: string,
-  body: Record<string, string>,
-): Promise<{ processingResult: "credited" | "duplicate" | "ignored" | "error"; errorMessage: string | null }> {
-  if (qr.status !== "active") {
-    logger.info({ qrId: qr.id, status: qr.status }, "EKQR webhook: QR code already processed");
-    return { processingResult: "ignored", errorMessage: `QR already in state: ${qr.status}` };
-  }
-
-  const paidAmount = amount ?? qr.amount ?? "0";
-
-  // Mark QR as used
-  await db
-    .update(qrCodesTable)
-    .set({ status: "used" })
-    .where(eq(qrCodesTable.id, qr.id));
-
-  // Generate a unique UTR: prefer upiTxnId, else use ekqrTxnId, else generate one
-  const utr = upiTxnId || ekqrTxnId || `EKQR-${qr.id}-${Date.now()}`;
-
-  // Insert a deposit transaction (auto-credit the merchant)
-  const [tx] = await db.insert(transactionsTable).values({
-    merchantId: qr.merchantId,
-    qrCodeId: qr.id,
-    provider: "ekqr",
-    type: "deposit",
-    status: "success",
-    amount: paidAmount,
-    currency: "INR",
-    utr,
-    referenceId: ekqrTxnId ?? null,
-    description: `EKQR payment — ${body["p_info"] ?? qr.label ?? "QR Payment"}`,
-    metadata: rawPayload,
-  }).returning().catch((err: unknown) => {
-    const isDuplicate = err instanceof Error && err.message.includes("unique");
-    logger.warn({ err, utr }, "EKQR webhook: failed to insert transaction (possible duplicate UTR)");
-    if (isDuplicate) return [{ __duplicate: true }] as any;
-    return [] as (typeof transactionsTable.$inferSelect)[];
-  });
-
-  if ((tx as any)?.__duplicate) {
-    return { processingResult: "duplicate", errorMessage: `Duplicate UTR: ${utr}` };
-  }
-
-  // Record a QR payment event
-  db.insert(qrPaymentEventsTable).values({
-    qrCodeId: qr.id,
-    merchantId: qr.merchantId,
-    transactionId: tx?.id ?? null,
-    amount: paidAmount,
-    orderId: qr.orderId ?? null,
-    merchantReference: qr.merchantReference ?? null,
-  }).catch((err: unknown) => {
-    logger.warn({ err, qrId: qr.id }, "EKQR webhook: failed to insert qr_payment_event");
-  });
-
-  logger.info({ qrId: qr.id, merchantId: qr.merchantId, amount: paidAmount, utr }, "EKQR payment credited");
-
-  // Fire merchant's callbackUrl if configured
-  if (qr.callbackUrl) {
-    const callbackPayload = JSON.stringify({
-      event: "payment.received",
-      provider: "ekqr",
-      qrCodeId: qr.id,
-      merchantId: qr.merchantId,
-      orderId: qr.orderId ?? null,
-      merchantReference: qr.merchantReference ?? null,
-      amount: paidAmount,
-      utr,
-      ekqrTxnId: ekqrTxnId ?? null,
-      upiTxnId: upiTxnId ?? null,
-      status: "success",
-    });
-
-    let httpStatus: number | null = null;
-    let responseBody: string | null = null;
-
-    try {
-      const callbackRes = await fetch(qr.callbackUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: callbackPayload,
-      });
-      httpStatus = callbackRes.status;
-      responseBody = await callbackRes.text().catch(() => null);
-    } catch (err: unknown) {
-      logger.warn({ err, callbackUrl: qr.callbackUrl, qrId: qr.id }, "EKQR webhook: merchant callbackUrl fire failed");
-      responseBody = err instanceof Error ? err.message : String(err);
-    }
-
-    const callbackStatus = httpStatus != null && httpStatus >= 200 && httpStatus < 300 ? "success" : "failed";
-
-    // Log outgoing callback to callback_logs
-    try {
-      const [cbLog] = await db.insert(callbackLogsTable).values({
-        merchantId: qr.merchantId,
-        qrCodeId: qr.id,
-        transactionId: tx?.id ?? null,
-        url: qr.callbackUrl,
-        status: callbackStatus,
-        httpStatus,
-        requestBody: callbackPayload,
-        responseBody,
-        attempts: 1,
-        lastAttemptAt: new Date(),
-        eventType: "payment.received",
-      }).returning();
-
-      if (cbLog) {
-        await db.insert(callbackLogAttemptsTable).values({
-          callbackLogId: cbLog.id,
-          attemptNumber: 1,
-          httpStatus,
-          responseBody,
-        });
-      }
-    } catch (logErr: unknown) {
-      logger.warn({ logErr, qrId: qr.id }, "EKQR webhook: failed to insert callback log");
-    }
-  }
-
-  return { processingResult: "credited", errorMessage: null };
-}
-
-export { processEkqrPayment };
 
 export default router;

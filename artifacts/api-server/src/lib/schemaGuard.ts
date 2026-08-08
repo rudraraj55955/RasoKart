@@ -1734,6 +1734,13 @@ async function runGuard(): Promise<void> {
   `);
   logger.info({ table: "razorpayx_verification_log" }, "schema_guard_table_created");
 
+  // ── ekqr_webhook_logs: columns added after initial table creation ──────────
+  // ekqr_id: EKQR's internal order ID (the `id` field in the webhook payload)
+  // upi_txn_id: UPI bank reference / UTR from the webhook
+  await db.execute(sql`ALTER TABLE ekqr_webhook_logs ADD COLUMN IF NOT EXISTS ekqr_id TEXT`);
+  await db.execute(sql`ALTER TABLE ekqr_webhook_logs ADD COLUMN IF NOT EXISTS upi_txn_id TEXT`);
+  logger.info({ table: "ekqr_webhook_logs", migration: "add_ekqr_id_upi_txn_id" }, "schema_guard_column_added");
+
   logger.info("schema_guard_completed");
 }
 
