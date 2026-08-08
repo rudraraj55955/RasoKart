@@ -1466,8 +1466,8 @@ function UpigatewayPayinPanel() {
     if (minAmount.trim()) body.minAmount = parseInt(minAmount);
     if (maxAmount.trim()) body.maxAmount = parseInt(maxAmount);
     if (dailyCapInput.trim()) {
-      const parsedCap = Math.round(Number(dailyCapInput));
-      if (!Number.isFinite(parsedCap) || parsedCap <= 0 || parsedCap > 100_000_000) {
+      const parsedCap = Number(dailyCapInput);
+      if (!Number.isFinite(parsedCap) || !Number.isInteger(parsedCap) || parsedCap <= 0 || parsedCap > 100_000_000) {
         setDailyCapError("Must be a whole number between 1 and 10,00,00,000");
         return;
       }

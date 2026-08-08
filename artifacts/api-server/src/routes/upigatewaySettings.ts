@@ -168,7 +168,7 @@ router.get("/cap-usage", async (req, res, next) => {
     const startOfDay = new Date();
     startOfDay.setUTCHours(0, 0, 0, 0);
     const resetsAt = new Date(startOfDay);
-    resetsAt.setUTCDate(resetsAt.getUTCDate() + 1);
+    resetsAt.setUTCDate(resetsAt.getUTCDate() + 1); // start of next UTC day
     const todayTotal = await getProviderDailyActiveTotal(db, startOfDay, "upigateway");
     const dailyLimit = cfg.dailyLimit;
     const utilizationPct = dailyLimit > 0 ? Math.min(100, Math.round((todayTotal / dailyLimit) * 100)) : 0;

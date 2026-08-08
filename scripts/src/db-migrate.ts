@@ -510,6 +510,7 @@ async function migrate() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS quiet_hours_timezone TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS github_sync_failure_alert_emails BOOLEAN NOT NULL DEFAULT TRUE;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS ekqr_cap_alert_emails BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS ekqr_cap_alert_notifs BOOLEAN NOT NULL DEFAULT TRUE;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS is_super_admin BOOLEAN NOT NULL DEFAULT FALSE;
 
     -- ── company_settings: dynamic company branding / support contact ────────────

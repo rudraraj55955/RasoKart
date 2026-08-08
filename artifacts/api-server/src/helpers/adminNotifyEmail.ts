@@ -1093,32 +1093,39 @@ export function buildEkqrCapFullHtml(opts: {
 }
 
 /**
- * Sends a one-per-UTC-day alert to all active admins when the EKQR /
- * UPIGateway provider daily cap is full.
+ * Sends a one-per-UTC-day alert when the EKQR / UPIGateway provider daily cap
+ * is full, via two independent delivery channels:
+ *   • Email  — admins who have opted in via ekqrCapAlertEmails preference
+ *   • In-app — admins who have opted in via ekqrCapAlertNotifs preference
  *
  * Deduplication: atomically claims today's alert slot via an INSERT … ON
  * CONFLICT DO UPDATE … WHERE value IS DISTINCT FROM … RETURNING in
  * system_config.  This is race-safe: concurrent callers are serialised at the
- * PostgreSQL index level, and exactly one wins the claim.  The claim applies
- * to both the email and in-app channels.
+ * PostgreSQL index level, and exactly one wins the claim.  The claim covers
+ * both channels — only the first caller per UTC day dispatches anything.
  *
- * The two delivery channels are fully independent — disabling email opt-outs
- * does not suppress in-app notifications and vice versa.
+ * Transient-failure safety: if the claim is won but neither channel has any
+ * opted-in admins, the claim is released (conditional UPDATE) so the next
+ * cap-exceeded request on the same day can retry.
  *
  * Fire-and-forget safe: all errors are caught and logged; the caller should
  * call this without awaiting or with .catch() to avoid blocking the request.
  */
-export async function notifyAdminsOfEkqrCapFull(opts: {
-  todayTotal: number;
-  dailyLimit: number;
-  resetsAt: string;
-}): Promise<void> {
+export async function notifyAdminsOfEkqrCapFull(
+  opts: {
+    todayTotal: number;
+    dailyLimit: number;
+    resetsAt: string;
+  },
+  // Injected in tests to intercept outbound mail without real SMTP.
+  _sendMail: typeof sendMail = sendMail,
+): Promise<void> {
   try {
     const todayUtcDate = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
 
     // ── Atomic dedup: one alert per UTC calendar day ───────────────────────
-    // A single INSERT … ON CONFLICT DO UPDATE … WHERE value IS DISTINCT FROM
-    // today … RETURNING is atomic at the PostgreSQL index level.
+    // INSERT … ON CONFLICT DO UPDATE … WHERE value IS DISTINCT FROM today …
+    // RETURNING is atomic at the PostgreSQL index level.
     //
     // ┌─────────────────────────────────────────────────────────────────────┐
     // │ Scenario                  │ INSERT outcome  │ RETURNING rows        │
@@ -1138,7 +1145,7 @@ export async function notifyAdminsOfEkqrCapFull(opts: {
             WHERE system_config.value IS DISTINCT FROM EXCLUDED.value
           RETURNING value`
     );
-    const claimed = (claimRows as unknown as unknown[]).length > 0;
+    const claimed = (claimRows as { rows: unknown[] }).rows.length > 0;
 
     if (!claimed) {
       logger.info({ todayUtcDate }, "EKQR cap alert suppressed — already sent today");
@@ -1146,20 +1153,46 @@ export async function notifyAdminsOfEkqrCapFull(opts: {
     }
 
     // ── Email channel ─────────────────────────────────────────────────────────
+    // "No opted-in recipients" is a configuration state, not a transient failure;
+    // the daily claim is kept so the function doesn't retry on every cap-exceeded
+    // request when nobody has opted in.  Only a complete transient send failure
+    // (recipients exist but every SMTP call fails) releases the claim, allowing
+    // the next same-day request to retry delivery.
     try {
       const recipients = await getAdminEmails("ekqrCapAlertEmails");
       if (recipients.length > 0) {
         const html = buildEkqrCapFullHtml(opts);
         const subject = `[RasoKart] 🔴 EKQR Daily Cap Reached — ${formatAmount(opts.todayTotal)} of ${formatAmount(opts.dailyLimit)} used`;
         const results = await Promise.allSettled(
-          recipients.map(email => sendMail({ to: email, subject, html }))
+          recipients.map(email => _sendMail({ to: email, subject, html }))
         );
         const emailSent = results.filter(r => r.status === "fulfilled" && r.value).length;
         const emailFailed = results.length - emailSent;
-        logger.info(
-          { todayTotal: opts.todayTotal, dailyLimit: opts.dailyLimit, totalAdmins: recipients.length, sent: emailSent, failed: emailFailed },
-          "Admin EKQR cap full alert emails dispatched"
-        );
+        if (emailSent > 0) {
+          logger.info(
+            { todayTotal: opts.todayTotal, dailyLimit: opts.dailyLimit, totalAdmins: recipients.length, sent: emailSent, failed: emailFailed },
+            "Admin EKQR cap full alert emails dispatched"
+          );
+        } else {
+          // All sends failed (transient) — release claim so next request can retry.
+          logger.warn(
+            { todayTotal: opts.todayTotal, dailyLimit: opts.dailyLimit, totalAdmins: recipients.length, failed: emailFailed },
+            "EKQR cap alert: all email sends failed — releasing dedup claim so next request can retry"
+          );
+          try {
+            await db
+              .update(systemConfigTable)
+              .set({ value: "" })
+              .where(
+                and(
+                  eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.UPIGATEWAY_CAP_ALERT_LAST_SENT_DATE),
+                  eq(systemConfigTable.value, todayUtcDate),
+                )
+              );
+          } catch {
+            // Best-effort; failure to release means next retry waits until tomorrow.
+          }
+        }
       } else {
         logger.info("No admins opted in to EKQR cap alert emails — skipping email");
       }
