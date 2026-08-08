@@ -757,6 +757,7 @@ router.get("/me", requireAuth, async (req, res, next) => {
         signatureFailureAlertNotifs: usersTable.signatureFailureAlertNotifs,
         webhookFailureNotifs: usersTable.webhookFailureNotifs,
         ekqrSyncAlertNotifs: usersTable.ekqrSyncAlertNotifs,
+        ekqrCapAlertNotifs: usersTable.ekqrCapAlertNotifs,
         reportFailureAlertNotifs: usersTable.reportFailureAlertNotifs,
         weeklyDeliveryDigestNotifs: usersTable.weeklyDeliveryDigestNotifs,
         apiKeyGeneratedNotifs: usersTable.apiKeyGeneratedNotifs,
@@ -841,6 +842,7 @@ router.get("/me", requireAuth, async (req, res, next) => {
       signatureFailureAlertNotifs: row?.signatureFailureAlertNotifs ?? true,
       webhookFailureNotifs: row?.webhookFailureNotifs ?? true,
       ekqrSyncAlertNotifs: row?.ekqrSyncAlertNotifs ?? true,
+      ekqrCapAlertNotifs: row?.ekqrCapAlertNotifs ?? true,
       reportFailureAlertNotifs: row?.reportFailureAlertNotifs ?? true,
       weeklyDeliveryDigestNotifs: row?.weeklyDeliveryDigestNotifs ?? true,
       apiKeyGeneratedNotifs: row?.apiKeyGeneratedNotifs ?? true,
@@ -870,7 +872,7 @@ router.get("/me", requireAuth, async (req, res, next) => {
 router.put("/preferences", requireAuth, prefChangeLimiter, async (req, res, next) => {
   try {
     const user = (req as any).user;
-    const { reconciliationAlertEmails, planExpiryAlertEmails, settlementStateEmails, signatureFailureAlertEmails, webhookFailureEmails, reportFailureAlertEmails, githubSyncFailureAlertEmails, weeklyDeliveryDigestEmails, apiKeyGeneratedEmails, apiKeyRevokedEmails, loginAlertEmails, reportScheduleChangedEmails, settlementStateChangedEmails, ekqrSyncAlertEmails, ekqrCapAlertEmails, planChangeEmails, reconciliationAlertNotifs, planExpiryAlertNotifs, settlementStateNotifs, signatureFailureAlertNotifs, webhookFailureNotifs, ekqrSyncAlertNotifs, reportFailureAlertNotifs, weeklyDeliveryDigestNotifs, apiKeyGeneratedNotifs, apiKeyRevokedNotifs, loginAlertNotifs, reportScheduleChangedNotifs, settlementStateChangedNotifs, planChangeNotifs, quietHoursStart, quietHoursEnd, quietHoursTimezone, notificationSoundEnabled, notificationVibrationEnabled } = req.body;
+    const { reconciliationAlertEmails, planExpiryAlertEmails, settlementStateEmails, signatureFailureAlertEmails, webhookFailureEmails, reportFailureAlertEmails, githubSyncFailureAlertEmails, weeklyDeliveryDigestEmails, apiKeyGeneratedEmails, apiKeyRevokedEmails, loginAlertEmails, reportScheduleChangedEmails, settlementStateChangedEmails, ekqrSyncAlertEmails, ekqrCapAlertEmails, planChangeEmails, reconciliationAlertNotifs, planExpiryAlertNotifs, settlementStateNotifs, signatureFailureAlertNotifs, webhookFailureNotifs, ekqrSyncAlertNotifs, ekqrCapAlertNotifs, reportFailureAlertNotifs, weeklyDeliveryDigestNotifs, apiKeyGeneratedNotifs, apiKeyRevokedNotifs, loginAlertNotifs, reportScheduleChangedNotifs, settlementStateChangedNotifs, planChangeNotifs, quietHoursStart, quietHoursEnd, quietHoursTimezone, notificationSoundEnabled, notificationVibrationEnabled } = req.body;
 
     const patch: Record<string, boolean | Date | string | null | Record<string, string>> = {};
 
@@ -1009,6 +1011,7 @@ router.put("/preferences", requireAuth, prefChangeLimiter, async (req, res, next
       ["signatureFailureAlertNotifs", signatureFailureAlertNotifs],
       ["webhookFailureNotifs", webhookFailureNotifs],
       ["ekqrSyncAlertNotifs", ekqrSyncAlertNotifs],
+      ["ekqrCapAlertNotifs", ekqrCapAlertNotifs],
       ["reportFailureAlertNotifs", reportFailureAlertNotifs],
       ["weeklyDeliveryDigestNotifs", weeklyDeliveryDigestNotifs],
       ["apiKeyGeneratedNotifs", apiKeyGeneratedNotifs],
@@ -1104,6 +1107,7 @@ router.put("/preferences", requireAuth, prefChangeLimiter, async (req, res, next
       "signatureFailureAlertNotifs",
       "webhookFailureNotifs",
       "ekqrSyncAlertNotifs",
+      "ekqrCapAlertNotifs",
       "reportFailureAlertNotifs",
       "weeklyDeliveryDigestNotifs",
       "apiKeyGeneratedNotifs",
@@ -1138,6 +1142,7 @@ router.put("/preferences", requireAuth, prefChangeLimiter, async (req, res, next
         signatureFailureAlertNotifs: usersTable.signatureFailureAlertNotifs,
         webhookFailureNotifs: usersTable.webhookFailureNotifs,
         ekqrSyncAlertNotifs: usersTable.ekqrSyncAlertNotifs,
+        ekqrCapAlertNotifs: usersTable.ekqrCapAlertNotifs,
         reportFailureAlertNotifs: usersTable.reportFailureAlertNotifs,
         weeklyDeliveryDigestNotifs: usersTable.weeklyDeliveryDigestNotifs,
         apiKeyGeneratedNotifs: usersTable.apiKeyGeneratedNotifs,
@@ -1303,6 +1308,7 @@ router.put("/preferences", requireAuth, prefChangeLimiter, async (req, res, next
       signatureFailureAlertNotifs: updated.signatureFailureAlertNotifs,
       webhookFailureNotifs: updated.webhookFailureNotifs,
       ekqrSyncAlertNotifs: updated.ekqrSyncAlertNotifs,
+      ekqrCapAlertNotifs: updated.ekqrCapAlertNotifs,
       reportFailureAlertNotifs: updated.reportFailureAlertNotifs,
       weeklyDeliveryDigestNotifs: updated.weeklyDeliveryDigestNotifs,
       apiKeyGeneratedNotifs: updated.apiKeyGeneratedNotifs,

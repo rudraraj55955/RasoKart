@@ -66,6 +66,7 @@ export const LoginResponse = zod.object({
   "signatureFailureAlertNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications for signature failure alerts. Defaults to true.'),
   "webhookFailureNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications for webhook failure alerts. Defaults to true.'),
   "ekqrSyncAlertNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications for EKQR sync alerts. Defaults to true.'),
+  "ekqrCapAlertNotifs": zod.boolean().optional().describe('Whether the admin wants in-app notifications for EKQR daily cap alerts. Defaults to true.'),
   "reportFailureAlertNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications for report failure alerts. Defaults to true.'),
   "weeklyDeliveryDigestNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications for weekly delivery digest. Defaults to true.'),
   "apiKeyGeneratedNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications when an API key is generated. Defaults to true.'),
@@ -165,6 +166,7 @@ export const VerifyMerchantOtpResponse = zod.object({
   "signatureFailureAlertNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications for signature failure alerts. Defaults to true.'),
   "webhookFailureNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications for webhook failure alerts. Defaults to true.'),
   "ekqrSyncAlertNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications for EKQR sync alerts. Defaults to true.'),
+  "ekqrCapAlertNotifs": zod.boolean().optional().describe('Whether the admin wants in-app notifications for EKQR daily cap alerts. Defaults to true.'),
   "reportFailureAlertNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications for report failure alerts. Defaults to true.'),
   "weeklyDeliveryDigestNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications for weekly delivery digest. Defaults to true.'),
   "apiKeyGeneratedNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications when an API key is generated. Defaults to true.'),
@@ -258,6 +260,7 @@ export const GetMeResponse = zod.object({
   "signatureFailureAlertNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications for signature failure alerts. Defaults to true.'),
   "webhookFailureNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications for webhook failure alerts. Defaults to true.'),
   "ekqrSyncAlertNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications for EKQR sync alerts. Defaults to true.'),
+  "ekqrCapAlertNotifs": zod.boolean().optional().describe('Whether the admin wants in-app notifications for EKQR daily cap alerts. Defaults to true.'),
   "reportFailureAlertNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications for report failure alerts. Defaults to true.'),
   "weeklyDeliveryDigestNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications for weekly delivery digest. Defaults to true.'),
   "apiKeyGeneratedNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications when an API key is generated. Defaults to true.'),
@@ -306,6 +309,7 @@ export const UpdateMyPreferencesBody = zod.object({
   "signatureFailureAlertNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications for signature failure alerts.'),
   "webhookFailureNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications for webhook failure alerts.'),
   "ekqrSyncAlertNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications for EKQR sync alerts.'),
+  "ekqrCapAlertNotifs": zod.boolean().optional().describe('Whether the admin wants in-app notifications for EKQR daily cap alerts.'),
   "reportFailureAlertNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications for report failure alerts.'),
   "weeklyDeliveryDigestNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications for weekly delivery digest.'),
   "apiKeyGeneratedNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications when an API key is generated.'),
@@ -361,6 +365,7 @@ export const UpdateMyPreferencesResponse = zod.object({
   "signatureFailureAlertNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications for signature failure alerts. Defaults to true.'),
   "webhookFailureNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications for webhook failure alerts. Defaults to true.'),
   "ekqrSyncAlertNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications for EKQR sync alerts. Defaults to true.'),
+  "ekqrCapAlertNotifs": zod.boolean().optional().describe('Whether the admin wants in-app notifications for EKQR daily cap alerts. Defaults to true.'),
   "reportFailureAlertNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications for report failure alerts. Defaults to true.'),
   "weeklyDeliveryDigestNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications for weekly delivery digest. Defaults to true.'),
   "apiKeyGeneratedNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications when an API key is generated. Defaults to true.'),
@@ -619,7 +624,6 @@ export const updateMerchantProfileBodyPhoneMax = 50;
 export const updateMerchantProfileBodyWebsiteMax = 500;
 
 
-
 export const UpdateMerchantProfileBody = zod.object({
   "businessName": zod.string().max(updateMerchantProfileBodyBusinessNameMax).optional().describe('Legal or trading business name (max 200 chars)'),
   "contactName": zod.string().max(updateMerchantProfileBodyContactNameMax).optional().describe('Primary contact person name (max 200 chars)'),
@@ -866,7 +870,6 @@ export const ForceApproveMerchantParams = zod.object({
 })
 
 export const forceApproveMerchantBodyOverrideReasonMin = 10;
-
 
 
 export const ForceApproveMerchantBody = zod.object({
@@ -1794,7 +1797,6 @@ export const getAdminMerchantWebhookConfigResponseGlobalMaxRetriesMin = 0;
 export const getAdminMerchantWebhookConfigResponseFailureAlertThresholdMax = 10;
 
 
-
 export const GetAdminMerchantWebhookConfigResponse = zod.object({
   "id": zod.number(),
   "merchantId": zod.number(),
@@ -1824,7 +1826,6 @@ export const UpdateMerchantWebhookMaxRetriesParams = zod.object({
 export const updateMerchantWebhookMaxRetriesBodyMaxRetriesMax = 10;
 
 
-
 export const UpdateMerchantWebhookMaxRetriesBody = zod.object({
   "maxRetries": zod.number().min(1).max(updateMerchantWebhookMaxRetriesBodyMaxRetriesMax).describe('Maximum number of automatic delivery retries (1–10).')
 })
@@ -1835,7 +1836,6 @@ export const updateMerchantWebhookMaxRetriesResponseMaxRetriesMax = 10;
 export const updateMerchantWebhookMaxRetriesResponseGlobalMaxRetriesMin = 0;
 
 export const updateMerchantWebhookMaxRetriesResponseFailureAlertThresholdMax = 10;
-
 
 
 export const UpdateMerchantWebhookMaxRetriesResponse = zod.object({
@@ -2414,7 +2414,6 @@ export const getReportScheduleResponseScheduleOneDayOfWeekMax = 6;
 export const getReportScheduleResponseScheduleOneDayOfMonthMax = 28;
 
 
-
 export const GetReportScheduleResponse = zod.object({
   "schedule": zod.union([zod.object({
   "id": zod.number(),
@@ -2468,7 +2467,6 @@ export const upsertReportScheduleBodyDayOfMonthMax = 28;
 export const upsertReportScheduleBodyAutoPauseAfterFailuresMax = 10;
 
 
-
 export const UpsertReportScheduleBody = zod.object({
   "frequency": zod.enum(['weekly', 'monthly']).optional(),
   "format": zod.enum(['xlsx', 'pdf']).optional(),
@@ -2482,7 +2480,6 @@ export const upsertReportScheduleResponseScheduleDayOfWeekMin = 0;
 export const upsertReportScheduleResponseScheduleDayOfWeekMax = 6;
 
 export const upsertReportScheduleResponseScheduleDayOfMonthMax = 28;
-
 
 
 export const UpsertReportScheduleResponse = zod.object({
@@ -2544,7 +2541,6 @@ export const reenableReportScheduleResponseScheduleDayOfWeekMax = 6;
 export const reenableReportScheduleResponseScheduleDayOfMonthMax = 28;
 
 
-
 export const ReenableReportScheduleResponse = zod.object({
   "schedule": zod.object({
   "id": zod.number(),
@@ -2592,7 +2588,6 @@ export const ReenableReportScheduleResponse = zod.object({
  */
 export const getReportScheduleHistoryQueryLimitDefault = 20;
 export const getReportScheduleHistoryQueryLimitMax = 100;
-
 
 
 export const GetReportScheduleHistoryQueryParams = zod.object({
@@ -2646,7 +2641,6 @@ export const listMerchantReportSchedulesResponseSchedulesItemDayOfWeekMin = 0;
 export const listMerchantReportSchedulesResponseSchedulesItemDayOfWeekMax = 6;
 
 export const listMerchantReportSchedulesResponseSchedulesItemDayOfMonthMax = 28;
-
 
 
 export const ListMerchantReportSchedulesResponse = zod.object({
@@ -2707,7 +2701,6 @@ export const getAdminMerchantReportScheduleResponseScheduleOneDayOfWeekMax = 6;
 export const getAdminMerchantReportScheduleResponseScheduleOneDayOfMonthMax = 28;
 
 
-
 export const GetAdminMerchantReportScheduleResponse = zod.object({
   "schedule": zod.union([zod.object({
   "id": zod.number(),
@@ -2763,7 +2756,6 @@ export const upsertAdminMerchantReportScheduleBodyDayOfWeekMax = 6;
 export const upsertAdminMerchantReportScheduleBodyDayOfMonthMax = 28;
 
 
-
 export const UpsertAdminMerchantReportScheduleBody = zod.object({
   "frequency": zod.enum(['weekly', 'monthly']).optional(),
   "format": zod.enum(['xlsx', 'pdf']).optional(),
@@ -2777,7 +2769,6 @@ export const upsertAdminMerchantReportScheduleResponseScheduleDayOfWeekMin = 0;
 export const upsertAdminMerchantReportScheduleResponseScheduleDayOfWeekMax = 6;
 
 export const upsertAdminMerchantReportScheduleResponseScheduleDayOfMonthMax = 28;
-
 
 
 export const UpsertAdminMerchantReportScheduleResponse = zod.object({
@@ -2861,7 +2852,6 @@ export const getAdminReportDeliveryHistoryQueryLimitDefault = 100;
 export const getAdminReportDeliveryHistoryQueryLimitMax = 200;
 
 
-
 export const GetAdminReportDeliveryHistoryQueryParams = zod.object({
   "merchantId": zod.coerce.number().optional().describe('Filter by a specific merchant'),
   "dateFrom": zod.coerce.string().optional().describe('ISO date — only return attempts on or after this date'),
@@ -2909,7 +2899,6 @@ export const reenableAdminMerchantReportScheduleResponseScheduleDayOfWeekMin = 0
 export const reenableAdminMerchantReportScheduleResponseScheduleDayOfWeekMax = 6;
 
 export const reenableAdminMerchantReportScheduleResponseScheduleDayOfMonthMax = 28;
-
 
 
 export const ReenableAdminMerchantReportScheduleResponse = zod.object({
@@ -2965,7 +2954,6 @@ export const resetAdminMerchantReportScheduleFailuresResponseScheduleDayOfWeekMi
 export const resetAdminMerchantReportScheduleFailuresResponseScheduleDayOfWeekMax = 6;
 
 export const resetAdminMerchantReportScheduleFailuresResponseScheduleDayOfMonthMax = 28;
-
 
 
 export const ResetAdminMerchantReportScheduleFailuresResponse = zod.object({
@@ -3149,7 +3137,6 @@ export const GetAdminMerchantReportScheduleHistoryParams = zod.object({
 
 export const getAdminMerchantReportScheduleHistoryQueryLimitDefault = 100;
 export const getAdminMerchantReportScheduleHistoryQueryLimitMax = 100;
-
 
 
 export const GetAdminMerchantReportScheduleHistoryQueryParams = zod.object({
@@ -3642,7 +3629,6 @@ export const ListApiKeysResponse = zod.array(ListApiKeysResponseItem)
 export const generateApiKeyBodyLabelMax = 64;
 
 
-
 export const GenerateApiKeyBody = zod.object({
   "label": zod.string().max(generateApiKeyBodyLabelMax).optional().describe('Optional friendly name for this key (e.g. \'Production App\')')
 })
@@ -3729,7 +3715,6 @@ export const listSecurityActivityQueryLimitDefault = 50;
 export const listSecurityActivityQueryLimitMax = 200;
 
 
-
 export const ListSecurityActivityQueryParams = zod.object({
   "page": zod.coerce.number().min(1).default(listSecurityActivityQueryPageDefault),
   "limit": zod.coerce.number().min(1).max(listSecurityActivityQueryLimitMax).default(listSecurityActivityQueryLimitDefault),
@@ -3763,7 +3748,6 @@ export const listSecurityEventsQueryPageDefault = 1;
 
 export const listSecurityEventsQueryLimitDefault = 50;
 export const listSecurityEventsQueryLimitMax = 200;
-
 
 
 export const ListSecurityEventsQueryParams = zod.object({
@@ -3801,7 +3785,6 @@ export const getWebhookRetryDefaultsResponseDelay2Min = 0;
 export const getWebhookRetryDefaultsResponseDelay3Min = 0;
 
 
-
 export const GetWebhookRetryDefaultsResponse = zod.object({
   "delay1": zod.number().min(getWebhookRetryDefaultsResponseDelay1Min).describe('System default delay in seconds before the first retry (after the 1st failure).'),
   "delay2": zod.number().min(getWebhookRetryDefaultsResponseDelay2Min).describe('System default delay in seconds before the second retry (after the 2nd failure).'),
@@ -3815,7 +3798,6 @@ export const GetWebhookRetryDefaultsResponse = zod.object({
  */
 export const getWebhookLogsQueryLimitDefault = 10;
 export const getWebhookLogsQueryLimitMax = 50;
-
 
 
 export const GetWebhookLogsQueryParams = zod.object({
@@ -3962,7 +3944,6 @@ export const SendWebhookTestResponse = zod.object({
 export const getWebhookPlatformDefaultsResponsePlatformDefaultRetriesMin = 0;
 
 
-
 export const GetWebhookPlatformDefaultsResponse = zod.object({
   "platformDefaultRetries": zod.number().min(getWebhookPlatformDefaultsResponsePlatformDefaultRetriesMin).describe('Platform default number of automatic retry attempts for failed webhook deliveries.')
 })
@@ -3977,7 +3958,6 @@ export const getWebhookConfigResponseMaxRetriesMax = 10;
 export const getWebhookConfigResponseGlobalMaxRetriesMin = 0;
 
 export const getWebhookConfigResponseFailureAlertThresholdMax = 10;
-
 
 
 export const GetWebhookConfigResponse = zod.object({
@@ -4007,7 +3987,6 @@ export const updateWebhookConfigBodyMaxRetriesMax = 10;
 export const updateWebhookConfigBodyFailureAlertThresholdMax = 10;
 
 
-
 export const UpdateWebhookConfigBody = zod.object({
   "url": zod.string(),
   "isActive": zod.boolean().optional(),
@@ -4027,7 +4006,6 @@ export const updateWebhookConfigResponseMaxRetriesMax = 10;
 export const updateWebhookConfigResponseGlobalMaxRetriesMin = 0;
 
 export const updateWebhookConfigResponseFailureAlertThresholdMax = 10;
-
 
 
 export const UpdateWebhookConfigResponse = zod.object({
@@ -4063,7 +4041,6 @@ export const GetCallbackStatsResponse = zod.object({
  */
 
 export const getAdminCallbackStatsResponseAlertWindowHoursMin = 0.25;
-
 
 
 export const GetAdminCallbackStatsResponse = zod.object({
@@ -4515,6 +4492,7 @@ export const ListUsersResponse = zod.object({
   "signatureFailureAlertNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications for signature failure alerts. Defaults to true.'),
   "webhookFailureNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications for webhook failure alerts. Defaults to true.'),
   "ekqrSyncAlertNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications for EKQR sync alerts. Defaults to true.'),
+  "ekqrCapAlertNotifs": zod.boolean().optional().describe('Whether the admin wants in-app notifications for EKQR daily cap alerts. Defaults to true.'),
   "reportFailureAlertNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications for report failure alerts. Defaults to true.'),
   "weeklyDeliveryDigestNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications for weekly delivery digest. Defaults to true.'),
   "apiKeyGeneratedNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications when an API key is generated. Defaults to true.'),
@@ -4606,6 +4584,7 @@ export const UpdateUserResponse = zod.object({
   "signatureFailureAlertNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications for signature failure alerts. Defaults to true.'),
   "webhookFailureNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications for webhook failure alerts. Defaults to true.'),
   "ekqrSyncAlertNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications for EKQR sync alerts. Defaults to true.'),
+  "ekqrCapAlertNotifs": zod.boolean().optional().describe('Whether the admin wants in-app notifications for EKQR daily cap alerts. Defaults to true.'),
   "reportFailureAlertNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications for report failure alerts. Defaults to true.'),
   "weeklyDeliveryDigestNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications for weekly delivery digest. Defaults to true.'),
   "apiKeyGeneratedNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications when an API key is generated. Defaults to true.'),
@@ -6998,7 +6977,6 @@ export const getReconciliationScheduleConfigResponseMinuteMax = 59;
 export const getReconciliationScheduleConfigResponseLookbackDaysMax = 90;
 
 
-
 export const GetReconciliationScheduleConfigResponse = zod.object({
   "hour": zod.number().min(getReconciliationScheduleConfigResponseHourMin).max(getReconciliationScheduleConfigResponseHourMax).describe('Hour of day (0-23) to run the scheduled reconciliation'),
   "minute": zod.number().min(getReconciliationScheduleConfigResponseMinuteMin).max(getReconciliationScheduleConfigResponseMinuteMax).describe('Minute of the hour (0-59) to run the scheduled reconciliation'),
@@ -7019,7 +6997,6 @@ export const updateReconciliationScheduleConfigBodyMinuteMax = 59;
 export const updateReconciliationScheduleConfigBodyLookbackDaysMax = 90;
 
 
-
 export const UpdateReconciliationScheduleConfigBody = zod.object({
   "hour": zod.number().min(updateReconciliationScheduleConfigBodyHourMin).max(updateReconciliationScheduleConfigBodyHourMax).describe('Hour of day (0-23) to run the scheduled reconciliation'),
   "minute": zod.number().min(updateReconciliationScheduleConfigBodyMinuteMin).max(updateReconciliationScheduleConfigBodyMinuteMax).describe('Minute of the hour (0-59) to run the scheduled reconciliation'),
@@ -7034,7 +7011,6 @@ export const updateReconciliationScheduleConfigResponseMinuteMin = 0;
 export const updateReconciliationScheduleConfigResponseMinuteMax = 59;
 
 export const updateReconciliationScheduleConfigResponseLookbackDaysMax = 90;
-
 
 
 export const UpdateReconciliationScheduleConfigResponse = zod.object({
@@ -7052,7 +7028,6 @@ export const getQrCleanupConfigResponseRetentionDaysMin = 0;
 export const getQrCleanupConfigResponseRetentionDaysMax = 365;
 
 
-
 export const GetQrCleanupConfigResponse = zod.object({
   "retentionDays": zod.number().min(getQrCleanupConfigResponseRetentionDaysMin).max(getQrCleanupConfigResponseRetentionDaysMax).describe('Days to retain expired\/used QR codes before auto-deleting them. Set to 0 to disable automatic cleanup.\n'),
   "lastRunAt": zod.coerce.date().nullable().describe('ISO timestamp of the last cleanup run, or null if never run.'),
@@ -7067,7 +7042,6 @@ export const updateQrCleanupConfigBodyRetentionDaysMin = 0;
 export const updateQrCleanupConfigBodyRetentionDaysMax = 365;
 
 
-
 export const UpdateQrCleanupConfigBody = zod.object({
   "retentionDays": zod.number().min(updateQrCleanupConfigBodyRetentionDaysMin).max(updateQrCleanupConfigBodyRetentionDaysMax).describe('Days to retain expired\/used QR codes before auto-deleting them. Set to 0 to disable automatic cleanup.\n'),
   "lastRunAt": zod.coerce.date().nullable().describe('ISO timestamp of the last cleanup run, or null if never run.'),
@@ -7076,7 +7050,6 @@ export const UpdateQrCleanupConfigBody = zod.object({
 
 export const updateQrCleanupConfigResponseRetentionDaysMin = 0;
 export const updateQrCleanupConfigResponseRetentionDaysMax = 365;
-
 
 
 export const UpdateQrCleanupConfigResponse = zod.object({
@@ -7093,7 +7066,6 @@ export const getVaCleanupConfigResponseRetentionDaysMin = 0;
 export const getVaCleanupConfigResponseRetentionDaysMax = 365;
 
 
-
 export const GetVaCleanupConfigResponse = zod.object({
   "retentionDays": zod.number().min(getVaCleanupConfigResponseRetentionDaysMin).max(getVaCleanupConfigResponseRetentionDaysMax).describe('Days to retain closed virtual accounts before auto-deleting them. Set to 0 to disable automatic cleanup.\n'),
   "lastRunAt": zod.coerce.date().nullable().describe('ISO timestamp of the last cleanup run, or null if never run.'),
@@ -7108,7 +7080,6 @@ export const updateVaCleanupConfigBodyRetentionDaysMin = 0;
 export const updateVaCleanupConfigBodyRetentionDaysMax = 365;
 
 
-
 export const UpdateVaCleanupConfigBody = zod.object({
   "retentionDays": zod.number().min(updateVaCleanupConfigBodyRetentionDaysMin).max(updateVaCleanupConfigBodyRetentionDaysMax).describe('Days to retain closed virtual accounts before auto-deleting them. Set to 0 to disable automatic cleanup.\n'),
   "lastRunAt": zod.coerce.date().nullable().describe('ISO timestamp of the last cleanup run, or null if never run.'),
@@ -7117,7 +7088,6 @@ export const UpdateVaCleanupConfigBody = zod.object({
 
 export const updateVaCleanupConfigResponseRetentionDaysMin = 0;
 export const updateVaCleanupConfigResponseRetentionDaysMax = 365;
-
 
 
 export const UpdateVaCleanupConfigResponse = zod.object({
@@ -7193,7 +7163,6 @@ export const getTestEmailRetentionConfigResponseRetentionDaysMin = 0;
 export const getTestEmailRetentionConfigResponseRetentionDaysMax = 365;
 
 
-
 export const GetTestEmailRetentionConfigResponse = zod.object({
   "retentionDays": zod.number().min(getTestEmailRetentionConfigResponseRetentionDaysMin).max(getTestEmailRetentionConfigResponseRetentionDaysMax).describe('Days to retain test email audit log entries before auto-deleting them. Set to 0 to disable automatic cleanup.\n')
 })
@@ -7206,14 +7175,12 @@ export const updateTestEmailRetentionConfigBodyRetentionDaysMin = 0;
 export const updateTestEmailRetentionConfigBodyRetentionDaysMax = 365;
 
 
-
 export const UpdateTestEmailRetentionConfigBody = zod.object({
   "retentionDays": zod.number().min(updateTestEmailRetentionConfigBodyRetentionDaysMin).max(updateTestEmailRetentionConfigBodyRetentionDaysMax).describe('Days to retain test email audit log entries before auto-deleting them. Set to 0 to disable automatic cleanup.\n')
 })
 
 export const updateTestEmailRetentionConfigResponseRetentionDaysMin = 0;
 export const updateTestEmailRetentionConfigResponseRetentionDaysMax = 365;
-
 
 
 export const UpdateTestEmailRetentionConfigResponse = zod.object({
@@ -7236,7 +7203,6 @@ export const getAuditReportRetentionConfigResponseRetentionDaysMin = 0;
 export const getAuditReportRetentionConfigResponseRetentionDaysMax = 3650;
 
 
-
 export const GetAuditReportRetentionConfigResponse = zod.object({
   "retentionDays": zod.number().min(getAuditReportRetentionConfigResponseRetentionDaysMin).max(getAuditReportRetentionConfigResponseRetentionDaysMax).describe('Days to retain scheduled audit report delivery logs before auto-deleting them. Set to 0 to disable automatic cleanup.\n')
 })
@@ -7249,14 +7215,12 @@ export const updateAuditReportRetentionConfigBodyRetentionDaysMin = 0;
 export const updateAuditReportRetentionConfigBodyRetentionDaysMax = 3650;
 
 
-
 export const UpdateAuditReportRetentionConfigBody = zod.object({
   "retentionDays": zod.number().min(updateAuditReportRetentionConfigBodyRetentionDaysMin).max(updateAuditReportRetentionConfigBodyRetentionDaysMax).describe('Days to retain scheduled audit report delivery logs before auto-deleting them. Set to 0 to disable automatic cleanup.\n')
 })
 
 export const updateAuditReportRetentionConfigResponseRetentionDaysMin = 0;
 export const updateAuditReportRetentionConfigResponseRetentionDaysMax = 3650;
-
 
 
 export const UpdateAuditReportRetentionConfigResponse = zod.object({
@@ -7279,7 +7243,6 @@ export const getQuietHoursFlushConfigResponseIntervalSecondsMin = 10;
 export const getQuietHoursFlushConfigResponseIntervalSecondsMax = 86400;
 
 
-
 export const GetQuietHoursFlushConfigResponse = zod.object({
   "intervalSeconds": zod.number().min(getQuietHoursFlushConfigResponseIntervalSecondsMin).max(getQuietHoursFlushConfigResponseIntervalSecondsMax).describe('How often (in seconds) the quiet hours email sweeper scans for ready queues. Minimum 10 s, maximum 86 400 s (24 h). Default 60 s.\n')
 })
@@ -7292,14 +7255,12 @@ export const updateQuietHoursFlushConfigBodyIntervalSecondsMin = 10;
 export const updateQuietHoursFlushConfigBodyIntervalSecondsMax = 86400;
 
 
-
 export const UpdateQuietHoursFlushConfigBody = zod.object({
   "intervalSeconds": zod.number().min(updateQuietHoursFlushConfigBodyIntervalSecondsMin).max(updateQuietHoursFlushConfigBodyIntervalSecondsMax).describe('How often (in seconds) the quiet hours email sweeper scans for ready queues. Minimum 10 s, maximum 86 400 s (24 h). Default 60 s.\n')
 })
 
 export const updateQuietHoursFlushConfigResponseIntervalSecondsMin = 10;
 export const updateQuietHoursFlushConfigResponseIntervalSecondsMax = 86400;
-
 
 
 export const UpdateQuietHoursFlushConfigResponse = zod.object({
@@ -7334,7 +7295,6 @@ export const getWebhookRetriesConfigResponseDelay2Min = 0;
 export const getWebhookRetriesConfigResponseDelay3Min = 0;
 
 
-
 export const GetWebhookRetriesConfigResponse = zod.object({
   "maxAttempts": zod.number().min(1).max(getWebhookRetriesConfigResponseMaxAttemptsMax).describe('Total maximum delivery attempts (1 initial + retries). Default is 4 (1 initial + 3 retries).'),
   "delay1": zod.number().min(getWebhookRetriesConfigResponseDelay1Min).describe('Delay in seconds before the first retry (after the 1st failure).'),
@@ -7355,7 +7315,6 @@ export const updateWebhookRetriesConfigBodyDelay2Min = 0;
 export const updateWebhookRetriesConfigBodyDelay3Min = 0;
 
 
-
 export const UpdateWebhookRetriesConfigBody = zod.object({
   "maxAttempts": zod.number().min(1).max(updateWebhookRetriesConfigBodyMaxAttemptsMax).describe('Total maximum delivery attempts (1 initial + retries). Default is 4 (1 initial + 3 retries).'),
   "delay1": zod.number().min(updateWebhookRetriesConfigBodyDelay1Min).describe('Delay in seconds before the first retry (after the 1st failure).'),
@@ -7370,7 +7329,6 @@ export const updateWebhookRetriesConfigResponseDelay1Min = 0;
 export const updateWebhookRetriesConfigResponseDelay2Min = 0;
 
 export const updateWebhookRetriesConfigResponseDelay3Min = 0;
-
 
 
 export const UpdateWebhookRetriesConfigResponse = zod.object({
@@ -7401,7 +7359,6 @@ export const GetWebhookRetryPolicyResponse = zod.object({
  */
 export const listStorageCleanupRunsQueryLimitDefault = 20;
 export const listStorageCleanupRunsQueryLimitMax = 100;
-
 
 
 export const ListStorageCleanupRunsQueryParams = zod.object({
@@ -7437,7 +7394,6 @@ export const RunStorageCleanupResponse = zod.object({
 export const getWebhookFailureAlertConfigResponseCooldownHoursMax = 168;
 
 
-
 export const GetWebhookFailureAlertConfigResponse = zod.object({
   "cooldownHours": zod.number().min(1).max(getWebhookFailureAlertConfigResponseCooldownHoursMax).describe('Number of hours to suppress duplicate webhook failure alert emails for the same merchant. Default is 1.')
 })
@@ -7449,13 +7405,11 @@ export const GetWebhookFailureAlertConfigResponse = zod.object({
 export const updateWebhookFailureAlertConfigBodyCooldownHoursMax = 168;
 
 
-
 export const UpdateWebhookFailureAlertConfigBody = zod.object({
   "cooldownHours": zod.number().min(1).max(updateWebhookFailureAlertConfigBodyCooldownHoursMax).describe('Number of hours to suppress duplicate webhook failure alert emails for the same merchant. Default is 1.')
 })
 
 export const updateWebhookFailureAlertConfigResponseCooldownHoursMax = 168;
-
 
 
 export const UpdateWebhookFailureAlertConfigResponse = zod.object({
@@ -7468,7 +7422,6 @@ export const UpdateWebhookFailureAlertConfigResponse = zod.object({
  */
 export const getWebhookFailureAlertHistoryQueryLimitDefault = 50;
 export const getWebhookFailureAlertHistoryQueryLimitMax = 200;
-
 
 
 export const GetWebhookFailureAlertHistoryQueryParams = zod.object({
@@ -7545,7 +7498,6 @@ export const getSignatureFailureAlertHistoryQueryLimitDefault = 50;
 export const getSignatureFailureAlertHistoryQueryLimitMax = 200;
 
 
-
 export const GetSignatureFailureAlertHistoryQueryParams = zod.object({
   "limit": zod.coerce.number().min(1).max(getSignatureFailureAlertHistoryQueryLimitMax).default(getSignatureFailureAlertHistoryQueryLimitDefault)
 })
@@ -7603,7 +7555,6 @@ export const getEkqrStuckAlertHistoryQueryLimitDefault = 50;
 export const getEkqrStuckAlertHistoryQueryLimitMax = 200;
 
 
-
 export const GetEkqrStuckAlertHistoryQueryParams = zod.object({
   "limit": zod.coerce.number().min(1).max(getEkqrStuckAlertHistoryQueryLimitMax).default(getEkqrStuckAlertHistoryQueryLimitDefault)
 })
@@ -7657,7 +7608,6 @@ export const MarkNotificationReadResponse = zod.object({
  */
 
 
-
 export const requestUploadUrlBodyContentHashRegExp = new RegExp('^[0-9a-f]{64}$');
 
 
@@ -7667,8 +7617,6 @@ export const RequestUploadUrlBody = zod.object({
   "contentType": zod.string().min(1).describe('MIME type of the file (e.g. image\/jpeg).'),
   "contentHash": zod.string().regex(requestUploadUrlBodyContentHashRegExp).optional().describe('SHA-256 hex digest of the file contents. When provided, the server deduplicates uploads — if an identical file has already been uploaded by this merchant, the existing objectPath is returned and no new presigned URL is issued.')
 })
-
-
 
 
 export const requestUploadUrlResponseMetadataContentHashRegExp = new RegExp('^[0-9a-f]{64}$');
@@ -7713,8 +7661,6 @@ export const ListSavedFiltersResponse = zod.object({
  * @summary Save a named smart search filter preset
  */
 export const createSavedFilterBodyNameMax = 40;
-
-
 
 
 export const CreateSavedFilterBody = zod.object({
@@ -7782,8 +7728,6 @@ export const ListMerchantSavedFiltersResponse = zod.object({
 export const createMerchantSavedFilterBodyNameMax = 40;
 
 
-
-
 export const CreateMerchantSavedFilterBody = zod.object({
   "name": zod.string().min(1).max(createMerchantSavedFilterBodyNameMax),
   "rawInput": zod.string().min(1),
@@ -7813,7 +7757,6 @@ export const RenameMerchantSavedFilterParams = zod.object({
 })
 
 export const renameMerchantSavedFilterBodyNameMax = 40;
-
 
 
 export const RenameMerchantSavedFilterBody = zod.object({
@@ -7848,9 +7791,6 @@ export const DeleteMerchantSavedFilterResponse = zod.object({
  */
 
 
-
-
-
 export const GetGithubSyncConfigResponse = zod.object({
   "enabled": zod.boolean().describe('Whether the GitHub sync job is enabled'),
   "schedule": zod.string().describe('Cron expression for the sync schedule (e.g. \"0 2 \* \* \*\")'),
@@ -7866,9 +7806,6 @@ export const GetGithubSyncConfigResponse = zod.object({
  */
 
 
-
-
-
 export const UpdateGithubSyncConfigBody = zod.object({
   "enabled": zod.boolean().optional().describe('Whether the GitHub sync job is enabled'),
   "schedule": zod.string().optional().describe('Cron expression for the sync schedule (e.g. \"0 2 \* \* \*\")'),
@@ -7877,10 +7814,6 @@ export const UpdateGithubSyncConfigBody = zod.object({
   "divergeAction": zod.enum(['alert_only', 'alert_and_push']).optional().describe('What the scheduled sync should do when the remote has diverged commits. alert_only skips the push; alert_and_push force-pushes but emails admins.'),
   "cleanupFailureThreshold": zod.number().min(1).optional().describe('Number of consecutive nightly log cleanup errors before admins are notified. Defaults to 3.')
 })
-
-
-
-
 
 
 export const UpdateGithubSyncConfigResponse = zod.object({
@@ -7952,7 +7885,6 @@ export const GetGithubSyncCleanupAlertSnoozeResponse = zod.object({
  */
 export const setGithubSyncCleanupAlertSnoozeBodyDaysMin = 0;
 export const setGithubSyncCleanupAlertSnoozeBodyDaysMax = 365;
-
 
 
 export const SetGithubSyncCleanupAlertSnoozeBody = zod.object({
@@ -8075,7 +8007,6 @@ export const getUpigatewaySettingsResponseCapWarningThresholdDefault = 80;
 export const getUpigatewaySettingsResponseCapWarningThresholdMax = 100;
 
 
-
 export const GetUpigatewaySettingsResponse = zod.object({
   "enabled": zod.boolean().describe('Whether UPIGateway payin is enabled'),
   "env": zod.enum(['test', 'live']).describe('Gateway environment'),
@@ -8104,7 +8035,6 @@ export const updateUpigatewaySettingsBodyDailyLimitMax = 100000000;
 export const updateUpigatewaySettingsBodyCapWarningThresholdMax = 100;
 
 
-
 export const UpdateUpigatewaySettingsBody = zod.object({
   "enabled": zod.boolean().optional().describe('Enable or disable UPIGateway payin'),
   "env": zod.enum(['test', 'live']).optional().describe('Gateway environment'),
@@ -8123,7 +8053,6 @@ export const UpdateUpigatewaySettingsBody = zod.object({
 
 export const updateUpigatewaySettingsResponseCapWarningThresholdDefault = 80;
 export const updateUpigatewaySettingsResponseCapWarningThresholdMax = 100;
-
 
 
 export const UpdateUpigatewaySettingsResponse = zod.object({
@@ -8151,7 +8080,6 @@ export const UpdateUpigatewaySettingsResponse = zod.object({
  */
 export const getUpigatewayCapUsageResponseUtilizationPctMin = 0;
 export const getUpigatewayCapUsageResponseUtilizationPctMax = 100;
-
 
 
 export const GetUpigatewayCapUsageResponse = zod.object({
@@ -11131,5 +11059,4 @@ export const GetIamAuditResponse = zod.object({
   "page": zod.number().optional(),
   "limit": zod.number().optional()
 })
-
 

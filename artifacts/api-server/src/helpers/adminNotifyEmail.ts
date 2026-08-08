@@ -1,4 +1,5 @@
 import { db, usersTable, webhookFailureAlertLogsTable, ekqrSyncAlertLogsTable, systemConfigTable, SYSTEM_CONFIG_KEYS, SYSTEM_CONFIG_DEFAULTS } from "@workspace/db";
+import { createBulkNotifications } from "./notifications";
 import { and, eq, gt, gte, sql } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { sendMail } from "./mailer";
@@ -1095,11 +1096,14 @@ export function buildEkqrCapFullHtml(opts: {
  * Sends a one-per-UTC-day alert to all active admins when the EKQR /
  * UPIGateway provider daily cap is full.
  *
- * Deduplication: reads/writes `upigateway_cap_alert_last_sent_date` in
- * system_config (a YYYY-MM-DD UTC date string).  If the stored date matches
- * today's UTC date the alert is suppressed silently — no email, no DB write.
- * This prevents spamming on every rejected order while still guaranteeing one
- * notification per calendar day the cap is hit.
+ * Deduplication: atomically claims today's alert slot via an INSERT … ON
+ * CONFLICT DO UPDATE … WHERE value IS DISTINCT FROM … RETURNING in
+ * system_config.  This is race-safe: concurrent callers are serialised at the
+ * PostgreSQL index level, and exactly one wins the claim.  The claim applies
+ * to both the email and in-app channels.
+ *
+ * The two delivery channels are fully independent — disabling email opt-outs
+ * does not suppress in-app notifications and vice versa.
  *
  * Fire-and-forget safe: all errors are caught and logged; the caller should
  * call this without awaiting or with .catch() to avoid blocking the request.
@@ -1141,29 +1145,54 @@ export async function notifyAdminsOfEkqrCapFull(opts: {
       return;
     }
 
-    const recipients = await getAdminEmails("ekqrCapAlertEmails");
-
-    if (recipients.length === 0) {
-      logger.info("No admins opted in to EKQR cap alert emails — skipping");
-      return;
+    // ── Email channel ─────────────────────────────────────────────────────────
+    try {
+      const recipients = await getAdminEmails("ekqrCapAlertEmails");
+      if (recipients.length > 0) {
+        const html = buildEkqrCapFullHtml(opts);
+        const subject = `[RasoKart] 🔴 EKQR Daily Cap Reached — ${formatAmount(opts.todayTotal)} of ${formatAmount(opts.dailyLimit)} used`;
+        const results = await Promise.allSettled(
+          recipients.map(email => sendMail({ to: email, subject, html }))
+        );
+        const emailSent = results.filter(r => r.status === "fulfilled" && r.value).length;
+        const emailFailed = results.length - emailSent;
+        logger.info(
+          { todayTotal: opts.todayTotal, dailyLimit: opts.dailyLimit, totalAdmins: recipients.length, sent: emailSent, failed: emailFailed },
+          "Admin EKQR cap full alert emails dispatched"
+        );
+      } else {
+        logger.info("No admins opted in to EKQR cap alert emails — skipping email");
+      }
+    } catch (emailErr) {
+      logger.error({ emailErr }, "Failed to send EKQR cap full alert emails");
     }
 
-    const html = buildEkqrCapFullHtml(opts);
-    const subject = `[RasoKart] 🔴 EKQR Daily Cap Reached — ${formatAmount(opts.todayTotal)} of ${formatAmount(opts.dailyLimit)} used`;
-
-    const results = await Promise.allSettled(
-      recipients.map(email => sendMail({ to: email, subject, html }))
-    );
-
-    const sent = results.filter(r => r.status === "fulfilled" && r.value).length;
-    const failed = results.length - sent;
-
-    logger.info(
-      { todayTotal: opts.todayTotal, dailyLimit: opts.dailyLimit, totalAdmins: recipients.length, sent, failed },
-      "Admin EKQR cap full alert emails dispatched"
-    );
+    // ── In-app notifications — independent of email; fired to all opted-in admins
+    try {
+      const adminRows = await db
+        .select({ id: usersTable.id })
+        .from(usersTable)
+        .where(and(eq(usersTable.role, "admin"), eq(usersTable.isActive, true), eq(usersTable.ekqrCapAlertNotifs, true)));
+      if (adminRows.length > 0) {
+        const resetsDate = new Date(opts.resetsAt).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+        await createBulkNotifications(
+          adminRows.map(r => ({
+            userId: r.id,
+            type: "ekqr_daily_cap_full" as const,
+            title: "EKQR Daily Cap Reached",
+            body: `The EKQR / UPIGateway daily cap of ₹${opts.dailyLimit.toLocaleString()} has been reached (₹${opts.todayTotal.toLocaleString()} used). New merchant deposits via this provider are being rejected until the cap resets on ${resetsDate}.`,
+            metadata: { todayTotal: opts.todayTotal, dailyLimit: opts.dailyLimit, resetsAt: opts.resetsAt },
+          })),
+          { skipPrefCheck: true }, // already filtered by ekqrCapAlertNotifs above
+        );
+      } else {
+        logger.info("No admins opted in to EKQR cap alert in-app notifications — skipping");
+      }
+    } catch (inAppErr) {
+      logger.error({ inAppErr }, "Failed to send EKQR cap full in-app notifications");
+    }
   } catch (err) {
-    logger.error({ err }, "Failed to send EKQR cap full alert emails");
+    logger.error({ err }, "Failed to dispatch EKQR cap full alert");
   }
 }
 

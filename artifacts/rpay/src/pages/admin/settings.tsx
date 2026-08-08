@@ -412,6 +412,7 @@ export default function AdminSettings() {
   const reportFailureEnabled = (me as any)?.reportFailureAlertEmails ?? true;
   const ekqrSyncAlertEnabled = (me as any)?.ekqrSyncAlertEmails ?? true;
   const ekqrCapAlertEnabled = (me as any)?.ekqrCapAlertEmails ?? true;
+  const ekqrCapAlertNotifsEnabled = (me as any)?.ekqrCapAlertNotifs ?? true;
   const githubSyncFailureEnabled = (me as any)?.githubSyncFailureAlertEmails ?? true;
   const weeklyDigestEnabled = me?.weeklyDeliveryDigestEmails ?? true;
 
@@ -3721,6 +3722,28 @@ export default function AdminSettings() {
             <p className="text-xs text-amber-400 flex items-center gap-1.5">
               <AlertCircle className="w-3.5 h-3.5 shrink-0" />
               You will not receive alerts when the EKQR daily cap is reached.
+            </p>
+          )}
+
+          <div className="flex items-center justify-between rounded-lg border border-border/50 bg-muted/5 px-4 py-3">
+            <div className="space-y-0.5">
+              <p className="text-sm font-medium">EKQR daily cap in-app notifications</p>
+              <p className="text-xs text-muted-foreground">
+                Receive an in-app notification when the EKQR / UPIGateway daily cap is reached. Complements the email alert — useful if email is turned off.
+              </p>
+            </div>
+            <Switch
+              checked={ekqrCapAlertNotifsEnabled}
+              onCheckedChange={val =>
+                updatePrefs({ data: { ekqrCapAlertNotifs: val } as any })
+              }
+              disabled={savingPrefs || me === undefined}
+            />
+          </div>
+          {!ekqrCapAlertNotifsEnabled && (
+            <p className="text-xs text-amber-400 flex items-center gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              You will not receive in-app notifications when the EKQR daily cap is reached.
             </p>
           )}
 

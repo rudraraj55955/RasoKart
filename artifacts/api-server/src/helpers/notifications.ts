@@ -31,7 +31,8 @@ export type NotificationType =
   | "gateway_failover_exhausted"
   | "gateway_chain_exhausted"
   | "gateway_recovered"
-  | "cleanup_failure_repeated";
+  | "cleanup_failure_repeated"
+  | "ekqr_daily_cap_full";
 
 type InAppPrefField = keyof Pick<
   typeof usersTable.$inferSelect,
@@ -41,6 +42,7 @@ type InAppPrefField = keyof Pick<
   | "signatureFailureAlertNotifs"
   | "webhookFailureNotifs"
   | "ekqrSyncAlertNotifs"
+  | "ekqrCapAlertNotifs"
   | "reportFailureAlertNotifs"
   | "weeklyDeliveryDigestNotifs"
   | "apiKeyGeneratedNotifs"
@@ -58,6 +60,7 @@ const NOTIF_TYPE_TO_PREF: Partial<Record<NotificationType, InAppPrefField>> = {
   plan_expiring: "planExpiryAlertNotifs",
   plan_expired: "planExpiryAlertNotifs",
   webhook_failure: "webhookFailureNotifs",
+  ekqr_daily_cap_full: "ekqrCapAlertNotifs",
   reconciliation_email_failure: "reconciliationAlertNotifs",
   scheduled_report_failure: "reportFailureAlertNotifs",
   scheduled_report_retry_success: "reportFailureAlertNotifs",

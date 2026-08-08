@@ -42,6 +42,7 @@ export type UpdateMyPreferencesBody = {
   webhookFailureNotifs?: boolean;
   /** Whether the merchant wants in-app notifications for EKQR sync alerts. */
   ekqrSyncAlertNotifs?: boolean;
+  ekqrCapAlertNotifs?: boolean;
   /** Whether the merchant wants in-app notifications for report failure alerts. */
   reportFailureAlertNotifs?: boolean;
   /** Whether the merchant wants in-app notifications for weekly delivery digest. */

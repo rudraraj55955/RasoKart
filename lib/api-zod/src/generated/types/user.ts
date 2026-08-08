@@ -95,6 +95,7 @@ export interface User {
   webhookFailureNotifs?: boolean;
   /** Whether the merchant wants in-app notifications for EKQR sync alerts. Defaults to true. */
   ekqrSyncAlertNotifs?: boolean;
+  ekqrCapAlertNotifs?: boolean;
   /** Whether the merchant wants in-app notifications for report failure alerts. Defaults to true. */
   reportFailureAlertNotifs?: boolean;
   /** Whether the merchant wants in-app notifications for weekly delivery digest. Defaults to true. */

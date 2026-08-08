@@ -33,6 +33,7 @@ export const usersTable = pgTable("users", {
   signatureFailureAlertNotifs: boolean("signature_failure_alert_notifs").notNull().default(true),
   webhookFailureNotifs: boolean("webhook_failure_notifs").notNull().default(true),
   ekqrSyncAlertNotifs: boolean("ekqr_sync_alert_notifs").notNull().default(true),
+  ekqrCapAlertNotifs: boolean("ekqr_cap_alert_notifs").notNull().default(true),
   reportFailureAlertNotifs: boolean("report_failure_alert_notifs").notNull().default(true),
   weeklyDeliveryDigestNotifs: boolean("weekly_delivery_digest_notifs").notNull().default(true),
   apiKeyGeneratedNotifs: boolean("api_key_generated_notifs").notNull().default(true),

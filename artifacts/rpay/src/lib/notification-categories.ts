@@ -12,6 +12,7 @@ export const IN_APP_NOTIF_FIELDS = [
   "reportFailureAlertNotifs",
   "weeklyDeliveryDigestNotifs",
   "ekqrSyncAlertNotifs",
+  "ekqrCapAlertNotifs",
   "planChangeNotifs",
 ] as const;
 
@@ -31,6 +32,7 @@ export const IN_APP_NOTIF_LABELS: Record<InAppNotifField, string> = {
   reportFailureAlertNotifs: "Report failure alerts",
   weeklyDeliveryDigestNotifs: "Weekly delivery digest",
   ekqrSyncAlertNotifs: "EKQR sync alerts",
+  ekqrCapAlertNotifs: "EKQR daily cap alerts",
   planChangeNotifs: "Plan changes",
 };
 
@@ -55,6 +57,7 @@ export const NOTIF_TYPE_TO_FIELD: Partial<Record<string, InAppNotifField>> = {
   report_manual_send: "reportScheduleChangedNotifs",
   report_delivery_low_success_rate: "weeklyDeliveryDigestNotifs",
   preference_change_unknown_device: "loginAlertNotifs",
+  ekqr_daily_cap_full: "ekqrCapAlertNotifs",
 };
 
 export function typeToField(type: string): InAppNotifField | null {
