@@ -39,7 +39,7 @@ const router = Router();
  * Credit path is in helpers/ekqrCredit.ts (shared with the sync scheduler).
  * See that file for amount verification and idempotency details.
  */
-router.post("/", async (req, res) => {
+router.post("/webhook", async (req, res) => {
   // express.urlencoded (app.ts line 93) parses the form-encoded body into req.body.
   // JSON.stringify gives a stable log representation regardless of content-type.
   const rawPayload = JSON.stringify(req.body ?? {});
