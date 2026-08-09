@@ -22,6 +22,7 @@ import { logger } from "../lib/logger";
 import { ekqrCheckOrderStatus, ekqrFormatDate } from "./ekqr";
 import { notifyAdminsOfStuckEkqrQrCodes } from "./adminNotifyEmail";
 import { creditEkqrQrPayment } from "./ekqrCredit";
+import { decryptSecret } from "./cryptoUtils";
 
 let syncTask: ScheduledTask | null = null;
 
@@ -67,12 +68,16 @@ async function loadSyncConfig(): Promise<{
       ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.EKQR_SYNC_ALERT_COOLDOWN_HOURS]
   );
 
+  const storedApiKey = map.get(SYSTEM_CONFIG_KEYS.EKQR_API_KEY) ?? "";
+  const apiKeyDecrypt = storedApiKey ? decryptSecret(storedApiKey) : { ok: true as const, value: "" };
+  const apiKey = apiKeyDecrypt.ok ? apiKeyDecrypt.value : "";
+
   return {
     enabled: ekqrGloballyEnabled && syncEnabled === "true",
     staleMinutes: isNaN(staleMinutesRaw) ? 15 : Math.max(1, staleMinutesRaw),
     stuckThreshold: isNaN(stuckThresholdRaw) ? 10 : Math.max(1, stuckThresholdRaw),
     alertCooldownHours: isNaN(cooldownRaw) ? 4 : Math.max(1, cooldownRaw),
-    apiKey: map.get(SYSTEM_CONFIG_KEYS.EKQR_API_KEY) ?? "",
+    apiKey,
   };
 }
 

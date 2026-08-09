@@ -8,6 +8,7 @@ import { ekqrCreateOrder, ekqrCheckOrderStatus, ekqrClientTxnId, ekqrFormatDate 
 import { getStartOfDayInTimezone } from "../helpers/payinDailyLimit";
 import { createCustomGatewayOrder } from "../helpers/customGatewayClient";
 import { logger } from "../lib/logger";
+import { decryptSecret } from "../helpers/cryptoUtils";
 
 const qrCodeCreateLimiter = makeRateLimiter({
   windowMs: 60 * 1000,
@@ -354,7 +355,9 @@ router.post("/", qrCodeCreateLimiter, async (req, res) => {
       ]));
     const ekqrMap = new Map(ekqrRows.map(r => [r.key, r.value]));
     const ekqrEnabled = ekqrMap.get(SYSTEM_CONFIG_KEYS.EKQR_ENABLED) === "true";
-    const ekqrApiKey = ekqrMap.get(SYSTEM_CONFIG_KEYS.EKQR_API_KEY) ?? "";
+    const storedEkqrKey = ekqrMap.get(SYSTEM_CONFIG_KEYS.EKQR_API_KEY) ?? "";
+    const ekqrKeyResult = storedEkqrKey ? decryptSecret(storedEkqrKey) : { ok: true as const, value: "" };
+    const ekqrApiKey = ekqrKeyResult.ok ? ekqrKeyResult.value : "";
 
     if (ekqrEnabled && ekqrApiKey) {
       // ── EKQR amount and daily-volume limit enforcement ──
@@ -656,7 +659,11 @@ router.post("/:id/ekqr-sync", async (req, res) => {
   // Load EKQR API key
   const [keyRow] = await db.select({ value: systemConfigTable.value })
     .from(systemConfigTable).where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.EKQR_API_KEY)).limit(1);
-  const apiKey = keyRow?.value ?? "";
+  const storedApiKey = keyRow?.value ?? "";
+  if (!storedApiKey) { res.status(400).json({ error: "EKQR API key is not configured" }); return; }
+  const syncKeyDecrypt = decryptSecret(storedApiKey);
+  if (!syncKeyDecrypt.ok) { res.status(500).json({ error: "Failed to decrypt EKQR API key" }); return; }
+  const apiKey = syncKeyDecrypt.value;
   if (!apiKey) { res.status(400).json({ error: "EKQR API key is not configured" }); return; }
 
   const txnDate = ekqrFormatDate(qr.createdAt instanceof Date ? qr.createdAt : new Date(qr.createdAt));

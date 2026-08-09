@@ -4,6 +4,7 @@ import { eq, and, inArray } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { ekqrCheckOrderStatus, ekqrFormatDate } from "../helpers/ekqr";
 import { creditEkqrQrPayment } from "../helpers/ekqrCredit";
+import { decryptSecret } from "../helpers/cryptoUtils";
 
 const router = Router();
 
@@ -85,7 +86,9 @@ router.post("/webhook", async (req, res) => {
       ]));
     const cfg = new Map(configRows.map(r => [r.key, r.value]));
     const ekqrEnabled = cfg.get(SYSTEM_CONFIG_KEYS.EKQR_ENABLED) === "true";
-    const ekqrApiKey  = cfg.get(SYSTEM_CONFIG_KEYS.EKQR_API_KEY) ?? "";
+    const storedEkqrApiKey = cfg.get(SYSTEM_CONFIG_KEYS.EKQR_API_KEY) ?? "";
+    const ekqrKeyDecrypt = storedEkqrApiKey ? decryptSecret(storedEkqrApiKey) : { ok: true as const, value: "" };
+    const ekqrApiKey = ekqrKeyDecrypt.ok ? ekqrKeyDecrypt.value : "";
 
     // ── Guard: EKQR must be globally enabled ─────────────────────────────────
     if (!ekqrEnabled) {

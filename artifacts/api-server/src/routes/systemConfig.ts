@@ -2045,13 +2045,15 @@ async function getEkqrConfig() {
     getLastUpdatedInfo(keys),
   ]);
   const map = new Map(rows.map((r) => [r.key, r.value]));
-  const rawKey = map.get(SYSTEM_CONFIG_KEYS.EKQR_API_KEY) ?? "";
-  const rawSecret = map.get(SYSTEM_CONFIG_KEYS.EKQR_WEBHOOK_SECRET) ?? "";
+  const storedKey = map.get(SYSTEM_CONFIG_KEYS.EKQR_API_KEY) ?? "";
+  const storedSecret = map.get(SYSTEM_CONFIG_KEYS.EKQR_WEBHOOK_SECRET) ?? "";
+  const keyDecrypt = storedKey ? decryptSecret(storedKey) : { ok: true as const, value: "" };
+  const plainKey = keyDecrypt.ok ? keyDecrypt.value : "";
   return {
-    apiKeySet: rawKey.length > 0,
-    apiKeyMasked: rawKey.length > 0 ? `${rawKey.slice(0, 4)}${"*".repeat(Math.max(0, rawKey.length - 8))}${rawKey.slice(-4)}` : "",
+    apiKeySet: plainKey.length > 0,
+    apiKeyMasked: plainKey.length > 0 ? `${plainKey.slice(0, 4)}${"*".repeat(Math.max(0, plainKey.length - 8))}${plainKey.slice(-4)}` : "",
     enabled: (map.get(SYSTEM_CONFIG_KEYS.EKQR_ENABLED) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.EKQR_ENABLED]) === "true",
-    webhookSecretSet: rawSecret.length > 0,
+    webhookSecretSet: storedSecret.length > 0,
     env: (map.get(SYSTEM_CONFIG_KEYS.EKQR_ENV) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.EKQR_ENV] ?? "test") as "test" | "live",
     minAmount: parseFloat(map.get(SYSTEM_CONFIG_KEYS.EKQR_MIN_AMOUNT) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.EKQR_MIN_AMOUNT]),
     maxAmount: parseFloat(map.get(SYSTEM_CONFIG_KEYS.EKQR_MAX_AMOUNT) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.EKQR_MAX_AMOUNT]),
@@ -2084,9 +2086,14 @@ router.put("/ekqr", async (req, res, next) => {
     const oldEkqrConfig = await getEkqrConfig();
 
     if (apiKey !== undefined) {
-      await db.insert(systemConfigTable)
-        .values({ key: SYSTEM_CONFIG_KEYS.EKQR_API_KEY, value: apiKey, updatedByEmail: user.email })
-        .onConflictDoUpdate({ target: systemConfigTable.key, set: { value: apiKey, updatedByEmail: user.email } });
+      if (apiKey === "") {
+        await db.delete(systemConfigTable).where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.EKQR_API_KEY));
+      } else {
+        const encryptedKey = encryptSecret(apiKey);
+        await db.insert(systemConfigTable)
+          .values({ key: SYSTEM_CONFIG_KEYS.EKQR_API_KEY, value: encryptedKey, updatedByEmail: user.email })
+          .onConflictDoUpdate({ target: systemConfigTable.key, set: { value: encryptedKey, updatedByEmail: user.email } });
+      }
     }
 
     if (enabled !== undefined) {
@@ -2107,9 +2114,10 @@ router.put("/ekqr", async (req, res, next) => {
         // Clear the secret
         await db.delete(systemConfigTable).where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.EKQR_WEBHOOK_SECRET));
       } else {
+        const encryptedWebhookSecret = encryptSecret(webhookSecret);
         await db.insert(systemConfigTable)
-          .values({ key: SYSTEM_CONFIG_KEYS.EKQR_WEBHOOK_SECRET, value: webhookSecret, updatedByEmail: user.email })
-          .onConflictDoUpdate({ target: systemConfigTable.key, set: { value: webhookSecret, updatedByEmail: user.email } });
+          .values({ key: SYSTEM_CONFIG_KEYS.EKQR_WEBHOOK_SECRET, value: encryptedWebhookSecret, updatedByEmail: user.email })
+          .onConflictDoUpdate({ target: systemConfigTable.key, set: { value: encryptedWebhookSecret, updatedByEmail: user.email } });
       }
     }
 
@@ -2356,7 +2364,11 @@ router.post("/ekqr/test", async (req, res, next) => {
     const [keyRow] = await db.select({ value: systemConfigTable.value })
       .from(systemConfigTable).where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.EKQR_API_KEY)).limit(1);
 
-    const apiKey = keyRow?.value ?? "";
+    const storedApiKey = keyRow?.value ?? "";
+    if (!storedApiKey) { res.status(400).json({ error: "EKQR API key is not configured" }); return; }
+    const keyDecryptResult = decryptSecret(storedApiKey);
+    if (!keyDecryptResult.ok) { res.status(500).json({ error: "Failed to decrypt EKQR API key" }); return; }
+    const apiKey = keyDecryptResult.value;
     if (!apiKey) { res.status(400).json({ error: "EKQR API key is not configured" }); return; }
 
     const testPayload = {
