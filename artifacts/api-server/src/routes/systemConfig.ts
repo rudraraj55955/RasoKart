@@ -2045,15 +2045,16 @@ async function getEkqrConfig() {
     getLastUpdatedInfo(keys),
   ]);
   const map = new Map(rows.map((r) => [r.key, r.value]));
+  // Decrypt stored secrets — decryptSecret handles both enc:v1: and legacy plaintext values
   const storedKey = map.get(SYSTEM_CONFIG_KEYS.EKQR_API_KEY) ?? "";
   const storedSecret = map.get(SYSTEM_CONFIG_KEYS.EKQR_WEBHOOK_SECRET) ?? "";
-  const keyDecrypt = storedKey ? decryptSecret(storedKey) : { ok: true as const, value: "" };
-  const plainKey = keyDecrypt.ok ? keyDecrypt.value : "";
+  const decryptedKey = storedKey ? (() => { const r = decryptSecret(storedKey); return r.ok ? r.value : ""; })() : "";
+  const decryptedSecret = storedSecret ? (() => { const r = decryptSecret(storedSecret); return r.ok ? r.value : ""; })() : "";
   return {
-    apiKeySet: plainKey.length > 0,
-    apiKeyMasked: plainKey.length > 0 ? `${plainKey.slice(0, 4)}${"*".repeat(Math.max(0, plainKey.length - 8))}${plainKey.slice(-4)}` : "",
+    apiKeySet: decryptedKey.length > 0,
+    apiKeyMasked: decryptedKey.length > 0 ? `${decryptedKey.slice(0, 4)}${"*".repeat(Math.max(0, decryptedKey.length - 8))}${decryptedKey.slice(-4)}` : "",
     enabled: (map.get(SYSTEM_CONFIG_KEYS.EKQR_ENABLED) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.EKQR_ENABLED]) === "true",
-    webhookSecretSet: storedSecret.length > 0,
+    webhookSecretSet: decryptedSecret.length > 0,
     env: (map.get(SYSTEM_CONFIG_KEYS.EKQR_ENV) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.EKQR_ENV] ?? "test") as "test" | "live",
     minAmount: parseFloat(map.get(SYSTEM_CONFIG_KEYS.EKQR_MIN_AMOUNT) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.EKQR_MIN_AMOUNT]),
     maxAmount: parseFloat(map.get(SYSTEM_CONFIG_KEYS.EKQR_MAX_AMOUNT) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.EKQR_MAX_AMOUNT]),

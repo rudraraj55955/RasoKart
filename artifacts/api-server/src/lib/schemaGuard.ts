@@ -1779,6 +1779,28 @@ async function runGuard(): Promise<void> {
   await db.execute(sql`ALTER TABLE ekqr_webhook_logs ADD COLUMN IF NOT EXISTS upi_txn_id TEXT`);
   logger.info({ table: "ekqr_webhook_logs", migration: "add_ekqr_id_upi_txn_id" }, "schema_guard_column_added");
 
+  // ── One-time migration: encrypt plaintext EKQR credentials ───────────────
+  // ekqr_api_key and ekqr_webhook_secret were historically stored as plaintext
+  // in system_config. Re-encrypt any rows that do not yet carry the enc:v1: prefix.
+  // This step is idempotent: already-encrypted rows (starting with enc:v1:) are skipped.
+  {
+    const { encryptSecret } = await import("../helpers/cryptoUtils");
+    const credRows = await db.execute(
+      sql`SELECT key, value FROM system_config WHERE key IN ('ekqr_api_key', 'ekqr_webhook_secret') AND value IS NOT NULL AND value != '' AND value NOT LIKE 'enc:v1:%'`
+    );
+    const credRowsArr: Array<{ key: string; value: string }> = (credRows as any).rows ?? [];
+    for (const row of credRowsArr) {
+      const encrypted = encryptSecret(row.value);
+      await db.execute(
+        sql`UPDATE system_config SET value = ${encrypted} WHERE key = ${row.key} AND value NOT LIKE 'enc:v1:%'`
+      );
+      logger.info({ key: row.key }, "schema_guard: re-encrypted plaintext EKQR credential");
+    }
+    if (credRowsArr.length > 0) {
+      logger.info({ migration: "encrypt_ekqr_credentials", count: credRowsArr.length }, "schema_guard: plaintext EKQR credential migration complete");
+    }
+  }
+
   logger.info("schema_guard_completed");
 }
 
