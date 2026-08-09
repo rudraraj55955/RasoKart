@@ -1899,8 +1899,8 @@ export default function MerchantReports() {
     if (!transactions.length) { toast.error("No data to export"); return; }
     setTxExporting("xlsx");
     try {
-      const XLSX = await import("xlsx");
-      const wb = XLSX.utils.book_new();
+      const { default: ExcelJS } = await import("exceljs");
+      const wb = new ExcelJS.Workbook();
 
       const summaryRows = [
         ["RasoKart — Transaction Report"],
@@ -1916,9 +1916,9 @@ export default function MerchantReports() {
         ["Failed", txStats?.failedCount ?? 0],
         ["Pending", txStats?.pendingCount ?? 0],
       ];
-      const ws1 = XLSX.utils.aoa_to_sheet(summaryRows);
-      ws1["!cols"] = [{ wch: 28 }, { wch: 20 }];
-      XLSX.utils.book_append_sheet(wb, ws1, "Summary");
+      const ws1 = wb.addWorksheet("Summary");
+      ws1.addRows(summaryRows);
+      [28, 20].forEach((width, i) => { ws1.getColumn(i + 1).width = width; });
 
       const txRows = [
         ["Date", "UTR", "Reference ID", "Type", "Status", "Settlement Status", "Amount (₹)", "Fee (₹)", "Currency", "Source", "Provider", "Description"],
@@ -1940,11 +1940,16 @@ export default function MerchantReports() {
           ];
         }),
       ];
-      const ws2 = XLSX.utils.aoa_to_sheet(txRows);
-      ws2["!cols"] = [{ wch: 18 }, { wch: 22 }, { wch: 18 }, { wch: 12 }, { wch: 10 }, { wch: 16 }, { wch: 14 }, { wch: 12 }, { wch: 10 }, { wch: 16 }, { wch: 16 }, { wch: 30 }];
-      XLSX.utils.book_append_sheet(wb, ws2, "Transactions");
+      const ws2 = wb.addWorksheet("Transactions");
+      ws2.addRows(txRows);
+      [18, 22, 18, 12, 10, 16, 14, 12, 10, 16, 16, 30].forEach((width, i) => { ws2.getColumn(i + 1).width = width; });
 
-      XLSX.writeFile(wb, `rasokart-tx-report-${format(new Date(), "yyyy-MM-dd")}.xlsx`);
+      const buffer = await wb.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `rasokart-tx-report-${format(new Date(), "yyyy-MM-dd")}.xlsx`;
+      a.click(); setTimeout(() => URL.revokeObjectURL(url), 100);
       toast.success("Excel report downloaded");
     } catch {
       toast.error("Failed to export Excel");
@@ -2039,8 +2044,8 @@ export default function MerchantReports() {
     if (!settlements.length) { toast.error("No data to export"); return; }
     setStlExporting("xlsx");
     try {
-      const XLSX = await import("xlsx");
-      const wb = XLSX.utils.book_new();
+      const { default: ExcelJS } = await import("exceljs");
+      const wb = new ExcelJS.Workbook();
 
       const summaryRows = [
         ["RasoKart — Settlement Report"],
@@ -2058,9 +2063,9 @@ export default function MerchantReports() {
         ["Processing / Approved", stlStats?.processingCount ?? 0],
         ["Rejected / Cancelled", stlStats?.rejectedCount ?? 0],
       ];
-      const ws1 = XLSX.utils.aoa_to_sheet(summaryRows);
-      ws1["!cols"] = [{ wch: 28 }, { wch: 20 }];
-      XLSX.utils.book_append_sheet(wb, ws1, "Summary");
+      const ws1 = wb.addWorksheet("Summary");
+      ws1.addRows(summaryRows);
+      [28, 20].forEach((width, i) => { ws1.getColumn(i + 1).width = width; });
 
       const stlRows = [
         ["Settlement ID", "Status", "Period From", "Period To", "Requested Amount (₹)", "Settled Amount (₹)", "Fees (₹)", "Transactions", "UTR / Reference", "Paid At", "Created At"],
@@ -2078,11 +2083,16 @@ export default function MerchantReports() {
           format(new Date(s.createdAt), "dd/MM/yyyy HH:mm"),
         ]),
       ];
-      const ws2 = XLSX.utils.aoa_to_sheet(stlRows);
-      ws2["!cols"] = [{ wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 22 }, { wch: 20 }, { wch: 14 }, { wch: 14 }, { wch: 28 }, { wch: 20 }, { wch: 20 }];
-      XLSX.utils.book_append_sheet(wb, ws2, "Settlements");
+      const ws2 = wb.addWorksheet("Settlements");
+      ws2.addRows(stlRows);
+      [14, 14, 14, 14, 22, 20, 14, 14, 28, 20, 20].forEach((width, i) => { ws2.getColumn(i + 1).width = width; });
 
-      XLSX.writeFile(wb, `rasokart-settlement-report-${format(new Date(), "yyyy-MM-dd")}.xlsx`);
+      const buffer = await wb.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `rasokart-settlement-report-${format(new Date(), "yyyy-MM-dd")}.xlsx`;
+      a.click(); setTimeout(() => URL.revokeObjectURL(url), 100);
       toast.success("Excel report downloaded");
     } catch {
       toast.error("Failed to export Excel");

@@ -1,5 +1,5 @@
 import cron, { type ScheduledTask } from "node-cron";
-import XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import PDFDocument from "pdfkit";
 import { db, reportSchedulesTable, reportDeliveryLogsTable, transactionsTable, merchantsTable, merchantConnectionsTable, ledgerEntriesTable, settlementsTable, usersTable, systemSettingsTable, auditLogsTable } from "@workspace/db";
 import { eq, and, gte, lte, sql, desc, inArray } from "drizzle-orm";
@@ -215,8 +215,8 @@ async function fetchReportData(merchantId: number, dateFrom: Date, dateTo: Date)
   return { transactions, stats };
 }
 
-function buildXlsx(transactions: TxRow[], stats: Stats, dateFrom: Date, dateTo: Date, frequency: string): Buffer {
-  const wb = XLSX.utils.book_new();
+async function buildXlsx(transactions: TxRow[], stats: Stats, dateFrom: Date, dateTo: Date, frequency: string): Promise<Buffer> {
+  const wb = new ExcelJS.Workbook();
 
   const periodLabel = `${dateFrom.toISOString().slice(0, 10)} to ${dateTo.toISOString().slice(0, 10)}`;
   const generatedAt = new Date().toISOString().slice(0, 16).replace("T", " ");
@@ -236,9 +236,9 @@ function buildXlsx(transactions: TxRow[], stats: Stats, dateFrom: Date, dateTo: 
     ["Failed", stats.failedCount],
     ["Pending", stats.pendingCount],
   ];
-  const ws1 = XLSX.utils.aoa_to_sheet(summaryRows);
-  ws1["!cols"] = [{ wch: 28 }, { wch: 20 }];
-  XLSX.utils.book_append_sheet(wb, ws1, "Summary");
+  const ws1 = wb.addWorksheet("Summary");
+  ws1.addRows(summaryRows);
+  [28, 20].forEach((width, i) => { ws1.getColumn(i + 1).width = width; });
 
   const txRows = [
     ["Date", "UTR", "Reference ID", "Type", "Status", "Settlement Status", "Amount (₹)", "Fee (₹)", "Currency", "Source", "Provider", "Description"],
@@ -260,11 +260,11 @@ function buildXlsx(transactions: TxRow[], stats: Stats, dateFrom: Date, dateTo: 
       ];
     }),
   ];
-  const ws2 = XLSX.utils.aoa_to_sheet(txRows);
-  ws2["!cols"] = [{ wch: 18 }, { wch: 22 }, { wch: 18 }, { wch: 12 }, { wch: 10 }, { wch: 16 }, { wch: 14 }, { wch: 12 }, { wch: 10 }, { wch: 16 }, { wch: 16 }, { wch: 30 }];
-  XLSX.utils.book_append_sheet(wb, ws2, "Transactions");
+  const ws2 = wb.addWorksheet("Transactions");
+  ws2.addRows(txRows);
+  [18, 22, 18, 12, 10, 16, 14, 12, 10, 16, 16, 30].forEach((width, i) => { ws2.getColumn(i + 1).width = width; });
 
-  return Buffer.from(XLSX.write(wb, { type: "buffer", bookType: "xlsx" }));
+  return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
 function buildPdf(transactions: TxRow[], stats: Stats, dateFrom: Date, dateTo: Date, frequency: string, businessName: string): Promise<Buffer> {
@@ -693,7 +693,7 @@ export async function sendMerchantReport(
         contentType: "application/pdf",
       };
     } else {
-      const xlsBuf = buildXlsx(transactions, stats, dateFrom, dateTo, schedule.frequency);
+      const xlsBuf = await buildXlsx(transactions, stats, dateFrom, dateTo, schedule.frequency);
       const periodStr = `${dateFrom.toISOString().slice(0, 10)}-to-${dateTo.toISOString().slice(0, 10)}`;
       attachment = {
         filename: `rasokart-report-${schedule.frequency}-${periodStr}.xlsx`,
