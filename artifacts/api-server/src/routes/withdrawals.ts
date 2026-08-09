@@ -2033,8 +2033,10 @@ router.post("/:id/slip/share-link", async (req, res, next) => {
     if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
 
     const isAdmin = user.role === "admin";
+    // Non-admin users with no merchantId have no tenant scope and must be denied.
+    if (!isAdmin && !user.merchantId) { res.status(403).json({ error: "Forbidden" }); return; }
     const conditions: ReturnType<typeof eq>[] = [eq(withdrawalsTable.id, id)];
-    if (!isAdmin && user.merchantId) conditions.push(eq(withdrawalsTable.merchantId, user.merchantId));
+    if (!isAdmin) conditions.push(eq(withdrawalsTable.merchantId, user.merchantId!));
 
     const [row] = await db
       .select({ id: withdrawalsTable.id })
@@ -2070,8 +2072,10 @@ router.get("/:id/slip", async (req, res, next) => {
     if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
 
     const isAdmin = user.role === "admin";
+    // Non-admin users with no merchantId have no tenant scope and must be denied.
+    if (!isAdmin && !user.merchantId) { res.status(403).json({ error: "Forbidden" }); return; }
     const conditions: ReturnType<typeof eq>[] = [eq(withdrawalsTable.id, id)];
-    if (!isAdmin && user.merchantId) conditions.push(eq(withdrawalsTable.merchantId, user.merchantId));
+    if (!isAdmin) conditions.push(eq(withdrawalsTable.merchantId, user.merchantId!));
 
     const [row] = await db
       .select({ withdrawal: withdrawalsTable, merchantName: merchantsTable.businessName })
@@ -2104,8 +2108,10 @@ router.get("/:id/slip.pdf", async (req, res, next) => {
     if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
 
     const isAdmin = user.role === "admin";
+    // Non-admin users with no merchantId have no tenant scope and must be denied.
+    if (!isAdmin && !user.merchantId) { res.status(403).json({ error: "Forbidden" }); return; }
     const conditions: ReturnType<typeof eq>[] = [eq(withdrawalsTable.id, id)];
-    if (!isAdmin && user.merchantId) conditions.push(eq(withdrawalsTable.merchantId, user.merchantId));
+    if (!isAdmin) conditions.push(eq(withdrawalsTable.merchantId, user.merchantId!));
 
     const [row] = await db
       .select({ withdrawal: withdrawalsTable, merchantName: merchantsTable.businessName })

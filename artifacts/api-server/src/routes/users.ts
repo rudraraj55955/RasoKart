@@ -8,6 +8,23 @@ import { PERMISSIONS } from "../permissions";
 const router = Router();
 router.use(requireAuth, requireAdmin, requirePermission(PERMISSIONS.ADMIN_USERS));
 
+// Canonical role whitelist — must mirror schema.ts comment and IAM seed data.
+// Any caller-supplied role not in this set is rejected outright.
+const VALID_ROLES = [
+  "merchant",
+  "payout_merchant",
+  "payout_admin",
+  "payout_super_admin",
+  "agent",
+  "customer",
+  "admin",
+] as const;
+type ValidRole = (typeof VALID_ROLES)[number];
+
+// Roles that only a Super Admin may assign or promote to.
+// A regular admin with ADMIN_USERS permission cannot elevate accounts to these roles.
+const SUPERADMIN_ONLY_ROLES: ReadonlySet<string> = new Set(["admin"]);
+
 const formatUser = (u: any) => ({
   id: u.id,
   email: u.email,
@@ -52,6 +69,16 @@ router.post("/", async (req, res) => {
     res.status(400).json({ error: "Missing required fields" });
     return;
   }
+  if (!VALID_ROLES.includes(role as ValidRole)) {
+    res.status(400).json({ error: `Invalid role. Must be one of: ${VALID_ROLES.join(", ")}` });
+    return;
+  }
+  // Only Super Admins may create accounts with privileged roles (e.g. "admin").
+  const actor = (req as any).user;
+  if (SUPERADMIN_ONLY_ROLES.has(role) && !actor?.isSuperAdmin) {
+    res.status(403).json({ error: "Only a Super Admin may assign that role." });
+    return;
+  }
   const passwordHash = await bcrypt.hash(password, 10);
   const [user] = await db.insert(usersTable).values({
     email: email.toLowerCase(),
@@ -72,6 +99,17 @@ router.put("/:id", async (req, res) => {
   const [existing] = await db.select().from(usersTable).where(eq(usersTable.id, id)).limit(1);
   if (!existing) {
     res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  if (role !== undefined && !VALID_ROLES.includes(role as ValidRole)) {
+    res.status(400).json({ error: `Invalid role. Must be one of: ${VALID_ROLES.join(", ")}` });
+    return;
+  }
+  // Only Super Admins may promote accounts to privileged roles (e.g. "admin").
+  const actor = (req as any).user;
+  if (role !== undefined && SUPERADMIN_ONLY_ROLES.has(role) && !actor?.isSuperAdmin) {
+    res.status(403).json({ error: "Only a Super Admin may assign that role." });
     return;
   }
 

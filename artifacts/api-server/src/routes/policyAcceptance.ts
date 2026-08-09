@@ -22,10 +22,11 @@ const VALID_SLUGS = [
   "grievance-redressal-policy",
 ];
 
-// POST /policy-acceptance — record a user accepting a policy
-router.post("/policy-acceptance", async (req, res) => {
+// POST /policy-acceptance — record a user accepting a policy (requires auth)
+router.post("/policy-acceptance", requireAuth, async (req, res) => {
   try {
-    const { policySlug, policyVersion, userId, merchantId } = req.body ?? {};
+    const { policySlug, policyVersion } = req.body ?? {};
+    const sessionUser = (req as any).user as { id: number; merchantId?: number | null };
 
     if (!policySlug || !VALID_SLUGS.includes(policySlug)) {
       return res.status(400).json({ error: "Invalid policy slug." });
@@ -34,8 +35,11 @@ router.post("/policy-acceptance", async (req, res) => {
     const ipAddress = (req.headers["cf-connecting-ip"] as string) || req.ip || null;
     const userAgent = (req.headers["user-agent"] as string) || null;
     const resolvedVersion = typeof policyVersion === "string" ? policyVersion : "1.0";
-    const resolvedUserId = typeof userId === "number" ? userId : null;
-    const resolvedMerchantId = typeof merchantId === "number" ? merchantId : null;
+
+    // userId and merchantId are always derived from the authenticated session —
+    // never from the request body — to prevent audit-record forgery.
+    const resolvedUserId = sessionUser.id ?? null;
+    const resolvedMerchantId = typeof sessionUser.merchantId === "number" ? sessionUser.merchantId : null;
 
     await db.insert(policyAcceptancesTable).values({
       policySlug,
