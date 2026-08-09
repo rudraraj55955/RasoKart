@@ -31,7 +31,11 @@ import {
 
 const router = Router();
 
-const JWT_SECRET = process.env.SESSION_SECRET || "rasokart-secret-key-change-in-production";
+const _routeJwtSecret = process.env.SESSION_SECRET;
+if (!_routeJwtSecret && process.env.NODE_ENV === "production") {
+  throw new Error("SESSION_SECRET environment variable is required in production");
+}
+const JWT_SECRET = _routeJwtSecret ?? "rasokart-secret-key-change-in-production";
 
 const MAX_TRUSTED_IPS = 20;
 
