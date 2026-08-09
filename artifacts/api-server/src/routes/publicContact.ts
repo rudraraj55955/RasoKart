@@ -1,9 +1,67 @@
 import { Router } from "express";
 import { db, contactSubmissionsTable } from "@workspace/db";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
+import { makeRateLimiter, safeIpKey } from "../helpers/makeRateLimiter";
+import { ipKeyGenerator } from "express-rate-limit";
+import { DbRateLimitStore } from "../lib/rateLimitStore";
 import { desc } from "drizzle-orm";
 
 const router = Router();
+
+// 5 submissions per IP per 15 minutes — DB-backed so limits persist across instances.
+//
+// IP resolution strategy (Cloudflare → Nginx → Express):
+//
+//   We use req.socket.remoteAddress (the actual TCP socket peer, not req.ip
+//   which is derived from the client-controllable X-Forwarded-For chain) to
+//   decide whether the request arrived through our trusted reverse proxy (Nginx).
+//   Only when the socket source matches an IP in RATE_LIMIT_TRUSTED_PROXY_IPS do
+//   we accept CF-Connecting-IP as the real client identity.
+//
+//   This prevents a direct-access attacker from rotating CF-Connecting-IP headers
+//   to create a fresh rate-limit bucket on every request. Even if an attacker
+//   also forges X-Forwarded-For to appear as a Cloudflare edge node, req.ip is
+//   still derived from that attacker-controlled header and must not be used as
+//   the trust signal.
+//
+//   Production setup:
+//     Set RATE_LIMIT_TRUSTED_PROXY_IPS to the Nginx host IP(s) (e.g. 127.0.0.1).
+//     Ensure Nginx strips any client-injected CF-Connecting-IP headers and only
+//     forwards what Cloudflare set, so the header is trustworthy when present.
+//
+//   Development / test (env var absent):
+//     CF-Connecting-IP is always ignored; all requests key on the raw socket IP.
+const contactLimiter = makeRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  store: new DbRateLimitStore(),
+  keyGenerator: (req) => {
+    // Normalise the socket IP: strip the IPv6-mapped IPv4 prefix so that
+    // "::ffff:127.0.0.1" and "127.0.0.1" both match the same config value.
+    const socketIp = (req.socket?.remoteAddress ?? "").replace(/^::ffff:/i, "");
+
+    const trustedProxies = (process.env["RATE_LIMIT_TRUSTED_PROXY_IPS"] ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    if (trustedProxies.length > 0 && trustedProxies.includes(socketIp)) {
+      // Socket came from a configured trusted proxy — CF-Connecting-IP is
+      // trustworthy (Nginx stripped any client-injected version of this header).
+      const cfHeader = req.headers["cf-connecting-ip"];
+      if (typeof cfHeader === "string" && cfHeader.trim()) {
+        return `contact:${ipKeyGenerator(cfHeader.trim())}`;
+      }
+    }
+
+    // No trusted proxy match: key on the non-spoofable socket IP directly.
+    // safeIpKey(req) reads req.ip which is derived from X-Forwarded-For and
+    // is client-controllable. socketIp is taken from req.socket.remoteAddress
+    // before any proxy trust processing and cannot be forged by the caller.
+    return `contact:${ipKeyGenerator(socketIp || "unknown")}`;
+  },
+  message: { error: "Too many submissions. Please wait before trying again." },
+});
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const TICKET_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -18,7 +76,7 @@ function generateTicketRef(): string {
 }
 
 // POST /public/contact — unauthenticated public contact form submission
-router.post("/public/contact", async (req, res) => {
+router.post("/public/contact", contactLimiter, async (req, res) => {
   try {
     const { name, email, phone, subject, category, message } = req.body ?? {};
 

@@ -44,7 +44,7 @@ RasoKart is a multi-tenant payment gateway SaaS. Admins onboard merchants, assig
 - `POST /policy-acceptance` — no auth, accepts arbitrary userId/merchantId
 - `GET /api/_deploy/rasokart-dist-only.tgz` — no auth, serves deployment archive from /tmp
 - `GET /api/_deploy/rasokart-api-dist-only.tgz` — no auth
-- `POST /public/contact` — no auth, no rate limit
+- `POST /public/contact` — no auth, rate-limited (5/15 min per IP, DB-backed store)
 - Payment provider webhooks (`/payment/webhook`, `/webhooks/payin`, etc.)
 - `GET /api/public/payout-slip/verify/:token` — rate-limited, intentionally public
 
@@ -93,6 +93,6 @@ API responses are scoped to authenticated users. The main withdrawal list, settl
 
 Login is rate-limited via DB-backed `rate_limit_hits` table. Payout merchant signup is rate-limited (10/15 min). Payout slip verification is rate-limited (20/5 min).
 
-**Gap:** `POST /public/contact` has no rate limiter, allowing database exhaustion. See `public-contact-no-rate-limit`.
+**Fixed:** `POST /public/contact` now applies a DB-backed rate limiter (5 requests / 15 min per IP via `DbRateLimitStore`), consistent with other public write endpoints.
 
 **Guarantee:** All public-facing write endpoints MUST apply a rate limiter with a DB-backed store consistent with other public endpoints.
