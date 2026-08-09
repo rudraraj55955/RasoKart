@@ -49,6 +49,7 @@ overrides:
   'nanoid@^5': '5.1.16'
   ip-address: '>=10.3.1'
   js-yaml: '>=4.3.1'
+  uuid: '>=11.1.1'
   '@esbuild-kit/esm-loader': npm:tsx@^4.21.0
   '@expo/ngrok-bin>@expo/ngrok-bin-darwin-arm64': '-'
   '@expo/ngrok-bin>@expo/ngrok-bin-darwin-x64': '-'
