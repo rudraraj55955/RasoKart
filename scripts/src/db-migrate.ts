@@ -952,6 +952,23 @@ async function migrate() {
     ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS last_used_at TIMESTAMPTZ;
     ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ;
     CREATE INDEX IF NOT EXISTS api_keys_merchant_id_idx ON api_keys(merchant_id);
+    -- Idempotent rename: PostgreSQL auto-names inline UNIQUE as api_keys_api_key_key,
+    -- but the Drizzle schema expects api_keys_api_key_unique. Rename only when the
+    -- old name exists and the canonical name does not (no-op on production, which
+    -- already has api_keys_api_key_unique via an earlier explicit ADD CONSTRAINT).
+    DO $$ BEGIN
+      IF EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'api_keys_api_key_key'
+          AND conrelid = 'api_keys'::regclass
+      ) AND NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'api_keys_api_key_unique'
+          AND conrelid = 'api_keys'::regclass
+      ) THEN
+        ALTER TABLE api_keys RENAME CONSTRAINT api_keys_api_key_key TO api_keys_api_key_unique;
+      END IF;
+    END $$;
 
     -- ── webhooks ─────────────────────────────────────────────────────────────
     -- Required by PUT /api/webhooks (merchant settings test) and by seed.ts.

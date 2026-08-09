@@ -479,6 +479,27 @@ async function runGuard(): Promise<void> {
   await db.execute(sql`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS label TEXT`);
   logger.info({ table: "api_keys", column: "label" }, "schema_guard_column_added");
 
+  // ── api_keys: normalise UNIQUE constraint name ────────────────────────────
+  // PostgreSQL auto-names an inline UNIQUE as api_keys_api_key_key. The Drizzle
+  // schema expects api_keys_api_key_unique. Rename idempotently so dev/CI match
+  // production (which already has the canonical name from an explicit ADD CONSTRAINT).
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'api_keys_api_key_key'
+          AND conrelid = 'api_keys'::regclass
+      ) AND NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'api_keys_api_key_unique'
+          AND conrelid = 'api_keys'::regclass
+      ) THEN
+        ALTER TABLE api_keys RENAME CONSTRAINT api_keys_api_key_key TO api_keys_api_key_unique;
+      END IF;
+    END $$
+  `);
+  logger.info({ table: "api_keys", migration: "normalise_unique_constraint_name" }, "schema_guard_constraint_renamed");
+
   // ── otp_sms_settings (SMS OTP provider config) ────────────────────────────
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS otp_sms_settings (
