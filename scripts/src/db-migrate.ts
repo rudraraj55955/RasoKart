@@ -1009,6 +1009,125 @@ async function migrate() {
       END IF;
     END $$;
 
+    -- Normalise ALL remaining UNIQUE constraint names (dev _key → Drizzle _unique).
+    -- Each branch is fully idempotent: fires only when the old name exists and the
+    -- canonical name does not — complete no-op on production and on re-runs.
+    -- merchant_plans was originally guarded with CREATE UNIQUE INDEX (not an inline
+    -- UNIQUE constraint), so it gets DROP INDEX + ADD CONSTRAINT instead of RENAME.
+    DO $$ BEGIN
+      -- merchant_features
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_features_merchant_id_key' AND conrelid='merchant_features'::regclass)
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_features_merchant_id_unique' AND conrelid='merchant_features'::regclass)
+      THEN ALTER TABLE merchant_features RENAME CONSTRAINT merchant_features_merchant_id_key TO merchant_features_merchant_id_unique; END IF;
+
+      -- merchants
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchants_email_key' AND conrelid='merchants'::regclass)
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchants_email_unique' AND conrelid='merchants'::regclass)
+      THEN ALTER TABLE merchants RENAME CONSTRAINT merchants_email_key TO merchants_email_unique; END IF;
+
+      -- merchant_plans (guarded with CREATE UNIQUE INDEX — convert to named constraint)
+      IF EXISTS (SELECT 1 FROM pg_indexes WHERE tablename='merchant_plans' AND indexname='merchant_plans_merchant_id_uniq')
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_plans_merchant_id_unique' AND conrelid='merchant_plans'::regclass)
+      THEN
+        DROP INDEX merchant_plans_merchant_id_uniq;
+        ALTER TABLE merchant_plans ADD CONSTRAINT merchant_plans_merchant_id_unique UNIQUE (merchant_id);
+      END IF;
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_plans_merchant_id_key' AND conrelid='merchant_plans'::regclass)
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_plans_merchant_id_unique' AND conrelid='merchant_plans'::regclass)
+      THEN ALTER TABLE merchant_plans RENAME CONSTRAINT merchant_plans_merchant_id_key TO merchant_plans_merchant_id_unique; END IF;
+
+      -- payment_links
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='payment_links_slug_key' AND conrelid='payment_links'::regclass)
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='payment_links_slug_unique' AND conrelid='payment_links'::regclass)
+      THEN ALTER TABLE payment_links RENAME CONSTRAINT payment_links_slug_key TO payment_links_slug_unique; END IF;
+
+      -- plans
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='plans_name_key' AND conrelid='plans'::regclass)
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='plans_name_unique' AND conrelid='plans'::regclass)
+      THEN ALTER TABLE plans RENAME CONSTRAINT plans_name_key TO plans_name_unique; END IF;
+
+      -- providers
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='providers_slug_key' AND conrelid='providers'::regclass)
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='providers_slug_unique' AND conrelid='providers'::regclass)
+      THEN ALTER TABLE providers RENAME CONSTRAINT providers_slug_key TO providers_slug_unique; END IF;
+
+      -- transactions
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='transactions_utr_key' AND conrelid='transactions'::regclass)
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='transactions_utr_unique' AND conrelid='transactions'::regclass)
+      THEN ALTER TABLE transactions RENAME CONSTRAINT transactions_utr_key TO transactions_utr_unique; END IF;
+
+      -- users
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='users_email_key' AND conrelid='users'::regclass)
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='users_email_unique' AND conrelid='users'::regclass)
+      THEN ALTER TABLE users RENAME CONSTRAINT users_email_key TO users_email_unique; END IF;
+
+      -- virtual_accounts
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='virtual_accounts_account_number_key' AND conrelid='virtual_accounts'::regclass)
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='virtual_accounts_account_number_unique' AND conrelid='virtual_accounts'::regclass)
+      THEN ALTER TABLE virtual_accounts RENAME CONSTRAINT virtual_accounts_account_number_key TO virtual_accounts_account_number_unique; END IF;
+
+      -- webhooks
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='webhooks_merchant_id_key' AND conrelid='webhooks'::regclass)
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='webhooks_merchant_id_unique' AND conrelid='webhooks'::regclass)
+      THEN ALTER TABLE webhooks RENAME CONSTRAINT webhooks_merchant_id_key TO webhooks_merchant_id_unique; END IF;
+
+      -- agents (3 columns: email, referral_code, agent_code)
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='agents_email_key' AND conrelid='agents'::regclass)
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='agents_email_unique' AND conrelid='agents'::regclass)
+      THEN ALTER TABLE agents RENAME CONSTRAINT agents_email_key TO agents_email_unique; END IF;
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='agents_referral_code_key' AND conrelid='agents'::regclass)
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='agents_referral_code_unique' AND conrelid='agents'::regclass)
+      THEN ALTER TABLE agents RENAME CONSTRAINT agents_referral_code_key TO agents_referral_code_unique; END IF;
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='agents_agent_code_key' AND conrelid='agents'::regclass)
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='agents_agent_code_unique' AND conrelid='agents'::regclass)
+      THEN ALTER TABLE agents RENAME CONSTRAINT agents_agent_code_key TO agents_agent_code_unique; END IF;
+
+      -- cashfree_payment_orders
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='cashfree_payment_orders_cashfree_order_id_key' AND conrelid='cashfree_payment_orders'::regclass)
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='cashfree_payment_orders_cashfree_order_id_unique' AND conrelid='cashfree_payment_orders'::regclass)
+      THEN ALTER TABLE cashfree_payment_orders RENAME CONSTRAINT cashfree_payment_orders_cashfree_order_id_key TO cashfree_payment_orders_cashfree_order_id_unique; END IF;
+
+      -- merchant_kyc_data
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_kyc_data_merchant_id_key' AND conrelid='merchant_kyc_data'::regclass)
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_kyc_data_merchant_id_unique' AND conrelid='merchant_kyc_data'::regclass)
+      THEN ALTER TABLE merchant_kyc_data RENAME CONSTRAINT merchant_kyc_data_merchant_id_key TO merchant_kyc_data_merchant_id_unique; END IF;
+
+      -- merchant_kyc_verifications
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_kyc_verifications_merchant_id_key' AND conrelid='merchant_kyc_verifications'::regclass)
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_kyc_verifications_merchant_id_unique' AND conrelid='merchant_kyc_verifications'::regclass)
+      THEN ALTER TABLE merchant_kyc_verifications RENAME CONSTRAINT merchant_kyc_verifications_merchant_id_key TO merchant_kyc_verifications_merchant_id_unique; END IF;
+
+      -- merchant_onboarding_sessions
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_onboarding_sessions_verification_id_key' AND conrelid='merchant_onboarding_sessions'::regclass)
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_onboarding_sessions_verification_id_unique' AND conrelid='merchant_onboarding_sessions'::regclass)
+      THEN ALTER TABLE merchant_onboarding_sessions RENAME CONSTRAINT merchant_onboarding_sessions_verification_id_key TO merchant_onboarding_sessions_verification_id_unique; END IF;
+
+      -- merchant_verifications
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_verifications_merchant_id_key' AND conrelid='merchant_verifications'::regclass)
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_verifications_merchant_id_unique' AND conrelid='merchant_verifications'::regclass)
+      THEN ALTER TABLE merchant_verifications RENAME CONSTRAINT merchant_verifications_merchant_id_key TO merchant_verifications_merchant_id_unique; END IF;
+
+      -- payu_payment_orders
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='payu_payment_orders_txnid_key' AND conrelid='payu_payment_orders'::regclass)
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='payu_payment_orders_txnid_unique' AND conrelid='payu_payment_orders'::regclass)
+      THEN ALTER TABLE payu_payment_orders RENAME CONSTRAINT payu_payment_orders_txnid_key TO payu_payment_orders_txnid_unique; END IF;
+
+      -- permissions
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='permissions_key_key' AND conrelid='permissions'::regclass)
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='permissions_key_unique' AND conrelid='permissions'::regclass)
+      THEN ALTER TABLE permissions RENAME CONSTRAINT permissions_key_key TO permissions_key_unique; END IF;
+
+      -- provider_integrations
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='provider_integrations_provider_key_key' AND conrelid='provider_integrations'::regclass)
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='provider_integrations_provider_key_unique' AND conrelid='provider_integrations'::regclass)
+      THEN ALTER TABLE provider_integrations RENAME CONSTRAINT provider_integrations_provider_key_key TO provider_integrations_provider_key_unique; END IF;
+
+      -- provider_products (_uniq → _unique)
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='provider_products_product_key_uniq' AND conrelid='provider_products'::regclass)
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='provider_products_product_key_unique' AND conrelid='provider_products'::regclass)
+      THEN ALTER TABLE provider_products RENAME CONSTRAINT provider_products_product_key_uniq TO provider_products_product_key_unique; END IF;
+    END $$;
+
     -- ── webhooks ─────────────────────────────────────────────────────────────
     -- Required by PUT /api/webhooks (merchant settings test) and by seed.ts.
     -- Missing from both db-migrate and schemaGuard caused the merchant webhook
