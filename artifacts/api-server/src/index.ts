@@ -29,6 +29,7 @@ import { initSnoozeCleanupScheduler, runSnoozeCleanup } from "./helpers/snoozeCl
 import { initPayoutStuckCleanupScheduler, runStuckPayoutCleanup } from "./helpers/payoutStuckCleanupScheduler";
 import { initGithubSyncLogCleanupScheduler, runGithubSyncLogCleanup } from "./helpers/githubSyncLogCleanupScheduler";
 import { resolveStaleOutageOnBoot } from "./helpers/smartRouter";
+import { markServerInitialized } from "./lib/startupState";
 
 const rawPort = process.env["PORT"];
 
@@ -102,6 +103,7 @@ function initQuietHoursFlushScheduler() {
 }
 
 async function main() {
+  // ── 1. Fatal DB connectivity check ──────────────────────────────────────────
   try {
     await pool.query("SELECT 1");
     logger.info("Database connection verified");
@@ -110,6 +112,23 @@ async function main() {
     process.exit(1);
   }
 
+  // ── 2. Bind to port IMMEDIATELY ─────────────────────────────────────────────
+  // On production, schemaGuard must CREATE every table from scratch against a
+  // remote DB — this can take 60 + seconds on a cold start. Binding before that
+  // work begins lets the autoscale startup probe connect right away. While init
+  // is in progress /api/healthz/deep returns 503 { status: "starting" } so the
+  // probe retries rather than treating a connection-refused as a hard failure.
+  // markServerInitialized() is called below once schemaGuard, seed, and all
+  // schedulers are ready; the probe then gets a 200 and traffic is routed in.
+  app.listen(port, (err) => {
+    if (err) {
+      logger.error({ err }, "Error listening on port");
+      process.exit(1);
+    }
+    logger.info({ port }, "Server listening");
+  });
+
+  // ── 3. Schema guard ─────────────────────────────────────────────────────────
   try {
     await ensureSchemaGuard();
   } catch (err) {
@@ -119,6 +138,7 @@ async function main() {
     logger.error({ err }, "schema_guard_failed — continuing, guard will retry on next request");
   }
 
+  // ── 4. Seed ─────────────────────────────────────────────────────────────────
   try {
     await seed();
     logger.info("Database seed complete");
@@ -131,6 +151,7 @@ async function main() {
     logger.error({ err }, "Seed failed — continuing without full baseline data");
   }
 
+  // ── 5. Schedulers ───────────────────────────────────────────────────────────
   // Startup sweep: if the server crashed or was restarted while a payin
   // routing-chain outage was in progress, PAYIN_CHAIN_EXHAUSTED_SINCE may
   // still be set in the DB with no matching gateway_recovered notification.
@@ -215,13 +236,11 @@ async function main() {
     logger.warn({ err }, "Startup GitHub sync log cleanup sweep failed");
   });
 
-  app.listen(port, (err) => {
-    if (err) {
-      logger.error({ err }, "Error listening on port");
-      process.exit(1);
-    }
-    logger.info({ port }, "Server listening");
-  });
+  // ── 6. Mark fully initialised ───────────────────────────────────────────────
+  // From this point on /api/healthz/deep runs the full schema + credential
+  // checks and returns 200 (or 503 degraded) instead of 503 "starting".
+  markServerInitialized();
+  logger.info("Server fully initialised — startup probe will now return full health check");
 }
 
 main();

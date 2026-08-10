@@ -4,6 +4,7 @@ import { inArray } from "drizzle-orm";
 import { pool, db, usersTable, demoAccountRemovalsTable } from "@workspace/db";
 import { DEMO_CREDENTIALS } from "@workspace/demo-credentials";
 import { logger } from "../lib/logger";
+import { isServerInitialized } from "../lib/startupState";
 
 // Injected at build time by esbuild define (see build.mjs).
 // Falls back to the COMMIT_SHA env var (useful when running the uncompiled source
@@ -40,6 +41,14 @@ router.get("/healthz", (_req, res) => {
 // The shallow /api/healthz remains available for frequent uptime pings that
 // just need to know the process is alive.
 router.get("/healthz/deep", async (_req, res) => {
+  // While schemaGuard + seed are still running (which can take 30-60 s on a
+  // cold production DB), return 503 "starting" so the autoscale startup probe
+  // retries instead of treating a refused connection as a hard failure.
+  // markServerInitialized() is called in index.ts once init completes.
+  if (!isServerInitialized()) {
+    return res.status(503).json({ status: "starting", message: "Server is initializing — retry in a moment" });
+  }
+
   const checks: Record<string, boolean> = {};
   let dbOk = true;
 
