@@ -28,6 +28,8 @@ import {
   OTP_MAX_ATTEMPTS,
   OTP_RESEND_COOLDOWN_MS,
 } from "../helpers/otp";
+// Dev-only: capture plaintext OTPs for test automation (no-op in production)
+import { captureDevOtp } from "../lib/devOtpStore";
 
 const router = Router();
 
@@ -539,6 +541,7 @@ router.post("/signup/send-email-otp", signupEmailOtpLimiter, async (req, res, ne
     }
 
     const otp = generateOtp();
+    captureDevOtp(identifierHash, "SIGNUP_VERIFY", otp); // dev-only; no-op in production
     const otpHash = await hashOtp(otp);
     const resendCount = existingOtp ? existingOtp.resendCount + 1 : 0;
 
@@ -1755,6 +1758,7 @@ async function createAndSendOtp(opts: {
   }
 
   const otp = generateOtp();
+  captureDevOtp(identifierHash, purpose, otp); // dev-only; no-op in production
   const otpHash = await hashOtp(otp);
   const resendCount = existing ? existing.resendCount + 1 : 0;
 
@@ -2178,6 +2182,7 @@ async function createAndSendAdminOtp(opts: {
   }
 
   const otp = generateOtp();
+  captureDevOtp(identifierHash, "ADMIN_LOGIN", otp); // dev-only; no-op in production
   const otpHash = await hashOtp(otp);
   const resendCount = existing ? existing.resendCount + 1 : 0;
 
@@ -2790,6 +2795,7 @@ router.post("/admin/password/forgot", adminPasswordForgotLimiter, adminPasswordF
     }
 
     const otp = generateOtp();
+    captureDevOtp(identifierHash, "ADMIN_PASSWORD_RESET", otp); // dev-only; no-op in production
     const otpHash = await hashOtp(otp);
     const resendCount = existing ? existing.resendCount + 1 : 0;
 

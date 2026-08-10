@@ -99,6 +99,7 @@ import policyVersionsRouter from "./policyVersions";
 import iamRouter from "./iam";
 import adminAgentsRouter from "./adminAgents";
 import agentActivateRouter from "./agentActivate";
+import { devHelperRouter } from "./devHelper";
 
 const router: IRouter = Router();
 
@@ -256,5 +257,11 @@ router.use("/cms", cmsRouter);
 // Public agent activation — verify invite token + set password on first login
 // Mounted BEFORE the auth-guarded /agent router so no token is needed
 router.use("/agent/activate", agentActivateRouter);
+
+// Dev-only test support: OTP capture helper.
+// NEVER reachable in production — guarded both here and inside the handler.
+if (process.env["NODE_ENV"] !== "production") {
+  router.use("/dev", devHelperRouter);
+}
 
 export default router;
