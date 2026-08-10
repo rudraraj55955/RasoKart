@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, boolean, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, integer, boolean, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -6,7 +6,7 @@ import { z } from "zod/v4";
 // If isGlobal=true on the account detail, all merchants see it UNLESS a rule sets visible=false.
 // If isGlobal=false, only merchants with visible=true rules can see it.
 export const accountVisibilityRulesTable = pgTable("account_visibility_rules", {
-  id: serial("id").primaryKey(),
+  id: integer("id").generatedAlwaysAsIdentity().primaryKey(),
   accountDetailId: integer("account_detail_id").notNull(),
   merchantId: integer("merchant_id").notNull(),
   visible: boolean("visible").notNull().default(true),

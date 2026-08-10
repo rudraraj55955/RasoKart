@@ -1981,6 +1981,85 @@ async function runGuard(): Promise<void> {
     }
   }
 
+  // ── One-time migration: account_visibility_rules.id  SERIAL → IDENTITY ─────
+  // drizzle-kit 0.31+ maps serial("id") to GENERATED ALWAYS AS IDENTITY.
+  // On production the column was created as SERIAL (nextval default + external
+  // sequence).  The publish schema-diff therefore emits:
+  //   ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY
+  //     (sequence name "account_visibility_rules_id_seq" …)
+  // which fails with "sequence already exists" because SERIAL already created
+  // that sequence.
+  //
+  // This block is fully idempotent:
+  //   • If id already has identity_generation set  → RETURN (no-op).
+  //   • If the column still has the nextval default:
+  //       1. Capture the sequence's last_value + is_called so the new IDENTITY
+  //          starts at exactly the right value (zero ID-collision risk).
+  //       2. DROP DEFAULT — disowns the sequence from the column's default.
+  //       3. DROP SEQUENCE — removes the now-orphaned external sequence,
+  //          freeing its name so IDENTITY can claim it.
+  //       4. ADD GENERATED ALWAYS AS IDENTITY starting at the captured value.
+  //
+  // The entire block runs inside a single PG DO statement (transactional DDL),
+  // so a mid-flight failure rolls back completely — no partial state possible.
+  await db.execute(sql`
+    DO $$
+    DECLARE
+      v_last_value  bigint;
+      v_is_called   boolean;
+      v_start       bigint;
+    BEGIN
+      -- ① Already IDENTITY → nothing to do.
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name   = 'account_visibility_rules'
+          AND column_name  = 'id'
+          AND identity_generation IS NOT NULL
+      ) THEN
+        RETURN;
+      END IF;
+
+      -- ② Table or column absent → nothing to do (CREATE TABLE handles it).
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name   = 'account_visibility_rules'
+          AND column_name  = 'id'
+          AND column_default LIKE 'nextval(%account_visibility_rules_id_seq%)'
+      ) THEN
+        RETURN;
+      END IF;
+
+      -- ③ Capture current sequence state to preserve the auto-increment counter.
+      SELECT last_value, is_called
+        INTO v_last_value, v_is_called
+        FROM account_visibility_rules_id_seq;
+
+      -- next safe START WITH: if sequence was already called, advance by 1.
+      v_start := CASE WHEN v_is_called THEN v_last_value + 1 ELSE v_last_value END;
+
+      -- ④ Remove the nextval() DEFAULT (disowns but does not drop the sequence).
+      ALTER TABLE account_visibility_rules ALTER COLUMN id DROP DEFAULT;
+
+      -- ⑤ Drop the now-orphaned external sequence so IDENTITY can reuse its name.
+      DROP SEQUENCE IF EXISTS account_visibility_rules_id_seq;
+
+      -- ⑥ Attach IDENTITY starting at the captured value.
+      EXECUTE format(
+        'ALTER TABLE account_visibility_rules ALTER COLUMN id '
+        'ADD GENERATED ALWAYS AS IDENTITY '
+        '(INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH %s CACHE 1)',
+        v_start
+      );
+    END
+    $$
+  `);
+  logger.info(
+    { table: "account_visibility_rules", migration: "serial_to_identity_id" },
+    "schema_guard_serial_to_identity_checked"
+  );
+
   logger.info("schema_guard_completed");
 }
 
