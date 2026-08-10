@@ -500,6 +500,52 @@ async function runGuard(): Promise<void> {
   `);
   logger.info({ table: "api_keys", migration: "normalise_unique_constraint_name" }, "schema_guard_constraint_renamed");
 
+  // ── invoices ──────────────────────────────────────────────────────────────
+  // Introduced in the plan-billing feature; schemaGuard guard was missing,
+  // causing fresh-DB crashes on any invoices route.
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS invoices (
+      id            SERIAL PRIMARY KEY,
+      merchant_id   INTEGER NOT NULL,
+      plan_id       INTEGER,
+      invoice_number TEXT NOT NULL UNIQUE,
+      amount        NUMERIC(12,2) NOT NULL DEFAULT 0,
+      currency      TEXT NOT NULL DEFAULT 'INR',
+      period        TEXT,
+      period_from   TIMESTAMPTZ,
+      period_to     TIMESTAMPTZ,
+      status        TEXT NOT NULL DEFAULT 'draft',
+      due_date      TIMESTAMPTZ,
+      paid_at       TIMESTAMPTZ,
+      notes         TEXT,
+      created_by    INTEGER,
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  logger.info({ table: "invoices" }, "schema_guard_table_created");
+
+  // ── invoices: normalise UNIQUE constraint name ────────────────────────────
+  // PostgreSQL auto-names an inline UNIQUE as invoices_invoice_number_key.
+  // The Drizzle schema expects invoices_invoice_number_unique. Production
+  // already has the canonical name; rename idempotently so dev/CI match.
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'invoices_invoice_number_key'
+          AND conrelid = 'invoices'::regclass
+      ) AND NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'invoices_invoice_number_unique'
+          AND conrelid = 'invoices'::regclass
+      ) THEN
+        ALTER TABLE invoices RENAME CONSTRAINT invoices_invoice_number_key TO invoices_invoice_number_unique;
+      END IF;
+    END $$
+  `);
+  logger.info({ table: "invoices", migration: "normalise_unique_constraint_name" }, "schema_guard_constraint_renamed");
+
   // ── otp_sms_settings (SMS OTP provider config) ────────────────────────────
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS otp_sms_settings (

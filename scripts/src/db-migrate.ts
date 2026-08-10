@@ -970,6 +970,45 @@ async function migrate() {
       END IF;
     END $$;
 
+    -- ── invoices ──────────────────────────────────────────────────────────────
+    -- Introduced in the plan-billing feature without a schemaGuard/db-migrate
+    -- guard; fresh-DB environments would crash on any invoices route.
+    CREATE TABLE IF NOT EXISTS invoices (
+      id            SERIAL PRIMARY KEY,
+      merchant_id   INTEGER NOT NULL,
+      plan_id       INTEGER,
+      invoice_number TEXT NOT NULL UNIQUE,
+      amount        NUMERIC(12,2) NOT NULL DEFAULT 0,
+      currency      TEXT NOT NULL DEFAULT 'INR',
+      period        TEXT,
+      period_from   TIMESTAMPTZ,
+      period_to     TIMESTAMPTZ,
+      status        TEXT NOT NULL DEFAULT 'draft',
+      due_date      TIMESTAMPTZ,
+      paid_at       TIMESTAMPTZ,
+      notes         TEXT,
+      created_by    INTEGER,
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    -- Idempotent rename: PostgreSQL auto-names inline UNIQUE as
+    -- invoices_invoice_number_key, but the Drizzle schema expects
+    -- invoices_invoice_number_unique. Production already has the canonical
+    -- name; rename only when the old name exists and the new does not.
+    DO $$ BEGIN
+      IF EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'invoices_invoice_number_key'
+          AND conrelid = 'invoices'::regclass
+      ) AND NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'invoices_invoice_number_unique'
+          AND conrelid = 'invoices'::regclass
+      ) THEN
+        ALTER TABLE invoices RENAME CONSTRAINT invoices_invoice_number_key TO invoices_invoice_number_unique;
+      END IF;
+    END $$;
+
     -- ── webhooks ─────────────────────────────────────────────────────────────
     -- Required by PUT /api/webhooks (merchant settings test) and by seed.ts.
     -- Missing from both db-migrate and schemaGuard caused the merchant webhook
