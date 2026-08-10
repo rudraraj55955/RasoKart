@@ -2086,6 +2086,48 @@ router.put("/ekqr", async (req, res, next) => {
 
     const oldEkqrConfig = await getEkqrConfig();
 
+    // Validate numeric cap fields before touching the DB
+    if (minAmount !== undefined) {
+      if (typeof minAmount !== "number" || !isFinite(minAmount)) {
+        res.status(400).json({ error: "minAmount must be a finite number" });
+        return;
+      }
+      if (minAmount < 0) {
+        res.status(400).json({ error: "minAmount must be >= 0" });
+        return;
+      }
+    }
+
+    if (maxAmount !== undefined) {
+      if (typeof maxAmount !== "number" || !isFinite(maxAmount)) {
+        res.status(400).json({ error: "maxAmount must be a finite number" });
+        return;
+      }
+      if (maxAmount <= 0) {
+        res.status(400).json({ error: "maxAmount must be > 0" });
+        return;
+      }
+    }
+
+    if (dailyLimit !== undefined) {
+      if (typeof dailyLimit !== "number" || !isFinite(dailyLimit)) {
+        res.status(400).json({ error: "dailyLimit must be a finite number" });
+        return;
+      }
+      if (dailyLimit <= 0) {
+        res.status(400).json({ error: "dailyLimit must be > 0" });
+        return;
+      }
+    }
+
+    // Cross-field: effective min must not exceed effective max
+    const effectiveMin = minAmount !== undefined ? minAmount : oldEkqrConfig.minAmount;
+    const effectiveMax = maxAmount !== undefined ? maxAmount : oldEkqrConfig.maxAmount;
+    if (effectiveMin > effectiveMax) {
+      res.status(400).json({ error: "minAmount must be <= maxAmount" });
+      return;
+    }
+
     if (apiKey !== undefined) {
       if (apiKey === "") {
         await db.delete(systemConfigTable).where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.EKQR_API_KEY));
