@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { OtpCodeInput } from "@/components/ui/otp-code-input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -279,8 +280,11 @@ export default function MerchantAutoKyc() {
                       <>
                         <div className="space-y-1.5">
                           <Label htmlFor="mobile-otp">Enter OTP</Label>
-                          <Input id="mobile-otp" placeholder="6-digit OTP" maxLength={6} value={mobileOtp}
-                            onChange={(e) => setMobileOtp(e.target.value.replace(/\D/g, ""))} />
+                          <OtpCodeInput
+                            id="mobile-otp"
+                            value={mobileOtp}
+                            onChange={(val) => setMobileOtp(val)}
+                          />
                         </div>
                         <Button onClick={confirmMobileOtp} disabled={busy || mobileOtp.length < 4} className="w-full">
                           {busy ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
@@ -309,8 +313,11 @@ export default function MerchantAutoKyc() {
                       <>
                         <div className="space-y-1.5">
                           <Label htmlFor="email-otp">Enter OTP</Label>
-                          <Input id="email-otp" placeholder="6-digit OTP" maxLength={6} value={emailOtp}
-                            onChange={(e) => setEmailOtp(e.target.value.replace(/\D/g, ""))} />
+                          <OtpCodeInput
+                            id="email-otp"
+                            value={emailOtp}
+                            onChange={(val) => setEmailOtp(val)}
+                          />
                         </div>
                         <Button onClick={confirmEmailOtp} disabled={busy || emailOtp.length < 4} className="w-full">
                           {busy ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}

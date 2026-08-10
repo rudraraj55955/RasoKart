@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { AuthLayout } from "@/components/layout/auth-layout";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { OtpCodeInput } from "@/components/ui/otp-code-input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -326,7 +327,14 @@ export default function PayoutMerchantSignup() {
                 <FormItem>
                   <FormLabel>Verification code</FormLabel>
                   <FormControl>
-                    <Input inputMode="numeric" maxLength={6} placeholder="123456" autoFocus {...field} />
+                    <OtpCodeInput
+                        autoFocus
+                        value={field.value}
+                        onChange={field.onChange}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
+                      />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
