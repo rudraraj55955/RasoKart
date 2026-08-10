@@ -14,6 +14,7 @@ export const accountVisibilityRulesTable = pgTable("account_visibility_rules", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
 
-export const insertAccountVisibilityRuleSchema = createInsertSchema(accountVisibilityRulesTable).omit({ id: true, createdAt: true, updatedAt: true });
+// Note: id is omitted automatically by drizzle-zod for generatedAlwaysAsIdentity() columns.
+export const insertAccountVisibilityRuleSchema = createInsertSchema(accountVisibilityRulesTable).omit({ createdAt: true, updatedAt: true });
 export type InsertAccountVisibilityRule = z.infer<typeof insertAccountVisibilityRuleSchema>;
 export type AccountVisibilityRule = typeof accountVisibilityRulesTable.$inferSelect;

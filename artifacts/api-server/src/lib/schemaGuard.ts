@@ -1959,6 +1959,25 @@ async function runGuard(): Promise<void> {
   await db.execute(sql`ALTER TABLE ekqr_webhook_logs ADD COLUMN IF NOT EXISTS upi_txn_id TEXT`);
   logger.info({ table: "ekqr_webhook_logs", migration: "add_ekqr_id_upi_txn_id" }, "schema_guard_column_added");
 
+  // cleanup_run_history — audit log for VA and QR cleanup scheduler runs.
+  // Both vaCleanupScheduler and qrCleanupScheduler INSERT into this table after
+  // every run (scheduled or manual).  Without this table the schedulers throw
+  // "relation does not exist" and their run-history/streak features are broken.
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS cleanup_run_history (
+      id             SERIAL PRIMARY KEY,
+      type           TEXT        NOT NULL,
+      trigger        TEXT        NOT NULL DEFAULT 'scheduled',
+      ran_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+      expired        INTEGER,
+      closed         INTEGER,
+      deleted        INTEGER     NOT NULL DEFAULT 0,
+      retention_days INTEGER     NOT NULL DEFAULT 0,
+      triggered_by   TEXT        NOT NULL DEFAULT 'scheduled'
+    )
+  `);
+  logger.info({ table: "cleanup_run_history" }, "schema_guard_table_created");
+
   // ── One-time migration: encrypt plaintext EKQR credentials ───────────────
   // ekqr_api_key and ekqr_webhook_secret were historically stored as plaintext
   // in system_config. Re-encrypt any rows that do not yet carry the enc:v1: prefix.
