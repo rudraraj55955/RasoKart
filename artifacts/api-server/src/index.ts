@@ -171,7 +171,13 @@ async function main() {
     logger.warn({ err }, "Startup stale-outage cleanup failed");
   });
 
-  await initReconciliationScheduler();
+  try {
+    await initReconciliationScheduler();
+  } catch (err) {
+    // system_config may not yet exist in an edge-case environment; log and
+    // continue — schedulers that depend on it will no-op until the next restart.
+    logger.error({ err }, "initReconciliationScheduler failed — continuing without recon scheduler");
+  }
   initAuditReportScheduler();
   startProviderLimitAlertScheduler();
   initQrCleanupScheduler();
