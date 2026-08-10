@@ -29,9 +29,17 @@ PORT = "8080"
 NODE_ENV = "production"
 
 [services.production.health.startup]
-# Deep check: verifies DB connection, schema columns, AND bcrypt-compares every
-# documented demo/test account's password against the DB. If any credential is
-# broken (wrong hash, wrong role, deactivated), this returns 503 and Replit
-# does not route traffic to the new instance — catching seed regressions before
-# real users see them. Use /api/healthz for frequent uptime pings (no bcrypt overhead).
-path = "/api/healthz/deep"
+# Lightweight liveness check — always returns 200 immediately once the port is
+# bound.  Cloud Run startup probes treat any non-2xx response (including 503)
+# as a hard probe failure, not a retry signal.  /api/healthz/deep returns
+# 503 { status: "starting" } while schemaGuard + seed are running, which
+# causes the startup probe to fail before the server finishes initialising.
+#
+# Safety net for DB failures: main() calls pool.query("SELECT 1") and
+# process.exit(1) on failure BEFORE app.listen(), so if the DB is unreachable
+# the port never binds and the probe gets connection-refused (which IS retried)
+# rather than a spurious 200.
+#
+# Use /api/healthz/deep for manual monitoring and uptime checks — it returns
+# full schema/credential/IAM verification once the server is fully initialised.
+path = "/api/healthz"
