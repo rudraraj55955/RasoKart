@@ -34,7 +34,8 @@ import {
   SYSTEM_CONFIG_KEYS,
   PAYU_ORDER_STATUS,
 } from "@workspace/db";
-import { requireAuth, requireAdmin } from "../middlewares/auth";
+import { requireAuth, requireAdmin, requirePermission } from "../middlewares/auth";
+import { PERMISSIONS } from "../permissions";
 import { encryptSecret, decryptSecret } from "../helpers/cryptoUtils";
 import {
   generatePayuHash,
@@ -44,7 +45,7 @@ import {
 } from "../helpers/payu";
 
 const router = Router();
-router.use(requireAuth, requireAdmin);
+router.use(requireAuth, requireAdmin, requirePermission(PERMISSIONS.ADMIN_SETTINGS));
 
 function maskValue(raw: string): string {
   if (!raw) return "";
