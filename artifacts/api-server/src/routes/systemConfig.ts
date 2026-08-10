@@ -2212,6 +2212,102 @@ router.put("/ekqr", async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ── Razorpay system-config routes ─────────────────────────────────────────────
+//
+// These expose the same Razorpay enable/limits config as /admin/razorpay/config
+// but via the ADMIN_SETTINGS-gated systemConfig router so any admin with the
+// admin_settings permission can view and adjust them.  Credentials are env-var
+// only and are never returned; only a boolean "is it configured?" flag is shown.
+
+async function getRazorpaySystemConfig() {
+  const keys = [
+    SYSTEM_CONFIG_KEYS.RAZORPAY_ENABLED,
+    SYSTEM_CONFIG_KEYS.RAZORPAY_MIN_AMOUNT,
+    SYSTEM_CONFIG_KEYS.RAZORPAY_MAX_AMOUNT,
+    SYSTEM_CONFIG_KEYS.RAZORPAY_DAILY_LIMIT,
+  ];
+  const rows = await db.select().from(systemConfigTable).where(inArray(systemConfigTable.key, keys));
+  const map = new Map(rows.map(r => [r.key, r.value]));
+  const keyId        = process.env["RAZORPAY_KEY_ID"]        ?? "";
+  const keySecret    = process.env["RAZORPAY_KEY_SECRET"]    ?? "";
+  const webhookSecret = process.env["RAZORPAY_WEBHOOK_SECRET"] ?? "";
+  return {
+    enabled:            map.get(SYSTEM_CONFIG_KEYS.RAZORPAY_ENABLED) === "true",
+    minAmount:          parseFloat(map.get(SYSTEM_CONFIG_KEYS.RAZORPAY_MIN_AMOUNT) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.RAZORPAY_MIN_AMOUNT]),
+    maxAmount:          parseFloat(map.get(SYSTEM_CONFIG_KEYS.RAZORPAY_MAX_AMOUNT) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.RAZORPAY_MAX_AMOUNT]),
+    dailyLimit:         parseFloat(map.get(SYSTEM_CONFIG_KEYS.RAZORPAY_DAILY_LIMIT) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.RAZORPAY_DAILY_LIMIT]),
+    keyIdSet:           !!keyId,
+    keySecretSet:       !!keySecret,
+    webhookSecretSet:   !!webhookSecret,
+  };
+}
+
+// GET /api/system-config/razorpay
+router.get("/razorpay", async (req, res, next) => {
+  try {
+    res.json(await getRazorpaySystemConfig());
+  } catch (err) { next(err); }
+});
+
+// PUT /api/system-config/razorpay
+router.put("/razorpay", async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+    const { enabled, minAmount, maxAmount, dailyLimit } = req.body as {
+      enabled?: boolean;
+      minAmount?: number;
+      maxAmount?: number;
+      dailyLimit?: number;
+    };
+
+    const updates: Array<{ key: string; value: string }> = [];
+
+    if (enabled !== undefined) {
+      updates.push({ key: SYSTEM_CONFIG_KEYS.RAZORPAY_ENABLED, value: enabled ? "true" : "false" });
+    }
+    if (minAmount !== undefined) {
+      if (typeof minAmount !== "number" || !isFinite(minAmount) || minAmount < 0) {
+        res.status(400).json({ error: "minAmount must be a finite number >= 0" });
+        return;
+      }
+      updates.push({ key: SYSTEM_CONFIG_KEYS.RAZORPAY_MIN_AMOUNT, value: String(minAmount) });
+    }
+    if (maxAmount !== undefined) {
+      if (typeof maxAmount !== "number" || !isFinite(maxAmount) || maxAmount <= 0) {
+        res.status(400).json({ error: "maxAmount must be a finite number > 0" });
+        return;
+      }
+      updates.push({ key: SYSTEM_CONFIG_KEYS.RAZORPAY_MAX_AMOUNT, value: String(maxAmount) });
+    }
+    if (dailyLimit !== undefined) {
+      if (typeof dailyLimit !== "number" || !isFinite(dailyLimit) || dailyLimit < 0) {
+        res.status(400).json({ error: "dailyLimit must be a finite number >= 0" });
+        return;
+      }
+      updates.push({ key: SYSTEM_CONFIG_KEYS.RAZORPAY_DAILY_LIMIT, value: String(dailyLimit) });
+    }
+
+    for (const { key, value } of updates) {
+      await db
+        .insert(systemConfigTable)
+        .values({ key, value, updatedByEmail: user.email })
+        .onConflictDoUpdate({ target: systemConfigTable.key, set: { value, updatedByEmail: user.email, updatedAt: sql`now()` } });
+    }
+
+    if (updates.length > 0) {
+      await db.insert(auditLogsTable).values({
+        adminId: user.id, adminEmail: user.email,
+        action: "system_config_updated", targetType: "system_config", targetId: null,
+        details: JSON.stringify({ section: "razorpay", enabled, minAmount, maxAmount, dailyLimit }),
+        ipAddress: (req as any).ip ?? null,
+      });
+    }
+
+    req.log.info({ enabled, minAmount, maxAmount, dailyLimit }, "Razorpay system-config updated via system-config router");
+    res.json(await getRazorpaySystemConfig());
+  } catch (err) { next(err); }
+});
+
 // GET /api/system-config/gateway-usage/:provider
 // Used by the admin Payment Gateways UI to warn before disabling a gateway that
 // merchants are actively relying on.
