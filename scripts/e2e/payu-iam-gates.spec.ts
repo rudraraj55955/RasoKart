@@ -10,10 +10,14 @@
  *  ✓ Merchant → 403 on all routes
  *  ✓ Unauthenticated → 401 on all routes
  *
- * Routes tested (3):
- *   GET  /api/admin/payu/config     — integration status + masked credentials
- *   PUT  /api/admin/payu/config     — save/update UAT or Live credentials
- *   PUT  /api/admin/payu/settings   — toggle enabled, environment, limits
+ * Routes tested (7):
+ *   GET  /api/admin/payu/config        — integration status + masked credentials
+ *   PUT  /api/admin/payu/config        — save/update UAT or Live credentials
+ *   PUT  /api/admin/payu/settings      — toggle enabled, environment, limits
+ *   GET  /api/admin/payu/orders        — paginated list of PayU orders
+ *   GET  /api/admin/payu/webhook-logs  — recent webhook event logs
+ *   POST /api/admin/payu/verify-live   — 4-step live credential verification
+ *   POST /api/admin/payu/test-hash     — UAT hash sanity check (no payment triggered)
  *
  * The adminPayu router applies `requirePermission(PERMISSIONS.ADMIN_SETTINGS)`
  * at the router level (adminPayu.ts), so every route on the router is protected.
@@ -414,5 +418,199 @@ test.describe("PayU IAM Gates", () => {
     // All settings PUTs in this suite used the snapshotted values, so they must be unchanged.
     expect(current.isEnabled).toBe(originalPayuConfig.isEnabled);
     expect(current.environment).toBe(originalPayuConfig.environment);
+  });
+
+  // ── 8. GET /admin/payu/orders ─────────────────────────────────────────────
+  //
+  // Same router-level requirePermission(ADMIN_SETTINGS) gate applies.
+
+  test("unauthenticated GET /admin/payu/orders → 401", async ({ request }) => {
+    const r = await request.get(`${API}/admin/payu/orders`);
+    expect(r.status()).toBe(401);
+  });
+
+  test("admin with admin_settings denied GET /admin/payu/orders → 403", async ({ request }) => {
+    const r = await request.get(`${API}/admin/payu/orders`, {
+      headers: { Authorization: `Bearer ${deniedAdminToken}` },
+    });
+    expect(r.status()).toBe(403);
+    const body = await r.json() as { error: string; permissionRequired?: string[] };
+    expect(body.error).toBeTruthy();
+    expect(Array.isArray(body.permissionRequired)).toBe(true);
+    expect(body.permissionRequired).toContain("admin_settings");
+  });
+
+  test("permitted admin GET /admin/payu/orders → 200", async ({ request }) => {
+    const r = await request.get(`${API}/admin/payu/orders`, {
+      headers: { Authorization: `Bearer ${permittedAdminToken}` },
+    });
+    expect(r.status()).toBe(200);
+    const body = await r.json() as { orders: unknown[] };
+    expect(Array.isArray(body.orders)).toBe(true);
+  });
+
+  test("super admin GET /admin/payu/orders → 200", async ({ request }) => {
+    const r = await request.get(`${API}/admin/payu/orders`, {
+      headers: { Authorization: `Bearer ${saToken}` },
+    });
+    expect(r.status()).toBe(200);
+    const body = await r.json() as { orders: unknown[] };
+    expect(Array.isArray(body.orders)).toBe(true);
+  });
+
+  test("merchant GET /admin/payu/orders → 403", async ({ request }) => {
+    const r = await request.get(`${API}/admin/payu/orders`, {
+      headers: { Authorization: `Bearer ${merchantToken}` },
+    });
+    expect(r.status()).toBe(403);
+  });
+
+  // ── 9. GET /admin/payu/webhook-logs ──────────────────────────────────────
+
+  test("unauthenticated GET /admin/payu/webhook-logs → 401", async ({ request }) => {
+    const r = await request.get(`${API}/admin/payu/webhook-logs`);
+    expect(r.status()).toBe(401);
+  });
+
+  test("admin with admin_settings denied GET /admin/payu/webhook-logs → 403", async ({ request }) => {
+    const r = await request.get(`${API}/admin/payu/webhook-logs`, {
+      headers: { Authorization: `Bearer ${deniedAdminToken}` },
+    });
+    expect(r.status()).toBe(403);
+    const body = await r.json() as { error: string; permissionRequired?: string[] };
+    expect(body.error).toBeTruthy();
+    expect(Array.isArray(body.permissionRequired)).toBe(true);
+    expect(body.permissionRequired).toContain("admin_settings");
+  });
+
+  test("permitted admin GET /admin/payu/webhook-logs → 200", async ({ request }) => {
+    const r = await request.get(`${API}/admin/payu/webhook-logs`, {
+      headers: { Authorization: `Bearer ${permittedAdminToken}` },
+    });
+    expect(r.status()).toBe(200);
+    const body = await r.json() as { logs: unknown[] };
+    expect(Array.isArray(body.logs)).toBe(true);
+  });
+
+  test("super admin GET /admin/payu/webhook-logs → 200", async ({ request }) => {
+    const r = await request.get(`${API}/admin/payu/webhook-logs`, {
+      headers: { Authorization: `Bearer ${saToken}` },
+    });
+    expect(r.status()).toBe(200);
+    const body = await r.json() as { logs: unknown[] };
+    expect(Array.isArray(body.logs)).toBe(true);
+  });
+
+  test("merchant GET /admin/payu/webhook-logs → 403", async ({ request }) => {
+    const r = await request.get(`${API}/admin/payu/webhook-logs`, {
+      headers: { Authorization: `Bearer ${merchantToken}` },
+    });
+    expect(r.status()).toBe(403);
+  });
+
+  // ── 10. POST /admin/payu/verify-live ────────────────────────────────────
+  //
+  // The route runs a multi-step live-credential verification.  We only test
+  // the IAM gate here — not the verification outcome, which depends on real
+  // live credentials that are not present in the test environment.
+  //
+  // Permitted users (SA, permitted admin) pass the gate; the route will return
+  // non-403 (typically 200 with allPassed=false because no live creds are set).
+  // Denied/unauthenticated callers are blocked before the route body runs.
+
+  test("unauthenticated POST /admin/payu/verify-live → 401", async ({ request }) => {
+    const r = await request.post(`${API}/admin/payu/verify-live`, { data: {} });
+    expect(r.status()).toBe(401);
+  });
+
+  test("admin with admin_settings denied POST /admin/payu/verify-live → 403", async ({ request }) => {
+    const r = await request.post(`${API}/admin/payu/verify-live`, {
+      data: {},
+      headers: { Authorization: `Bearer ${deniedAdminToken}` },
+    });
+    expect(r.status()).toBe(403);
+    const body = await r.json() as { error: string; permissionRequired?: string[] };
+    expect(body.error).toBeTruthy();
+    expect(Array.isArray(body.permissionRequired)).toBe(true);
+    expect(body.permissionRequired).toContain("admin_settings");
+  });
+
+  test("super admin POST /admin/payu/verify-live → non-403", async ({ request }) => {
+    const r = await request.post(`${API}/admin/payu/verify-live`, {
+      data: {},
+      headers: { Authorization: `Bearer ${saToken}` },
+    });
+    // Passes IAM gate; response may be 200 with allPassed=false (no live creds in test env).
+    expect(r.status()).not.toBe(401);
+    expect(r.status()).not.toBe(403);
+  });
+
+  test("permitted admin POST /admin/payu/verify-live → non-403", async ({ request }) => {
+    const r = await request.post(`${API}/admin/payu/verify-live`, {
+      data: {},
+      headers: { Authorization: `Bearer ${permittedAdminToken}` },
+    });
+    // Passes IAM gate; response may be 200 with allPassed=false (no live creds in test env).
+    expect(r.status()).not.toBe(401);
+    expect(r.status()).not.toBe(403);
+  });
+
+  test("merchant POST /admin/payu/verify-live → 403", async ({ request }) => {
+    const r = await request.post(`${API}/admin/payu/verify-live`, {
+      data: {},
+      headers: { Authorization: `Bearer ${merchantToken}` },
+    });
+    expect(r.status()).toBe(403);
+  });
+
+  // ── 11. POST /admin/payu/test-hash ──────────────────────────────────────
+  //
+  // Generates a test SHA-512 hash using stored UAT credentials.  No payment
+  // is triggered.  The IAM gate is the same; the route may return 400 if UAT
+  // credentials are not configured in the test environment.
+
+  test("unauthenticated POST /admin/payu/test-hash → 401", async ({ request }) => {
+    const r = await request.post(`${API}/admin/payu/test-hash`, { data: {} });
+    expect(r.status()).toBe(401);
+  });
+
+  test("admin with admin_settings denied POST /admin/payu/test-hash → 403", async ({ request }) => {
+    const r = await request.post(`${API}/admin/payu/test-hash`, {
+      data: {},
+      headers: { Authorization: `Bearer ${deniedAdminToken}` },
+    });
+    expect(r.status()).toBe(403);
+    const body = await r.json() as { error: string; permissionRequired?: string[] };
+    expect(body.error).toBeTruthy();
+    expect(Array.isArray(body.permissionRequired)).toBe(true);
+    expect(body.permissionRequired).toContain("admin_settings");
+  });
+
+  test("super admin POST /admin/payu/test-hash → non-403", async ({ request }) => {
+    const r = await request.post(`${API}/admin/payu/test-hash`, {
+      data: {},
+      headers: { Authorization: `Bearer ${saToken}` },
+    });
+    // Passes IAM gate; response may be 200 or 400 depending on UAT creds presence.
+    expect(r.status()).not.toBe(401);
+    expect(r.status()).not.toBe(403);
+  });
+
+  test("permitted admin POST /admin/payu/test-hash → non-403", async ({ request }) => {
+    const r = await request.post(`${API}/admin/payu/test-hash`, {
+      data: {},
+      headers: { Authorization: `Bearer ${permittedAdminToken}` },
+    });
+    // Passes IAM gate; response may be 200 or 400 depending on UAT creds presence.
+    expect(r.status()).not.toBe(401);
+    expect(r.status()).not.toBe(403);
+  });
+
+  test("merchant POST /admin/payu/test-hash → 403", async ({ request }) => {
+    const r = await request.post(`${API}/admin/payu/test-hash`, {
+      data: {},
+      headers: { Authorization: `Bearer ${merchantToken}` },
+    });
+    expect(r.status()).toBe(403);
   });
 });
