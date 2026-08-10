@@ -708,7 +708,8 @@ async function migrate() {
 
     CREATE TABLE IF NOT EXISTS routing_configs (
       id SERIAL PRIMARY KEY,
-      config_name VARCHAR(64) NOT NULL UNIQUE,
+      config_name VARCHAR(64) NOT NULL,
+      CONSTRAINT routing_configs_config_name_unique UNIQUE (config_name),
       description TEXT,
       strategy VARCHAR(32) NOT NULL DEFAULT 'priority',
       is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
@@ -741,6 +742,20 @@ async function migrate() {
     ALTER TABLE routing_configs ADD COLUMN IF NOT EXISTS timeout_ms INTEGER NOT NULL DEFAULT 30000;
     ALTER TABLE routing_configs ADD COLUMN IF NOT EXISTS min_success_rate_threshold NUMERIC(5,2) DEFAULT 80.00;
     ALTER TABLE routing_configs ADD COLUMN IF NOT EXISTS updated_by_email VARCHAR(255);
+    -- Ensure the UNIQUE constraint on config_name carries the canonical Drizzle name
+    -- (_unique suffix) regardless of which code path created the column. On fresh
+    -- DBs the CREATE TABLE above already names it correctly; on legacy DBs that had
+    -- config_name added via ADD COLUMN (no inline UNIQUE) this guard adds it.
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE table_name = 'routing_configs'
+          AND constraint_name = 'routing_configs_config_name_unique'
+          AND constraint_type = 'UNIQUE'
+      ) THEN
+        ALTER TABLE routing_configs ADD CONSTRAINT routing_configs_config_name_unique UNIQUE (config_name);
+      END IF;
+    END $$;
     CREATE TABLE IF NOT EXISTS routing_rules (
       id SERIAL PRIMARY KEY,
       config_id INTEGER NOT NULL REFERENCES routing_configs(id) ON DELETE CASCADE,
