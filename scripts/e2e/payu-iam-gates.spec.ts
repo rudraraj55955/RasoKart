@@ -404,6 +404,21 @@ test.describe("PayU IAM Gates", () => {
     expect(body.permissionRequired).toContain("admin_settings");
   });
 
+  test("403 body for denied admin PUT /admin/payu/config includes permissionRequired=['admin_settings']", async ({ request }) => {
+    // This is the highest-security operation on the router — credential write.
+    // A denied admin must be blocked before route body runs, and the 403 body
+    // must identify which gate was hit so callers can surface the right message.
+    const r = await request.put(`${API}/admin/payu/config`, {
+      data: { key: "some-key", salt: "some-salt" },
+      headers: { Authorization: `Bearer ${deniedAdminToken}` },
+    });
+    expect(r.status()).toBe(403);
+    const body = await r.json() as { error: string; permissionRequired?: string[] };
+    expect(body.error).toBeTruthy();
+    expect(Array.isArray(body.permissionRequired)).toBe(true);
+    expect(body.permissionRequired).toContain("admin_settings");
+  });
+
   // ── 7. Config is unchanged after suite ────────────────────────────────────
   //
   // Confirm PayU isEnabled/environment are exactly what they were before any PUT
