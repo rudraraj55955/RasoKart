@@ -103,23 +103,20 @@ function initQuietHoursFlushScheduler() {
 }
 
 async function main() {
-  // ── 1. Fatal DB connectivity check ──────────────────────────────────────────
-  try {
-    await pool.query("SELECT 1");
-    logger.info("Database connection verified");
-  } catch (err) {
-    logger.error({ err }, "Database health check failed — cannot start server");
-    process.exit(1);
-  }
-
-  // ── 2. Bind to port IMMEDIATELY ─────────────────────────────────────────────
-  // On production, schemaGuard must CREATE every table from scratch against a
-  // remote DB — this can take 60 + seconds on a cold start. Binding before that
-  // work begins lets the autoscale startup probe connect right away. While init
-  // is in progress /api/healthz/deep returns 503 { status: "starting" } so the
-  // probe retries rather than treating a connection-refused as a hard failure.
-  // markServerInitialized() is called below once schemaGuard, seed, and all
-  // schedulers are ready; the probe then gets a 200 and traffic is routed in.
+  // ── 1. Bind to port IMMEDIATELY ─────────────────────────────────────────────
+  // The Cloud Run startup probe fires as soon as the container image is loaded,
+  // before any async work completes.  We must bind the port FIRST so the probe
+  // gets an immediate HTTP 200 from GET /api/healthz.
+  //
+  // DO NOT await pool.query("SELECT 1") before app.listen():
+  //   • The probe has a default failure threshold of ~3 attempts × 10 s = 30 s.
+  //   • Even a 1–5 s cold-start round-trip to the managed PostgreSQL instance
+  //     means the port is not bound when the first probe fires → connection
+  //     refused → probe fails → promote fails.
+  //   • This was the cause of every promote failure in this project's history.
+  //
+  // DB connectivity is checked AFTER the port is bound (step 2).  If the check
+  // fails the server exits; Cloud Run restarts the container and retries.
   app.listen(port, (err) => {
     if (err) {
       logger.error({ err }, "Error listening on port");
@@ -127,6 +124,19 @@ async function main() {
     }
     logger.info({ port }, "Server listening");
   });
+
+  // ── 2. Fatal DB connectivity check ──────────────────────────────────────────
+  // Now that the port is bound and the startup probe can reach /api/healthz,
+  // verify the database is reachable.  A failure here exits so Cloud Run
+  // restarts the container — the probe keeps passing on each restart attempt
+  // until the DB becomes available or the deployment is cancelled.
+  try {
+    await pool.query("SELECT 1");
+    logger.info("Database connection verified");
+  } catch (err) {
+    logger.error({ err }, "Database health check failed — cannot start server");
+    process.exit(1);
+  }
 
   // ── 3. Schema guard ─────────────────────────────────────────────────────────
   try {
