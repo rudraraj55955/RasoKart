@@ -1,0 +1,94 @@
+RasoKart Developer Documentation — Public Discoverability & API Contract Task
+
+WHY:
+The previous integration attempt stopped because the agent could not reliably discover the actual RasoKart API contract from public web search. RasoKart's website mentions Merchant API Docs / REST API / sandbox / Postman / OpenAPI docs, but the complete developer documentation is not yet reliably discoverable through a dedicated public documentation URL.
+
+OBJECTIVE:
+Make RasoKart's developer/API documentation publicly discoverable, machine-readable, searchable, and safe for Replit/Codex/external merchant developers.
+
+IMPLEMENT:
+
+1. Create a dedicated public developer portal:
+   Preferred: https://docs.rasokart.com
+   Alternative: https://developers.rasokart.com
+
+2. Publish public documentation pages for:
+   - Getting Started
+   - Authentication
+   - Sandbox / Test Mode
+   - Payments
+   - Payment Status
+   - Refunds
+   - Webhooks
+   - Error Codes
+   - Rate Limits
+   - API Versioning
+   - Postman Collection
+   - OpenAPI / Swagger specification
+
+3. Provide a machine-readable API specification:
+   https://docs.rasokart.com/openapi.json
+   and Swagger/OpenAPI UI.
+
+4. Add a clearly visible:
+   Developers → API Docs
+   link on rasokart.com header/footer.
+
+5. SEO/discovery:
+   - Add docs URLs to sitemap.xml
+   - Allow docs crawling in robots.txt
+   - Add proper page title/meta description
+   - Use permanent public URLs
+   - Add canonical URLs and internal links
+
+6. SECURITY:
+   Documentation can be public.
+   Real API keys, secrets, merchant credentials, webhook secrets and production credentials MUST NOT be public or indexable.
+   Only dummy/example credentials may appear in documentation.
+
+7. Verify all documented endpoints against the actual backend implementation.
+   Do NOT invent endpoints, parameters, authentication methods or webhook payloads.
+   Generate the OpenAPI contract from verified existing routes/schema wherever possible.
+
+8. Add API versioning, e.g. /api/v1, if the existing backend architecture supports it without breaking current integrations.
+
+TESTS:
+- Public docs open without login
+- docs.rasokart.com resolves over HTTPS
+- openapi.json returns valid OpenAPI schema
+- Swagger UI loads successfully
+- Postman collection imports successfully
+- sitemap includes developer URLs
+- robots.txt permits documentation crawling
+- no secrets exist in public HTML/JS/OpenAPI/Postman files
+- documented API endpoints match staging behavior
+- sample sandbox request/response works end-to-end
+
+DO NOT:
+- Change existing payment processing logic
+- Change merchant credentials
+- Expose production secrets
+- Break existing production routes
+- Deploy undocumented API behavior
+- Deploy to production without final approval
+
+FIRST perform this in staging/test mode.
+
+RETURN CLOSURE REPORT:
+1. Objective
+2. Completed work
+3. Public docs URLs
+4. OpenAPI URL
+5. Postman collection location
+6. Files changed + Git SHA
+7. Tests pass/fail
+8. Security/secrets scan result
+9. Production impact
+10. Pending/blockers
+11. Rollback point
+12. Required human actions
+13. Final verdict: READY FOR PRODUCTION APPROVAL / NOT READY
+
+Do not stop merely because old documentation is missing.
+First inspect the existing RasoKart backend routes/controllers/schema and reconstruct ONLY the verified actual API contract.
+Do not invent functionality.
