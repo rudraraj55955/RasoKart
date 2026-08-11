@@ -220,6 +220,9 @@ importers:
       google-auth-library:
         specifier: ^10.7.0
         version: 10.7.0
+      js-yaml:
+        specifier: ^5.2.3
+        version: 5.2.3
       jsonwebtoken:
         specifier: ^9.0.3
         version: 9.0.3

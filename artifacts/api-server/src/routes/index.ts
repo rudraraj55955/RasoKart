@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import healthRouter from "./health";
+import openApiDocsRouter from "./openApiDocs";
 import authRouter from "./auth";
 import dashboardRouter from "./dashboard";
 import merchantsRouter from "./merchants";
@@ -104,6 +105,8 @@ import { devHelperRouter } from "./devHelper";
 const router: IRouter = Router();
 
 router.use(healthRouter);
+// Public OpenAPI spec + Swagger UI — no auth required (must be before requireAuth middleware)
+router.use(openApiDocsRouter);
 router.use("/auth", authRouter);
 // Top-level alias: some deploy configs / older frontend builds call
 // `/api/merchant/login` directly. Mounts the same authRouter so

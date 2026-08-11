@@ -41,8 +41,9 @@ const supportLinks = [
 
 const developerLinks = [
   { label: "API Documentation", href: "/api-docs" },
+  { label: "Interactive API Explorer", href: "/api/swagger" },
+  { label: "OpenAPI Specification", href: "/api/openapi.yaml" },
   { label: "Integration Guide", href: "/integration-guide" },
-  { label: "Service Delivery", href: "/service-delivery-policy" },
   { label: "UPI Integration API", href: "/upi-collection-api" },
 ];
 
