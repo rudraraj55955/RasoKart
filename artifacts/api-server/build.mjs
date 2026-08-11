@@ -5,6 +5,7 @@ import { execSync } from "node:child_process";
 import { build as esbuild } from "esbuild";
 import esbuildPluginPino from "esbuild-plugin-pino";
 import { rm } from "node:fs/promises";
+import { resolve as pathResolve } from "node:path";
 
 // Plugins (e.g. 'esbuild-plugin-pino') may use `require` to resolve dependencies
 globalThis.require = createRequire(import.meta.url);
@@ -142,7 +143,16 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
   });
 }
 
-buildAll().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+async function generatePostman() {
+  const workspaceRoot = pathResolve(artifactDir, "../..");
+  const generatorPath = pathResolve(workspaceRoot, "lib/api-spec/generate-postman.mjs");
+  console.log("» Regenerating Postman collection from openapi.yaml…");
+  execSync(`node "${generatorPath}"`, { stdio: "inherit", cwd: workspaceRoot });
+}
+
+buildAll()
+  .then(generatePostman)
+  .catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });

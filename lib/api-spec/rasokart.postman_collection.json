@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "RasoKart Payment Gateway API",
-    "description": "RasoKart Payment Gateway REST API — Public Collection\n\nBase URL: https://rasokart.com/api\nOpenAPI Spec: https://rasokart.com/api/openapi.yaml\nInteractive Docs: https://rasokart.com/api/swagger\n\nAUTHENTICATION:\n1. POST {{base_url}}/auth/login with {\"email\":\"...\",\"password\":\"...\"}\n2. Copy token from response\n3. Set {{merchant_token}} variable to the token\n\nAll protected endpoints use: Authorization: Bearer {{merchant_token}}\n\nSANDBOX NOTE:\nProvider sandbox mode is configured per-credential (Cashfree/PayU/Razorpay).\nThere is no global sandbox toggle — contact your RasoKart account manager for sandbox credentials.\n\nNOT IMPLEMENTED (separate future tasks):\n- Refunds API\n- API versioning (/v1, /v2)\n\nLast generated: 2026-08-11\nOpenAPI version: 0.1.0",
+    "description": "RasoKart Payment Gateway REST API — Public Collection\n\nBase URL: https://rasokart.com/api\nOpenAPI Spec: https://rasokart.com/api/openapi.yaml\nInteractive Docs: https://rasokart.com/api/swagger\n\nAUTHENTICATION:\n1. POST {{base_url}}/auth/login with {\"email\":\"...\",\"password\":\"...\"}\n2. Copy token from response\n3. Set {{merchant_token}} variable to the token\n\nAll protected endpoints use: Authorization: Bearer {{merchant_token}}\n\nSANDBOX NOTE:\nProvider sandbox mode is configured per-credential (Cashfree/PayU/Razorpay).\nThere is no global sandbox toggle — contact your RasoKart account manager for sandbox credentials.\n\nNOT IMPLEMENTED (separate future tasks):\n- Refunds API\n- API versioning (/v1, /v2)\n\nOpenAPI version: 0.1.0",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     "version": "0.1.0"
   },

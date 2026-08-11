@@ -150,6 +150,20 @@ jobs:
           # reports it and the post-deploy SHA assertion can verify it remotely.
           COMMIT_SHA: ${{ github.sha }}
 
+      - name: Verify Postman collection is up to date
+        run: |
+          # The build step already regenerates the collection via generate-postman.mjs.
+          # Fail here if the regenerated file differs from what was committed.
+          git diff --exit-code lib/api-spec/rasokart.postman_collection.json || {
+            echo ""
+            echo "ERROR: lib/api-spec/rasokart.postman_collection.json is stale."
+            echo "Run the following command locally and commit the result:"
+            echo ""
+            echo "  pnpm --filter @workspace/api-spec run generate-postman"
+            echo ""
+            exit 1
+          }
+
       - name: Run database migrations (throwaway CI database only)
         run: pnpm --filter @workspace/scripts run db-migrate
 

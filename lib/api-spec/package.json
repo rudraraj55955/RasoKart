@@ -3,7 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "codegen": "orval --config ./orval.config.mjs && node ./patch-zod-barrel.mjs && pnpm -w run typecheck:libs"
+    "codegen": "orval --config ./orval.config.mjs && node ./patch-zod-barrel.mjs && pnpm -w run typecheck:libs",
+    "generate-postman": "node ./generate-postman.mjs",
+    "check-postman": "node ./generate-postman.mjs && git diff --exit-code -- rasokart.postman_collection.json || (echo 'ERROR: Postman collection is stale. Run: pnpm --filter @workspace/api-spec run generate-postman' && exit 1)"
   },
   "devDependencies": {
     "orval": "^8.9.1"
