@@ -432,12 +432,32 @@ function PublicPage({ component: Component }: { component: React.ComponentType }
   );
 }
 
+/**
+ * DocsSubdomainRedirect — when the app is served on docs.rasokart.com,
+ * redirect the root path to /api-docs so the docs landing page is immediate.
+ * All other paths (e.g. /api-docs, /swagger, /integration-guide) pass through.
+ * No-op on rasokart.com or localhost.
+ */
+function DocsSubdomainRedirect() {
+  const [location, navigate] = useLocation();
+  useEffect(() => {
+    const host = window.location.hostname;
+    if (host === "docs.rasokart.com" && location === "/") {
+      navigate("/api-docs", { replace: true });
+    }
+  }, [location, navigate]);
+  return null;
+}
+
 function Router() {
   useNoIndexSync();
   return (
     <Switch>
-      {/* Public landing page */}
-      <Route path="/" component={Landing} />
+      {/* Docs subdomain: docs.rasokart.com/ → /api-docs */}
+      <Route path="/">
+        <DocsSubdomainRedirect />
+        <Landing />
+      </Route>
 
       {/* Smart entry routes — show login OR redirect to dashboard based on auth state */}
       <Route path="/admin" component={SmartAdminEntry} />

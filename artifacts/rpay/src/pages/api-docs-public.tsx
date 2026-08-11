@@ -130,6 +130,27 @@ export default function ApiDocsPublic() {
 
   useEffect(() => {
     document.title = "API Documentation — RasoKart Developer Reference";
+    // Canonical URL — ensures search engines attribute content to rasokart.com
+    // even when the page is accessed via docs.rasokart.com
+    let canonical = document.querySelector<HTMLLinkElement>("link[rel='canonical']");
+    if (!canonical) {
+      canonical = document.createElement("link");
+      canonical.rel = "canonical";
+      document.head.appendChild(canonical);
+    }
+    canonical.href = "https://rasokart.com/api-docs";
+    // Meta description for SEO / AI indexing
+    let metaDesc = document.querySelector<HTMLMetaElement>("meta[name='description']");
+    if (!metaDesc) {
+      metaDesc = document.createElement("meta");
+      metaDesc.name = "description";
+      document.head.appendChild(metaDesc);
+    }
+    metaDesc.content =
+      "RasoKart Payment Gateway REST API — OpenAPI 3.1.0 specification, interactive Swagger UI, Postman collection, and integration guides for payment, payout, QR, and virtual account APIs.";
+    return () => {
+      canonical?.remove();
+    };
   }, []);
 
   return (
