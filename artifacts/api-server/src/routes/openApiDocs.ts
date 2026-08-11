@@ -4,9 +4,10 @@
  * Serves the RasoKart OpenAPI 3.1.0 specification and an embedded Swagger UI.
  *
  * Routes (all public — no auth required):
- *   GET /api/openapi.yaml  — raw YAML spec (for Postman, code-gen, AI tools)
- *   GET /api/openapi.json  — same spec as JSON
- *   GET /api/swagger       — interactive Swagger UI (CDN-based, no build step)
+ *   GET /api/openapi.yaml           — raw YAML spec (for Postman, code-gen, AI tools)
+ *   GET /api/openapi.json           — same spec as JSON
+ *   GET /api/swagger                — interactive Swagger UI (CDN-based, no build step)
+ *   GET /api/postman-collection     — Postman collection JSON (download)
  *
  * Security:
  *   - CORS is set to * for spec endpoints (standard practice for public API specs)
@@ -45,6 +46,21 @@ function resolveSpecPath(): string {
 
 const SPEC_PATH = resolveSpecPath();
 
+function resolvePostmanCollectionPath(): string {
+  try {
+    const esmDirname = path.dirname(fileURLToPath(import.meta.url));
+    const fromEsm = path.resolve(esmDirname, "../../../../lib/api-spec/rasokart.postman_collection.json");
+    if (fs.existsSync(fromEsm)) return fromEsm;
+  } catch {
+    // fall through
+  }
+  const fromCwd = path.resolve(process.cwd(), "../../lib/api-spec/rasokart.postman_collection.json");
+  if (fs.existsSync(fromCwd)) return fromCwd;
+  return path.resolve(process.cwd(), "lib/api-spec/rasokart.postman_collection.json");
+}
+
+const POSTMAN_COLLECTION_PATH = resolvePostmanCollectionPath();
+
 // ── GET /api/openapi.yaml ─────────────────────────────────────────────────────
 router.get("/openapi.yaml", (_req: Request, res: Response) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -72,6 +88,20 @@ router.get("/openapi.json", (_req: Request, res: Response) => {
     res.json(parsed);
   } catch {
     res.status(500).json({ error: "OpenAPI specification not available" });
+  }
+});
+
+// ── GET /api/postman-collection ───────────────────────────────────────────────
+router.get("/postman-collection", (_req: Request, res: Response) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.setHeader("Content-Disposition", 'attachment; filename="rasokart.postman_collection.json"');
+  res.setHeader("Cache-Control", "public, max-age=300");
+  try {
+    const json = fs.readFileSync(POSTMAN_COLLECTION_PATH, "utf-8");
+    res.send(json);
+  } catch {
+    res.status(500).json({ error: "Postman collection not available" });
   }
 });
 
@@ -111,15 +141,33 @@ router.get("/swagger", (_req: Request, res: Response) => {
     #back-banner {
       background: #0f172a; border-bottom: 1px solid #1e293b;
       padding: 8px 24px; font-size: 13px; color: #94a3b8;
-      display: flex; align-items: center; gap: 16px;
+      display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
     }
     #back-banner a { color: #60a5fa; text-decoration: none; }
     #back-banner a:hover { text-decoration: underline; }
     #back-banner .sep { color: #334155; }
     #back-banner .badge {
-      margin-left: auto; background: #1e293b; color: #94a3b8;
+      background: #1e293b; color: #94a3b8;
       padding: 2px 8px; border-radius: 4px; font-size: 11px;
     }
+    #back-banner .postman-actions {
+      margin-left: auto; display: flex; align-items: center; gap: 8px;
+    }
+    #back-banner .btn-postman {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: #ff6c37; color: #fff; font-weight: 600; font-size: 12px;
+      padding: 4px 12px; border-radius: 5px; text-decoration: none;
+      transition: background 0.15s;
+    }
+    #back-banner .btn-postman:hover { background: #e05a29; text-decoration: none; }
+    #back-banner .btn-postman svg { flex-shrink: 0; }
+    #back-banner .btn-download {
+      display: inline-flex; align-items: center; gap: 5px;
+      background: #1e293b; color: #94a3b8; font-size: 12px;
+      padding: 4px 10px; border-radius: 5px; text-decoration: none;
+      border: 1px solid #334155; transition: border-color 0.15s, color 0.15s;
+    }
+    #back-banner .btn-download:hover { border-color: #60a5fa; color: #60a5fa; text-decoration: none; }
   </style>
 </head>
 <body>
@@ -130,7 +178,28 @@ router.get("/swagger", (_req: Request, res: Response) => {
     <span class="sep">|</span>
     <a href="/api/openapi.json">openapi.json</a>
     <span class="badge">OpenAPI 3.1.0 · Read-only</span>
+    <div class="postman-actions">
+      <a id="postman-import-btn" class="btn-postman" href="#" title="Open this collection in the Postman desktop app">
+        <svg width="14" height="14" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="16" cy="16" r="16" fill="#FF6C37"/>
+          <path d="M18.1 9.3a7.5 7.5 0 1 0 4.6 6.7h-4.6V9.3z" fill="#fff"/>
+        </svg>
+        Run in Postman
+      </a>
+      <a class="btn-download" href="/api/postman-collection" download="rasokart.postman_collection.json" title="Download Postman collection JSON">
+        ↓ Download collection
+      </a>
+    </div>
   </div>
+  <script>
+    (function () {
+      // Build the Postman deep-link using the current page's origin so it works
+      // on any deployment (localhost, staging, production).
+      var collectionUrl = encodeURIComponent(window.location.origin + "/api/postman-collection");
+      var deepLink = "postman://app/collections/import?url=" + collectionUrl;
+      document.getElementById("postman-import-btn").href = deepLink;
+    })();
+  </script>
   <div id="swagger-ui"></div>
   <script src="https://unpkg.com/swagger-ui-dist@${SWAGGER_UI_VERSION}/swagger-ui-bundle.js" crossorigin></script>
   <script>
