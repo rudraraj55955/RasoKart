@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, systemConfigTable, SYSTEM_CONFIG_KEYS, SYSTEM_CONFIG_DEFAULTS, auditLogsTable, signatureFailureAlertLogsTable, webhookFailureAlertLogsTable, ekqrSyncAlertLogsTable, storageCleanupRunsTable, uploadedObjectsTable, merchantsTable, merchantConnectionsTable, qrCodesTable, cashfreePaymentOrdersTable, cashfreePayoutsTable, providerIntegrationsTable } from "@workspace/db";
-import { ekqrCreateOrder, ekqrClientTxnId } from "../helpers/ekqr";
+import { ekqrCreateOrder, ekqrClientTxnId, ekqrCheckOrderStatus, ekqrFormatDate } from "../helpers/ekqr";
 import { testPayoutConnection, cashfreePayoutGetTransferStatus, normalizeCashfreePayoutStatus, type CashfreePayoutEnv } from "../helpers/cashfreePayout";
 import { cashfreeCreateOrder, type CashfreeEnv } from "../helpers/cashfree";
 import { encryptSecret, decryptSecret } from "../helpers/cryptoUtils";
@@ -2524,6 +2524,54 @@ router.post("/ekqr/test", async (req, res, next) => {
     const { raw, parsed } = await ekqrCreateOrder(testPayload);
     req.log.info({ status: parsed.status, msg: parsed.msg }, "EKQR test connection result");
     res.json({ ok: parsed.status === true, msg: parsed.msg, raw });
+  } catch (err) { next(err); }
+});
+
+// POST /api/system-config/ekqr/test-status
+// Tests the check-order-status endpoint by querying a known-nonexistent client_txn_id.
+// EKQR responds with { status: false, msg: "No record found" } (or a close variant) when
+// the key is accepted but the order does not exist — this is the only success signal:
+// both status===false AND a recognized no-record message must be present.
+// Any other response (invalid key, rate limit, generic error, unexpected status:true) is
+// treated as failure so admins are never falsely told the Status API is healthy.
+router.post("/ekqr/test-status", async (req, res, next) => {
+  try {
+    const [keyRow] = await db.select({ value: systemConfigTable.value })
+      .from(systemConfigTable).where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.EKQR_API_KEY)).limit(1);
+
+    const storedApiKey = keyRow?.value ?? "";
+    if (!storedApiKey) { res.status(400).json({ error: "EKQR API key is not configured" }); return; }
+
+    // Decrypt the stored key — EKQR API keys are encrypted at rest (enc:v1: prefix).
+    // decryptSecret handles both encrypted values and legacy plaintext gracefully.
+    const keyDecryptResult = decryptSecret(storedApiKey);
+    if (!keyDecryptResult.ok) { res.status(500).json({ error: "Failed to decrypt EKQR API key" }); return; }
+    const apiKey = keyDecryptResult.value;
+    if (!apiKey) { res.status(400).json({ error: "EKQR API key is not configured" }); return; }
+
+    // Use a client_txn_id that will never exist so EKQR returns a "no record" response.
+    const testClientTxnId = "RASOKART-STATUS-TEST-" + Date.now();
+    const txnDate = ekqrFormatDate(new Date());
+
+    const { raw, parsed } = await ekqrCheckOrderStatus(apiKey, testClientTxnId, txnDate);
+
+    // Positive match: EKQR must return status:false AND a recognized "no record" message.
+    // Requiring both conditions prevents a misleading status:true response or a generic
+    // error message from being silently accepted as a pass.
+    const lowerMsg = (parsed.msg ?? "").toLowerCase();
+    const isNoRecordMessage =
+      lowerMsg.includes("no record") ||
+      lowerMsg.includes("record not found") ||
+      lowerMsg.includes("data not found") ||
+      lowerMsg.includes("no data found");
+
+    const ok = parsed.status === false && isNoRecordMessage;
+    const displayMsg = ok
+      ? `Status API reachable — ${parsed.msg}`
+      : parsed.msg || "Unexpected response from EKQR status endpoint";
+
+    req.log.info({ ekqrStatus: parsed.status, msg: parsed.msg, ok }, "EKQR test-status result");
+    res.json({ ok, msg: displayMsg, raw });
   } catch (err) { next(err); }
 });
 

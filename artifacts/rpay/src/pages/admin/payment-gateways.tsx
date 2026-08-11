@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import {
   useGetCashfreeConfig, useGetCashfreePayoutConfig,
-  useGetEkqrConfig, useUpdateEkqrConfig, useTestEkqrConnection, useTestEkqrWebhook,
+  useGetEkqrConfig, useUpdateEkqrConfig, useTestEkqrConnection, useTestEkqrWebhook, useTestEkqrStatusApi,
   getGetEkqrConfigQueryKey,
   useGetUpigatewaySettings, useUpdateUpigatewaySettings, getGetUpigatewaySettingsQueryKey,
   useTestUpigatewayCredentials, useTestUpigatewayOrder, useCheckUpigatewayStatus,
@@ -1006,6 +1006,7 @@ function EkqrConfigPanel() {
   const [showKey, setShowKey] = useState(false);
   const [showSecret, setShowSecret] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [statusTestResult, setStatusTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
   const [webhookTestResult, setWebhookTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
 
   const currentEnabled = ekqrEnabled !== null ? ekqrEnabled : (ekqrConfig?.enabled ?? false);
@@ -1040,6 +1041,20 @@ function EkqrConfigPanel() {
         else toast.error(`Test failed: ${d.msg}`);
       },
       onError: (err: Error) => toast.error(err.message),
+    },
+  });
+
+  const { mutate: testStatusApi, isPending: testingStatus } = useTestEkqrStatusApi({
+    mutation: {
+      onSuccess: (d: any) => {
+        setStatusTestResult(d);
+        if (d.ok) toast.success("Status API reachable — key accepted");
+        else toast.error(`Status API test failed: ${d.msg}`);
+      },
+      onError: (err: Error) => {
+        setStatusTestResult({ ok: false, msg: err.message });
+        toast.error(err.message);
+      },
     },
   });
 
@@ -1264,7 +1279,21 @@ function EkqrConfigPanel() {
           testResult.ok ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-destructive/10 text-destructive border-destructive/20"
         }`}>
           {testResult.ok ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> : <AlertCircle className="w-3.5 h-3.5 shrink-0" />}
-          {testResult.ok ? "Connection successful — API key is valid" : testResult.msg}
+          {testResult.ok ? "Create-order API: connection successful — key accepted" : `Create-order test failed: ${testResult.msg}`}
+        </div>
+      )}
+      {statusTestResult && (
+        <div className={`flex items-center gap-2 text-xs px-3 py-2 rounded-md border ${
+          statusTestResult.ok ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-destructive/10 text-destructive border-destructive/20"
+        }`}>
+          {statusTestResult.ok ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> : <AlertCircle className="w-3.5 h-3.5 shrink-0" />}
+          {statusTestResult.ok ? "Status API: endpoint reachable — key accepted by check-order-status" : `Status API test failed: ${statusTestResult.msg}`}
+        </div>
+      )}
+      {testResult?.ok && statusTestResult?.ok && (
+        <div className="flex items-center gap-2 text-xs px-3 py-2 rounded-md border bg-teal-500/10 text-teal-400 border-teal-500/20">
+          <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+          Both APIs verified — safe to enable
         </div>
       )}
       {webhookTestResult && (
@@ -1289,6 +1318,11 @@ function EkqrConfigPanel() {
           <FlaskConical className="w-3.5 h-3.5 mr-1.5" />
           {testing ? "Testing…" : "Test Connection"}
         </Button>
+        <Button size="sm" variant="outline" onClick={() => { setStatusTestResult(null); testStatusApi(undefined as any); }}
+          disabled={testingStatus || ekqrLoading || !ekqrConfig?.apiKeySet}>
+          <Activity className="w-3.5 h-3.5 mr-1.5" />
+          {testingStatus ? "Testing…" : "Test Status API"}
+        </Button>
         <Button size="sm" variant="outline" onClick={() => { setWebhookTestResult(null); testWebhook(undefined as any); }}
           disabled={testingWebhook || !ekqrConfig?.apiKeySet}>
           <Zap className="w-3.5 h-3.5 mr-1.5" />
@@ -1299,7 +1333,7 @@ function EkqrConfigPanel() {
             setEkqrApiKey(""); setEkqrWebhookSecret("");
             setEkqrEnabled(null); setEkqrEnv(null);
             setEkqrMinAmount(""); setEkqrMaxAmount(""); setEkqrDailyLimit("");
-            setTestResult(null); setWebhookTestResult(null);
+            setTestResult(null); setStatusTestResult(null); setWebhookTestResult(null);
           }} disabled={saving}>
             Cancel
           </Button>

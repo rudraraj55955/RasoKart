@@ -208,7 +208,7 @@ router.get("/healthz/deep", async (_req, res) => {
   }
 
   const allOk = Object.values(checks).every(Boolean);
-  res.status(allOk ? 200 : 503).json({ status: allOk ? "ok" : "degraded", commit: COMMIT_SHA, checks });
+  return res.status(allOk ? 200 : 503).json({ status: allOk ? "ok" : "degraded", commit: COMMIT_SHA, checks });
 });
 
 export default router;

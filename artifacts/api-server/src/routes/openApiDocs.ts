@@ -17,18 +17,26 @@
 import { Router, type Request, type Response } from "express";
 import fs from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
 
 const router = Router();
 
 /**
  * Resolve path to openapi.yaml.
  * Works for both tsx (source) and compiled JS (dist) execution:
- * - tsx: __dirname = artifacts/api-server/src/routes → 4 levels up = workspace root
+ * - ESM / tsx: use import.meta.url to derive __dirname equivalent
  * - CWD fallback: when pnpm changes to artifacts/api-server, 2 levels up = workspace root
  */
 function resolveSpecPath(): string {
-  const fromDirname = path.resolve(__dirname, "../../../../lib/api-spec/openapi.yaml");
-  if (fs.existsSync(fromDirname)) return fromDirname;
+  // Derive __dirname-equivalent in ESM/tsx context; fall back gracefully if
+  // import.meta.url is unavailable (e.g. synthetic CJS shim).
+  try {
+    const esmDirname = path.dirname(fileURLToPath(import.meta.url));
+    const fromEsm = path.resolve(esmDirname, "../../../../lib/api-spec/openapi.yaml");
+    if (fs.existsSync(fromEsm)) return fromEsm;
+  } catch {
+    // import.meta.url not available — fall through to CWD fallbacks
+  }
   const fromCwd = path.resolve(process.cwd(), "../../lib/api-spec/openapi.yaml");
   if (fs.existsSync(fromCwd)) return fromCwd;
   const fromCwdRoot = path.resolve(process.cwd(), "lib/api-spec/openapi.yaml");

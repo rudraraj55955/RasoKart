@@ -24439,6 +24439,66 @@ export const useTestEkqrWebhook = <TError = ErrorType<void>,
       return useMutation(getTestEkqrWebhookMutationOptions(options));
     }
 
+export const getTestEkqrStatusApiUrl = () => {
+
+
+
+
+  return `/api/system-config/ekqr/test-status`
+}
+
+/**
+ * @summary Test EKQR check-order-status API by querying a known-nonexistent transaction ID
+ */
+export const testEkqrStatusApi = async ( options?: RequestInit): Promise<EkqrTestResult> => {
+
+  return customFetch<EkqrTestResult>(getTestEkqrStatusApiUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+)
+}
+
+
+export const getTestEkqrStatusApiMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof testEkqrStatusApi>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof testEkqrStatusApi>>, TError,void, TContext> => {
+const mutationKey = ['testEkqrStatusApi'];
+const {mutation: mutationOptions, request: requestOptions} = options ?? {};
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof testEkqrStatusApi>>, void> = () => {
+
+
+          return  testEkqrStatusApi(requestOptions)
+        }
+
+
+
+
+   return  { mutationKey, mutationFn, ...mutationOptions}}
+
+    export type TestEkqrStatusApiMutationResult = NonNullable<Awaited<ReturnType<typeof testEkqrStatusApi>>>
+
+    export type TestEkqrStatusApiMutationError = ErrorType<void>
+
+    /**
+ * @summary Test EKQR check-order-status API by querying a known-nonexistent transaction ID
+ */
+export const useTestEkqrStatusApi = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof testEkqrStatusApi>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof testEkqrStatusApi>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getTestEkqrStatusApiMutationOptions(options));
+    }
+
 export const getGetUpigatewaySettingsUrl = () => {
 
 

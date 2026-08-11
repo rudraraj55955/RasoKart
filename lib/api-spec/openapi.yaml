@@ -8426,6 +8426,27 @@ paths:
         "403":
           description: Forbidden
 
+  /system-config/ekqr/test-status:
+    post:
+      operationId: testEkqrStatusApi
+      tags: [system-config]
+      summary: Test EKQR check-order-status API by querying a known-nonexistent transaction ID
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: EKQR check-order-status test result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EkqrTestResult"
+        "400":
+          description: API key not configured
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+
   /system-config/ekqr/test-webhook:
     post:
       operationId: testEkqrWebhook
