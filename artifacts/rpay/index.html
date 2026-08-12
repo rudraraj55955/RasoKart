@@ -50,6 +50,19 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   </head>
   <body>
+    <!--
+      Prerender H1 for static crawlers (Bing Site Scan, etc.) that do not
+      execute JavaScript and therefore never see the React-rendered DOM.
+      The inline script removes this element synchronously so that JS-capable
+      browsers and bots only encounter the single <h1> that React renders
+      inside #root — no duplicate, no visible change.
+    -->
+    <h1 id="prerender-h1" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0">
+      Manage Payments, Merchants and Reconciliation from One Platform
+    </h1>
+    <script>
+      (function(){var h=document.getElementById('prerender-h1');if(h)h.parentNode.removeChild(h);})();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
