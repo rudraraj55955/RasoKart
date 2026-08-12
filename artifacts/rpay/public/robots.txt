@@ -13,3 +13,4 @@ Disallow: /va-pay/
 Disallow: /upi-collection-api/
 
 Sitemap: https://rasokart.com/sitemap.xml
+Sitemap: https://docs.rasokart.com/sitemap.xml

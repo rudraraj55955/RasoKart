@@ -893,8 +893,9 @@ export default function Landing() {
             <div>
               <div className="mb-3 text-sm font-semibold">Developers</div>
               <ul className="space-y-2 text-sm text-muted-foreground">
+                <li><a href="https://docs.rasokart.com" className="transition-colors hover:text-foreground">Developer Docs</a></li>
+                <li><Link href="/api-docs" className="transition-colors hover:text-foreground">API Reference</Link></li>
                 <li><Link href="/upi-collection-api" className="transition-colors hover:text-foreground">UPI Integration API</Link></li>
-                <li><Link href="/merchant/api-docs" className="transition-colors hover:text-foreground">Merchant API Docs</Link></li>
               </ul>
             </div>
           </div>

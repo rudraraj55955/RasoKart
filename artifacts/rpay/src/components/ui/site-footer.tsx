@@ -40,7 +40,8 @@ const supportLinks = [
 ];
 
 const developerLinks = [
-  { label: "API Documentation", href: "/api-docs" },
+  { label: "Developer Docs", href: "https://docs.rasokart.com" },
+  { label: "API Reference", href: "/api-docs" },
   { label: "Interactive API Explorer", href: "/api/swagger" },
   { label: "OpenAPI Specification", href: "/api/openapi.yaml" },
   { label: "Integration Guide", href: "/integration-guide" },
@@ -70,12 +71,23 @@ function FooterCol({ heading, links }: FooterSection) {
       <ul className="space-y-2">
         {links.map((l) => (
           <li key={l.href}>
-            <Link
-              href={l.href}
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
-              {l.label}
-            </Link>
+            {l.href.startsWith("https://") || l.href.startsWith("http://") ? (
+              <a
+                href={l.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {l.label}
+              </a>
+            ) : (
+              <Link
+                href={l.href}
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {l.label}
+              </Link>
+            )}
           </li>
         ))}
       </ul>

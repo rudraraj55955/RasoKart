@@ -129,27 +129,95 @@ export default function ApiDocsPublic() {
   const { supportEmail } = useCompanySettings();
 
   useEffect(() => {
-    document.title = "API Documentation — RasoKart Developer Reference";
-    // Canonical URL — ensures search engines attribute content to rasokart.com
-    // even when the page is accessed via docs.rasokart.com
-    let canonical = document.querySelector<HTMLLinkElement>("link[rel='canonical']");
-    if (!canonical) {
-      canonical = document.createElement("link");
-      canonical.rel = "canonical";
-      document.head.appendChild(canonical);
+    // ── Page title ────────────────────────────────────────────────────────────
+    document.title = "RasoKart Developer Documentation — Payment API Reference";
+
+    // ── Helper: upsert a <meta> or <link> tag keyed by an attribute ───────────
+    function upsertMeta(selector: string, attrs: Record<string, string>): Element {
+      let el = document.querySelector(selector);
+      if (!el) {
+        const tag = selector.startsWith("link") ? "link" : "meta";
+        el = document.createElement(tag);
+        document.head.appendChild(el);
+      }
+      Object.entries(attrs).forEach(([k, v]) => el!.setAttribute(k, v));
+      return el;
     }
-    canonical.href = "https://rasokart.com/api-docs";
-    // Meta description for SEO / AI indexing
-    let metaDesc = document.querySelector<HTMLMetaElement>("meta[name='description']");
-    if (!metaDesc) {
-      metaDesc = document.createElement("meta");
-      metaDesc.name = "description";
-      document.head.appendChild(metaDesc);
+
+    // ── Canonical ─────────────────────────────────────────────────────────────
+    upsertMeta("link[rel='canonical']", {
+      rel: "canonical",
+      href: "https://rasokart.com/api-docs",
+    });
+
+    // ── Meta description ──────────────────────────────────────────────────────
+    const DESC =
+      "RasoKart Merchant API documentation — OpenAPI 3.1.0 specification with 370+ endpoints for payment integration, payout, QR codes, virtual accounts, webhooks, and developer tooling. Interactive Swagger UI and Postman collection included.";
+    upsertMeta("meta[name='description']", { name: "description", content: DESC });
+
+    // ── Open Graph ────────────────────────────────────────────────────────────
+    upsertMeta("meta[property='og:site_name']",    { property: "og:site_name",    content: "RasoKart" });
+    upsertMeta("meta[property='og:type']",          { property: "og:type",          content: "website" });
+    upsertMeta("meta[property='og:title']",         { property: "og:title",         content: "RasoKart Developer Documentation — Payment API Reference" });
+    upsertMeta("meta[property='og:description']",   { property: "og:description",   content: DESC });
+    upsertMeta("meta[property='og:url']",           { property: "og:url",           content: "https://rasokart.com/api-docs" });
+    upsertMeta("meta[property='og:image']",         { property: "og:image",         content: "https://rasokart.com/opengraph.jpg" });
+    upsertMeta("meta[property='og:image:width']",   { property: "og:image:width",   content: "1200" });
+    upsertMeta("meta[property='og:image:height']",  { property: "og:image:height",  content: "630" });
+    upsertMeta("meta[property='og:image:alt']",     { property: "og:image:alt",     content: "RasoKart Payment API Developer Documentation" });
+
+    // ── Twitter Card ──────────────────────────────────────────────────────────
+    upsertMeta("meta[name='twitter:card']",        { name: "twitter:card",        content: "summary_large_image" });
+    upsertMeta("meta[name='twitter:site']",        { name: "twitter:site",        content: "@rasokart" });
+    upsertMeta("meta[name='twitter:title']",       { name: "twitter:title",       content: "RasoKart Developer Documentation — Payment API Reference" });
+    upsertMeta("meta[name='twitter:description']", { name: "twitter:description", content: DESC });
+    upsertMeta("meta[name='twitter:image']",       { name: "twitter:image",       content: "https://rasokart.com/opengraph.jpg" });
+
+    // ── JSON-LD structured data (TechArticle + SoftwareApplication) ──────────
+    const LD_ID = "rasokart-api-docs-jsonld";
+    let jsonLd = document.getElementById(LD_ID) as HTMLScriptElement | null;
+    if (!jsonLd) {
+      jsonLd = document.createElement("script");
+      jsonLd.id = LD_ID;
+      jsonLd.type = "application/ld+json";
+      document.head.appendChild(jsonLd);
     }
-    metaDesc.content =
-      "RasoKart Payment Gateway REST API — OpenAPI 3.1.0 specification, interactive Swagger UI, Postman collection, and integration guides for payment, payout, QR, and virtual account APIs.";
+    jsonLd.textContent = JSON.stringify({
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "TechArticle",
+          "name": "RasoKart Payment API — Developer Documentation",
+          "description": DESC,
+          "url": "https://rasokart.com/api-docs",
+          "dateModified": "2026-08-12",
+          "publisher": {
+            "@type": "Organization",
+            "name": "RasoKart",
+            "url": "https://rasokart.com",
+          },
+          "about": [
+            { "@type": "Thing", "name": "Payment API" },
+            { "@type": "Thing", "name": "Merchant Integration" },
+            { "@type": "Thing", "name": "UPI Payments" },
+            { "@type": "Thing", "name": "Payout API" },
+            { "@type": "Thing", "name": "Webhooks" },
+          ],
+        },
+        {
+          "@type": "SoftwareApplication",
+          "name": "RasoKart Payment Gateway",
+          "applicationCategory": "PaymentApplication",
+          "operatingSystem": "Web",
+          "url": "https://rasokart.com",
+          "offers": { "@type": "Offer", "price": "0" },
+        },
+      ],
+    });
+
     return () => {
-      canonical?.remove();
+      document.getElementById(LD_ID)?.remove();
+      document.querySelector("link[rel='canonical']")?.remove();
     };
   }, []);
 
@@ -543,13 +611,18 @@ export default function ApiDocsPublic() {
                 </div>
               </div>
 
-              {/* Docs subdomain note */}
-              <div className="rounded-xl border border-border/60 bg-card/40 p-4 text-sm space-y-2">
-                <p className="font-medium flex items-center gap-2"><Globe className="w-4 h-4 text-muted-foreground" /> Planned: Developer Subdomain</p>
+              {/* Docs subdomain */}
+              <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/5 p-4 text-sm space-y-2">
+                <p className="font-medium flex items-center gap-2 text-emerald-300"><Globe className="w-4 h-4" /> Developer Docs also available at docs.rasokart.com</p>
                 <p className="text-muted-foreground text-xs">
-                  <code>docs.rasokart.com</code> and <code>developers.rasokart.com</code> are planned subdomains.
-                  Currently all documentation is available at <code>rasokart.com/api-docs</code> and <code>rasokart.com/api/swagger</code>.
-                  DNS configuration is a separate deployment step requiring manual approval.
+                  All documentation is mirrored at{" "}
+                  <a href="https://docs.rasokart.com" className="text-primary hover:underline font-mono">docs.rasokart.com</a>{" "}
+                  with short aliases:{" "}
+                  <a href="https://docs.rasokart.com/swagger" className="text-primary hover:underline font-mono">/swagger</a>,{" "}
+                  <a href="https://docs.rasokart.com/openapi.yaml" className="text-primary hover:underline font-mono">/openapi.yaml</a>,{" "}
+                  <a href="https://docs.rasokart.com/openapi.json" className="text-primary hover:underline font-mono">/openapi.json</a>,{" "}
+                  <a href="https://docs.rasokart.com/postman" className="text-primary hover:underline font-mono">/postman</a>.
+                  Canonical source remains <code>rasokart.com/api-docs</code>.
                 </p>
               </div>
             </section>
