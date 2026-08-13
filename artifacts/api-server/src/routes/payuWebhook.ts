@@ -27,6 +27,7 @@ import { logger } from "../lib/logger";
 import { decryptSecret } from "../helpers/cryptoUtils";
 import { verifyPayuResponseHash, type PayuEnv } from "../helpers/payu";
 import { creditWalletForPayu } from "./payuOrders";
+import { notifyAdminsOfPayuCreditFailure } from "../helpers/adminNotifyEmail";
 
 const router = Router();
 
@@ -79,7 +80,7 @@ async function insertWebhookLog(params: {
   status: string | null;
   source: string;
   rawPayload: string;
-  processingResult: "credited" | "duplicate" | "ignored" | "error" | "hash_invalid";
+  processingResult: "credited" | "duplicate" | "credit_failed" | "ignored" | "error" | "hash_invalid";
   hashVerified: boolean;
   errorMessage: string | null;
 }) {
@@ -107,11 +108,12 @@ async function processPayuCallback(
   rawPayload: string,
   source: "s2s_webhook" | "browser_return",
 ): Promise<{
-  result:   "credited" | "duplicate" | "ignored" | "error" | "hash_invalid";
-  txnid:    string | null;
-  status:   string | null;
+  result:     "credited" | "duplicate" | "credit_failed" | "ignored" | "error" | "hash_invalid";
+  txnid:      string | null;
+  status:     string | null;
   merchantId: number | null;
-  hashOk:   boolean;
+  amount:     string | null;
+  hashOk:     boolean;
 }> {
   const txnid      = fields["txnid"] ?? null;
   const amount     = fields["amount"] ?? null;
@@ -130,7 +132,7 @@ async function processPayuCallback(
   const paymentMode = fields["mode"] ?? null;
 
   if (!txnid) {
-    return { result: "ignored", txnid: null, status, merchantId: null, hashOk: false };
+    return { result: "ignored", txnid: null, status, merchantId: null, amount, hashOk: false };
   }
 
   // Load order to find env + merchant
@@ -142,7 +144,7 @@ async function processPayuCallback(
 
   if (!order) {
     logger.warn({ txnid, source }, "payu_callback_order_not_found");
-    return { result: "ignored", txnid, status, merchantId: null, hashOk: false };
+    return { result: "ignored", txnid, status, merchantId: null, amount, hashOk: false };
   }
 
   const env = (order.environment ?? "uat") as PayuEnv;
@@ -151,7 +153,7 @@ async function processPayuCallback(
 
   if (!salt || !key) {
     logger.error({ txnid, source }, "payu_callback_missing_salt");
-    return { result: "error", txnid, status, merchantId: order.merchantId, hashOk: false };
+    return { result: "error", txnid, status, merchantId: order.merchantId, amount, hashOk: false };
   }
 
   // Hash verification — mandatory for all status types
@@ -168,7 +170,7 @@ async function processPayuCallback(
         eq(payuPaymentOrdersTable.txnid, txnid),
         inArray(payuPaymentOrdersTable.status, [PAYU_ORDER_STATUS.INITIATED, PAYU_ORDER_STATUS.PENDING]),
       ));
-    return { result: "hash_invalid", txnid, status, merchantId: order.merchantId, hashOk: false };
+    return { result: "hash_invalid", txnid, status, merchantId: order.merchantId, amount, hashOk: false };
   }
 
   // Update raw response + hash flag on the order
@@ -196,13 +198,38 @@ async function processPayuCallback(
       ));
 
     logger.info({ txnid, status, source, newStatus }, "payu_callback_non_success");
-    return { result: "ignored", txnid, status, merchantId: order.merchantId, hashOk: true };
+    return { result: "ignored", txnid, status, merchantId: order.merchantId, amount, hashOk: true };
   }
 
   // SUCCESS — atomically credit wallet
   const creditResult = await creditWalletForPayu(txnid, mihpayid, bankRefNo, paymentMode, source);
-  logger.info({ txnid, source, creditResult, mihpayid }, "payu_callback_success_processed");
-  return { result: creditResult, txnid, status, merchantId: order.merchantId, hashOk: true };
+
+  if (creditResult.outcome === "error") {
+    // Hash verified + PayU confirmed payment, but wallet credit failed.
+    // Fire admin alert — the order is now flagged CREDIT_FAILED in the DB.
+    logger.error(
+      { txnid, source, merchantId: creditResult.merchantId, amount: creditResult.amount },
+      "payu_credit_failed_after_hash_verified",
+    );
+    notifyAdminsOfPayuCreditFailure({
+      txnid,
+      merchantId: creditResult.merchantId,
+      amount:     creditResult.amount ?? amount,
+      source,
+    }).catch(err => logger.error({ err, txnid }, "payu_credit_failure_notification_error"));
+  }
+
+  logger.info({ txnid, source, outcome: creditResult.outcome, mihpayid }, "payu_callback_success_processed");
+
+  const resultOutcome: "credited" | "duplicate" | "credit_failed" | "error" = creditResult.outcome;
+  return {
+    result:     resultOutcome,
+    txnid,
+    status,
+    merchantId: creditResult.outcome === "error" ? creditResult.merchantId : order.merchantId,
+    amount,
+    hashOk:     true,
+  };
 }
 
 // ── POST /api/payment/payu-s2s ────────────────────────────────────────────────
@@ -217,8 +244,14 @@ router.post("/payu-s2s", async (req, res) => {
   const { result, txnid, status, merchantId, hashOk } = await processPayuCallback(body, rawPayload, "s2s_webhook");
   await insertWebhookLog({
     txnid, merchantId, amount: body["amount"] ?? null, status, source: "s2s_webhook",
-    rawPayload, processingResult: result === "hash_invalid" ? "hash_invalid" : result,
-    hashVerified: hashOk, errorMessage: result === "error" ? "wallet credit failed" : null,
+    rawPayload,
+    processingResult: result === "hash_invalid" ? "hash_invalid"
+      : result === "credit_failed" ? "credit_failed"
+      : result,
+    hashVerified: hashOk,
+    errorMessage: result === "error" ? "wallet credit failed — order flagged CREDIT_FAILED"
+      : result === "credit_failed" ? "order already in CREDIT_FAILED state"
+      : null,
   });
 });
 
@@ -232,13 +265,19 @@ router.post("/payu-return", async (req, res) => {
   const txnid     = body["txnid"] ?? "";
   const statusRaw = (body["status"] ?? "").toUpperCase();
 
-  const { result, hashOk } = await processPayuCallback(body, rawPayload, "browser_return");
+  const { result, hashOk, merchantId } = await processPayuCallback(body, rawPayload, "browser_return");
 
   await insertWebhookLog({
-    txnid: txnid || null, merchantId: null, amount: body["amount"] ?? null,
+    txnid: txnid || null, merchantId, amount: body["amount"] ?? null,
     status: body["status"] ?? null, source: "browser_return",
-    rawPayload, processingResult: result === "hash_invalid" ? "hash_invalid" : result,
-    hashVerified: hashOk, errorMessage: result === "error" ? "wallet credit failed" : null,
+    rawPayload,
+    processingResult: result === "hash_invalid" ? "hash_invalid"
+      : result === "credit_failed" ? "credit_failed"
+      : result,
+    hashVerified: hashOk,
+    errorMessage: result === "error" ? "wallet credit failed — order flagged CREDIT_FAILED"
+      : result === "credit_failed" ? "order already in CREDIT_FAILED state"
+      : null,
   });
 
   if (!hashOk) {
@@ -246,7 +285,12 @@ router.post("/payu-return", async (req, res) => {
     return;
   }
 
-  if (statusRaw === "SUCCESS" || result === "credited" || result === "duplicate") {
+  if (result === "error" || result === "credit_failed") {
+    // Wallet credit failed (or was already marked failed by S2S).
+    // Show a neutral pending state — the merchant's payment was collected by PayU
+    // but their wallet was NOT credited. Admins are alerted to reconcile manually.
+    res.redirect(`/merchant/deposits?payu_status=pending&txnid=${encodeURIComponent(txnid)}`);
+  } else if (result === "credited" || result === "duplicate" || statusRaw === "SUCCESS") {
     res.redirect(`/merchant/deposits?payu_status=success&txnid=${encodeURIComponent(txnid)}`);
   } else if (statusRaw === "PENDING") {
     res.redirect(`/merchant/deposits?payu_status=pending&txnid=${encodeURIComponent(txnid)}`);

@@ -316,13 +316,13 @@ router.get("/payu/check/:txnid", requireAuth, async (req, res, next) => {
 
     res.json({
       txnid,
-      amount:       order.amount,
-      status:       order.status,
+      amount:         order.amount,
+      status:         order.status,
       providerStatus: result.ok ? result.status : null,
-      mihpayid:     order.mihpayid ?? result.mihpayid ?? null,
-      bankRefNo:    order.bankRefNo ?? result.bankRefNo ?? null,
-      paymentMode:  order.paymentMode ?? result.paymentMode ?? null,
-      paidAt:       order.paidAt?.toISOString() ?? null,
+      mihpayid:       order.mihpayid ?? result.mihpayid ?? null,
+      bankRefNo:      order.bankRefNo ?? result.bankRefNo ?? null,
+      paymentMode:    order.paymentMode ?? result.paymentMode ?? null,
+      paidAt:         order.paidAt?.toISOString() ?? null,
     });
   } catch (err) { next(err); }
 });
@@ -330,13 +330,18 @@ router.get("/payu/check/:txnid", requireAuth, async (req, res, next) => {
 // ── Exported wallet credit function ───────────────────────────────────────────
 // Used by both payuWebhook.ts (s2s) and the return-callback handler.
 
+export type CreditWalletForPayuResult =
+  | { outcome: "credited" }
+  | { outcome: "duplicate" }       // already successfully credited — idempotent
+  | { outcome: "credit_failed" }   // order is CREDIT_FAILED — wallet not credited
+  | { outcome: "error"; merchantId: number | null; amount: string | null };
 export async function creditWalletForPayu(
   txnid:        string,
   mihpayid:     string | null,
   bankRefNo:    string | null,
   paymentMode:  string | null,
   source:       string,
-): Promise<"credited" | "duplicate" | "error"> {
+): Promise<CreditWalletForPayuResult> {
   try {
     return await db.transaction(async (tx) => {
       // Atomic: only one caller wins the INITIATED/PENDING→SUCCESS transition
@@ -363,7 +368,19 @@ export async function creditWalletForPayu(
           amount:     payuPaymentOrdersTable.amount,
         });
 
-      if (!updated.length) return "duplicate";
+      if (!updated.length) {
+        // Check why — if the order is already CREDIT_FAILED, distinguish it from a
+        // normal idempotent duplicate so the browser-return handler can show the correct state.
+        const [existing] = await tx
+          .select({ status: payuPaymentOrdersTable.status })
+          .from(payuPaymentOrdersTable)
+          .where(eq(payuPaymentOrdersTable.txnid, txnid))
+          .limit(1);
+        if (existing?.status === PAYU_ORDER_STATUS.CREDIT_FAILED) {
+          return { outcome: "credit_failed" };
+        }
+        return { outcome: "duplicate" };
+      }
 
       const order     = updated[0]!;
       const amountStr = String(order.amount);
@@ -423,10 +440,51 @@ export async function creditWalletForPayu(
         description: `PayU payment — txnid ${txnid} via ${source}`,
       }).onConflictDoNothing();
 
-      return "credited";
+      return { outcome: "credited" };
     });
-  } catch {
-    return "error";
+  } catch (err) {
+    // Payment was confirmed by PayU (hash verified) but the DB transaction failed.
+    // Mark the order as CREDIT_FAILED so it is visible in the admin reconciliation view.
+    try {
+      // Look up the order to get merchantId + amount for the alert
+      const [order] = await db
+        .select({
+          merchantId: payuPaymentOrdersTable.merchantId,
+          amount:     payuPaymentOrdersTable.amount,
+        })
+        .from(payuPaymentOrdersTable)
+        .where(eq(payuPaymentOrdersTable.txnid, txnid))
+        .limit(1);
+
+      // Only transition from INITIATED/PENDING → CREDIT_FAILED.
+      // Do NOT include SUCCESS: the wallet update and the status-to-SUCCESS are in
+      // the same transaction, so a partial commit that left SUCCESS behind is impossible.
+      // Including SUCCESS would risk overwriting a concurrent successful credit.
+      await db
+        .update(payuPaymentOrdersTable)
+        .set({
+          status:         PAYU_ORDER_STATUS.CREDIT_FAILED,
+          creditFailedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(payuPaymentOrdersTable.txnid, txnid),
+            inArray(payuPaymentOrdersTable.status, [
+              PAYU_ORDER_STATUS.INITIATED,
+              PAYU_ORDER_STATUS.PENDING,
+            ]),
+          ),
+        );
+
+      return {
+        outcome:    "error",
+        merchantId: order?.merchantId ?? null,
+        amount:     order ? String(order.amount) : null,
+      };
+    } catch (markErr) {
+      // Even the fallback failed — log and propagate the original error shape
+      return { outcome: "error", merchantId: null, amount: null };
+    }
   }
 }
 

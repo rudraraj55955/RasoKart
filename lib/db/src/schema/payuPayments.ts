@@ -9,11 +9,12 @@ import { pgTable, text, serial, timestamp, integer, numeric, boolean } from "dri
  * CANCELLED = user cancelled on PayU page
  */
 export const PAYU_ORDER_STATUS = {
-  INITIATED: "INITIATED",
-  SUCCESS:   "SUCCESS",
-  FAILED:    "FAILED",
-  PENDING:   "PENDING",
-  CANCELLED: "CANCELLED",
+  INITIATED:     "INITIATED",
+  SUCCESS:       "SUCCESS",
+  FAILED:        "FAILED",
+  PENDING:       "PENDING",
+  CANCELLED:     "CANCELLED",
+  CREDIT_FAILED: "CREDIT_FAILED", // Payment confirmed by PayU but wallet credit failed — needs reconciliation
 } as const;
 export type PayuOrderStatus = (typeof PAYU_ORDER_STATUS)[keyof typeof PAYU_ORDER_STATUS];
 
@@ -38,8 +39,9 @@ export const payuPaymentOrdersTable = pgTable("payu_payment_orders", {
   paymentMode:  text("payment_mode"),                    // NET_BANKING | CREDIT_CARD | UPI etc.
   rawResponse:  text("raw_response"),                    // full PayU response payload (sanitized)
   hashVerified: boolean("hash_verified").notNull().default(false),
-  failureReason: text("failure_reason"),
-  paidAt:       timestamp("paid_at", { withTimezone: true }),
+  failureReason:   text("failure_reason"),
+  paidAt:          timestamp("paid_at", { withTimezone: true }),
+  creditFailedAt:  timestamp("credit_failed_at", { withTimezone: true }), // set when creditWalletForPayu returns "error"
   createdAt:    timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt:    timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

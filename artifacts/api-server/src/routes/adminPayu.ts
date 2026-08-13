@@ -119,7 +119,7 @@ router.get("/config", requirePermission(PERMISSIONS.PAYU_SETTINGS_VIEW), async (
     const liveKeySet  = liveKeyVal.length > 0;
     const liveSaltSet = liveSaltVal.length > 0;
 
-    const env     = row?.environment ?? "uat";
+    const env = (row?.environment ?? "uat") as PayuEnv;
     const enabled = row?.isEnabled ?? false;
 
     // Load live verification status from system_config
@@ -133,7 +133,7 @@ router.get("/config", requirePermission(PERMISSIONS.PAYU_SETTINGS_VIEW), async (
         ]),
       );
     const cfgMap = new Map(liveVerifiedRows.map(r => [r.key, r.value]));
-    const liveVerified   = cfgMap.get(SYSTEM_CONFIG_KEYS.PAYU_LIVE_VERIFIED) === "true";
+      const liveVerified = verifiedRows[0]?.value === "true";
     const liveVerifiedAt = cfgMap.get(SYSTEM_CONFIG_KEYS.PAYU_LIVE_VERIFIED_AT) || null;
 
     const onboardingStatuses = deriveOnboardingStatus(
@@ -316,25 +316,19 @@ router.put("/settings", requirePermission(PERMISSIONS.PAYU_SETTINGS_MANAGE), asy
       }
     }
 
-    const env = String(environment ?? "uat");
-    if (!["uat", "live"].includes(env)) {
-      res.status(400).json({ error: "environment must be 'uat' or 'live'" });
-      return;
-    }
+    const env = (row?.environment ?? "uat") as PayuEnv;
 
     // Live mode requires verification and live credentials
     if (env === "live") {
-      const [row] = await db
-        .select({
-          clientIdEncrypted:     providerIntegrationsTable.clientIdEncrypted,
-          clientSecretEncrypted: providerIntegrationsTable.clientSecretEncrypted,
-        })
-        .from(providerIntegrationsTable)
-        .where(eq(providerIntegrationsTable.providerKey, "payu"))
-        .limit(1);
+    const [row] = await db
+      .select()
+      .from(providerIntegrationsTable)
+      .where(eq(providerIntegrationsTable.providerKey, "payu"))
+      .limit(1);
 
-      const liveKeyDecrypt  = row?.clientIdEncrypted     ? decryptSecret(row.clientIdEncrypted)     : null;
-      const liveSaltDecrypt = row?.clientSecretEncrypted ? decryptSecret(row.clientSecretEncrypted) : null;
+    // ── Step 1: credentials decrypt cleanly ────────────────────────────────
+    const liveKeyDecrypt  = row?.clientIdEncrypted     ? decryptSecret(row.clientIdEncrypted)     : null;
+    const liveSaltDecrypt = row?.clientSecretEncrypted ? decryptSecret(row.clientSecretEncrypted) : null;
       const liveKeyOk  = liveKeyDecrypt?.ok  && (liveKeyDecrypt.value?.length ?? 0) > 0;
       const liveSaltOk = liveSaltDecrypt?.ok && (liveSaltDecrypt.value?.length ?? 0) > 0;
 
@@ -622,28 +616,49 @@ router.get("/orders", requirePermission(PERMISSIONS.PAYU_SETTINGS_VIEW), async (
     const limit  = Math.min(parseInt(String(req.query["limit"] ?? "50"), 10) || 50, 200);
     const offset = parseInt(String(req.query["offset"] ?? "0"), 10) || 0;
 
-    const orders = await db
+    const statusFilter = req.query["status"] ? String(req.query["status"]) : null;
+
+    const baseQuery = db
       .select()
       .from(payuPaymentOrdersTable)
       .orderBy(desc(payuPaymentOrdersTable.createdAt))
       .limit(limit)
       .offset(offset);
 
+    const statusFilter = req.query["status"] ? String(req.query["status"]) : null;
+
+    const baseQuery = db
+      .select()
+      .from(payuPaymentOrdersTable)
+      .orderBy(desc(payuPaymentOrdersTable.createdAt))
+      .limit(limit)
+      .offset(offset);
+    const orders = statusFilter
+      ? await db
+          .select()
+          .from(payuPaymentOrdersTable)
+          .where(eq(payuPaymentOrdersTable.status, statusFilter))
+          .orderBy(desc(payuPaymentOrdersTable.createdAt))
+          .limit(limit)
+          .offset(offset)
+      : await baseQuery;
+
     res.json({
       orders: orders.map(o => ({
-        id:          o.id,
-        txnid:       o.txnid,
-        merchantId:  o.merchantId,
-        amount:      o.amount,
-        status:      o.status,
-        environment: o.environment,
-        mihpayid:    o.mihpayid,
-        bankRefNo:   o.bankRefNo,
-        paymentMode: o.paymentMode,
-        hashVerified: o.hashVerified,
-        failureReason: o.failureReason,
-        paidAt:      o.paidAt?.toISOString() ?? null,
-        createdAt:   o.createdAt.toISOString(),
+        id:              o.id,
+        txnid:           o.txnid,
+        merchantId:      o.merchantId,
+        amount:          o.amount,
+        status:          o.status,
+        environment:     o.environment,
+        mihpayid:        o.mihpayid,
+        bankRefNo:       o.bankRefNo,
+        paymentMode:     o.paymentMode,
+        hashVerified:    o.hashVerified,
+        failureReason:   o.failureReason,
+        paidAt:          o.paidAt?.toISOString() ?? null,
+        creditFailedAt:  (o as any).creditFailedAt ? new Date((o as any).creditFailedAt).toISOString() : null,
+        createdAt:       o.createdAt.toISOString(),
       })),
     });
   } catch (err) { next(err); }
@@ -656,6 +671,23 @@ router.get("/webhook-logs", requirePermission(PERMISSIONS.PAYU_WEBHOOKS_VIEW), a
     const limit  = Math.min(parseInt(String(req.query["limit"] ?? "50"), 10) || 50, 200);
     const offset = parseInt(String(req.query["offset"] ?? "0"), 10) || 0;
 
+    const statusFilter = req.query["status"] ? String(req.query["status"]) : null;
+
+    const baseQuery = db
+      .select()
+      .from(payuPaymentOrdersTable)
+      .orderBy(desc(payuPaymentOrdersTable.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    const statusFilter = req.query["status"] ? String(req.query["status"]) : null;
+
+    const baseQuery = db
+      .select()
+      .from(payuPaymentOrdersTable)
+      .orderBy(desc(payuPaymentOrdersTable.createdAt))
+      .limit(limit)
+      .offset(offset);
     const logs = await db
       .select()
       .from(payuWebhookLogsTable)
@@ -735,3 +767,9 @@ router.post("/test-hash", requirePermission(PERMISSIONS.PAYU_SETTINGS_MANAGE), a
 });
 
 export default router;
+    const baseQuery = db
+      .select()
+      .from(payuPaymentOrdersTable)
+      .orderBy(desc(payuPaymentOrdersTable.createdAt))
+      .limit(limit)
+      .offset(offset);

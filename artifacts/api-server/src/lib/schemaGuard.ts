@@ -1692,6 +1692,12 @@ async function runGuard(): Promise<void> {
   logger.info({ table: "payu_payment_orders" }, "schema_guard_table_created");
 
   await db.execute(sql`
+    ALTER TABLE payu_payment_orders
+      ADD COLUMN IF NOT EXISTS credit_failed_at TIMESTAMPTZ
+  `);
+  logger.info({ table: "payu_payment_orders", column: "credit_failed_at" }, "schema_guard_column_added");
+
+  await db.execute(sql`
     CREATE TABLE IF NOT EXISTS payu_webhook_logs (
       id                SERIAL PRIMARY KEY,
       txnid             TEXT,

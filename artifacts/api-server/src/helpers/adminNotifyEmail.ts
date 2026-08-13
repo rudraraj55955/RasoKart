@@ -1286,3 +1286,132 @@ export async function notifyAdminsOfCredentialRotation(opts: {
     return { attempted: 0, sent: 0, failed: 0, sentEmails: [], failedEmails: [] };
   }
 }
+
+// ---------------------------------------------------------------------------
+// PayU credit-failure alert
+// Fired when creditWalletForPayu() returns "error" after hash verification passes.
+// This is a critical financial event — no opt-out; all active admins are notified.
+// ---------------------------------------------------------------------------
+
+function buildPayuCreditFailureHtml(opts: {
+  txnid: string;
+  merchantId: number | null;
+  amount: string | null;
+  source: string;
+}): string {
+  const { txnid, merchantId, amount, source } = opts;
+  const adminLink = `${APP_DOMAIN}/admin/payu-orders`;
+  const amountDisplay = amount ? formatAmount(amount) : "unknown";
+
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; background: #0f0f0f; color: #e5e5e5; margin: 0; padding: 24px;">
+  <div style="max-width: 600px; margin: 0 auto; background: #1a1a1a; border-radius: 8px; overflow: hidden; border: 1px solid #2a2a2a;">
+    <div style="background: #7f1d1d; padding: 20px 24px;">
+      <h1 style="margin: 0; font-size: 20px; color: #fff; letter-spacing: 0.5px;">⚠️ RasoKart — PayU Credit Failure</h1>
+      <p style="margin: 4px 0 0; color: #fca5a5; font-size: 13px;">Payment confirmed by PayU but wallet credit failed — manual reconciliation required</p>
+    </div>
+    <div style="padding: 24px;">
+      <p style="margin: 0 0 16px; color: #f87171; font-size: 14px; font-weight: 600;">
+        A PayU payment was confirmed and hash-verified, but the merchant wallet credit transaction failed.
+        The merchant's customer was charged but the merchant's RasoKart balance was NOT updated.
+      </p>
+      <p style="margin: 0 0 20px; color: #a1a1aa; font-size: 13px;">
+        The order has been flagged as <strong style="color: #fbbf24;">CREDIT_FAILED</strong> in the database.
+        Please review the order and credit the wallet manually from the admin PayU orders page.
+      </p>
+
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
+        <tr style="background: #111;">
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px; width: 40%;">Transaction ID</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; font-family: monospace; color: #e5e5e5;">${txnid}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">Merchant ID</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px;">${merchantId ?? "unknown"}</td>
+        </tr>
+        <tr style="background: #111;">
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">Amount</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; color: #f87171; font-weight: 600;">${amountDisplay}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">Source</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px;">${source}</td>
+        </tr>
+        <tr style="background: #111;">
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">Order Status</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; color: #fbbf24; font-weight: 600;">CREDIT_FAILED</td>
+        </tr>
+      </table>
+
+      <div style="text-align: center; margin-bottom: 20px;">
+        <a href="${adminLink}"
+           style="display: inline-block; background: #7c3aed; color: #fff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-size: 14px; font-weight: 600; letter-spacing: 0.3px;">
+          Review PayU Orders in Admin Portal
+        </a>
+      </div>
+
+      <p style="margin: 0; color: #71717a; font-size: 12px;">
+        If the link above doesn't work, copy this URL into your browser:<br>
+        <span style="color: #818cf8;">${adminLink}</span>
+      </p>
+    </div>
+    <div style="padding: 14px 24px; background: #111; border-top: 1px solid #2a2a2a;">
+      <p style="margin: 0; color: #52525b; font-size: 11px;">
+        This alert was sent by RasoKart's PayU webhook processor. All active admins receive this alert regardless of notification preferences.
+      </p>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+export async function notifyAdminsOfPayuCreditFailure(opts: {
+  txnid: string;
+  merchantId: number | null;
+  amount: string | null;
+  source: string;
+}): Promise<void> {
+  try {
+    // Critical financial alert — no opt-out, send to all active admins
+    const recipients = await getAllActiveAdminEmails();
+    if (recipients.length === 0) {
+      logger.warn({ txnid: opts.txnid }, "payu_credit_failure_no_admin_recipients");
+      return;
+    }
+
+    const subject = `⚠️ PayU Credit Failure — ${opts.txnid} needs manual reconciliation`;
+    const html    = buildPayuCreditFailureHtml(opts);
+
+    const results = await Promise.allSettled(
+      recipients.map(email => sendMail({ to: email, subject, html })),
+    );
+
+    const sent   = results.filter(r => r.status === "fulfilled").length;
+    const failed = results.filter(r => r.status === "rejected").length;
+    logger.info({ txnid: opts.txnid, attempted: recipients.length, sent, failed }, "payu_credit_failure_alerts_sent");
+
+    // In-app notifications — skip preference check (critical alert)
+    const admins = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(and(eq(usersTable.role, "admin"), eq(usersTable.isActive, true)));
+
+    if (admins.length > 0) {
+      await createBulkNotifications(
+        admins.map(a => ({
+          userId:   a.id,
+          type:     "payu_credit_failed" as const,
+          title:    "PayU Credit Failure",
+          body:     `Payment ${opts.txnid} confirmed by PayU but wallet credit failed. Amount: ${opts.amount ? formatAmount(opts.amount) : "unknown"}. Manual reconciliation required.`,
+          metadata: { txnid: opts.txnid, merchantId: opts.merchantId, amount: opts.amount, source: opts.source },
+        })),
+        { skipPrefCheck: true },
+      );
+    }
+  } catch (err) {
+    logger.error({ err, txnid: opts.txnid }, "Failed to send PayU credit failure alerts");
+  }
+}
