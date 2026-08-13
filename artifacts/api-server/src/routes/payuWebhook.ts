@@ -115,121 +115,162 @@ async function processPayuCallback(
   amount:     string | null;
   hashOk:     boolean;
 }> {
-  const txnid      = fields["txnid"] ?? null;
-  const amount     = fields["amount"] ?? null;
-  const productinfo = fields["productinfo"] ?? "";
-  const firstname  = fields["firstname"] ?? "";
-  const email      = fields["email"] ?? "";
-  const status     = fields["status"] ?? null;
-  const hash       = fields["hash"] ?? "";
-  const udf1       = fields["udf1"] ?? "";
-  const udf2       = fields["udf2"] ?? "";
-  const udf3       = fields["udf3"] ?? "";
-  const udf4       = fields["udf4"] ?? "";
-  const udf5       = fields["udf5"] ?? "";
-  const mihpayid   = fields["mihpayid"] ?? null;
-  const bankRefNo  = fields["bank_ref_no"] ?? null;
-  const paymentMode = fields["mode"] ?? null;
+  // Hoist txnid/amount/status so the outer catch can reference them in its return
+  const txnid  = fields["txnid"]  ?? null;
+  const amount = fields["amount"] ?? null;
+  const status = fields["status"] ?? null;
 
-  if (!txnid) {
-    return { result: "ignored", txnid: null, status, merchantId: null, amount, hashOk: false };
-  }
+  // Outer try/catch: ensures NO unhandled async throw escapes to the Express error handler.
+  // Without this, any DB error inside the function propagates to the global error handler
+  // (Express 5 auto-catches async rejections) which returns INTERNAL_ERROR JSON to the
+  // customer's browser instead of a clean redirect — even after a valid payment.
+  try {
+    const productinfo = fields["productinfo"] ?? "";
+    const firstname   = fields["firstname"]   ?? "";
+    const email       = fields["email"]       ?? "";
+    const hash        = fields["hash"]        ?? "";
+    const udf1        = fields["udf1"]        ?? "";
+    const udf2        = fields["udf2"]        ?? "";
+    const udf3        = fields["udf3"]        ?? "";
+    const udf4        = fields["udf4"]        ?? "";
+    const udf5        = fields["udf5"]        ?? "";
+    const mihpayid    = fields["mihpayid"]    ?? null;
+    const bankRefNo   = fields["bank_ref_no"] ?? null;
+    const paymentMode = fields["mode"]        ?? null;
 
-  // Load order to find env + merchant
-  const [order] = await db
-    .select()
-    .from(payuPaymentOrdersTable)
-    .where(eq(payuPaymentOrdersTable.txnid, txnid))
-    .limit(1);
+    if (!txnid) {
+      return { result: "ignored", txnid: null, status, merchantId: null, amount, hashOk: false };
+    }
 
-  if (!order) {
-    logger.warn({ txnid, source }, "payu_callback_order_not_found");
-    return { result: "ignored", txnid, status, merchantId: null, amount, hashOk: false };
-  }
+    // Load order to find env + merchant
+    const [order] = await db
+      .select()
+      .from(payuPaymentOrdersTable)
+      .where(eq(payuPaymentOrdersTable.txnid, txnid))
+      .limit(1);
 
-  const env = (order.environment ?? "uat") as PayuEnv;
-  const salt = await loadPayuSaltForEnv(env);
-  const key  = await loadPayuKeyForEnv(env);
+    if (!order) {
+      logger.warn({ txnid, source }, "payu_callback_order_not_found");
+      return { result: "ignored", txnid, status, merchantId: null, amount, hashOk: false };
+    }
 
-  if (!salt || !key) {
-    logger.error({ txnid, source }, "payu_callback_missing_salt");
-    return { result: "error", txnid, status, merchantId: order.merchantId, amount, hashOk: false };
-  }
+    const env  = (order.environment ?? "uat") as PayuEnv;
+    const salt = await loadPayuSaltForEnv(env);
+    const key  = await loadPayuKeyForEnv(env);
 
-  // Hash verification — mandatory for all status types
-  const hashOk = verifyPayuResponseHash({
-    key, txnid, amount: amount ?? String(order.amount), productinfo, firstname, email,
-    udf1, udf2, udf3, udf4, udf5, status: status ?? "", salt, hash,
-  });
+    if (!salt || !key) {
+      logger.error({ txnid, source }, "payu_callback_missing_salt");
+      return { result: "error", txnid, status, merchantId: order.merchantId, amount, hashOk: false };
+    }
 
-  if (!hashOk) {
-    logger.warn({ txnid, source }, "payu_callback_hash_invalid");
-    await db.update(payuPaymentOrdersTable)
-      .set({ rawResponse: rawPayload.slice(0, 4000), hashVerified: false })
-      .where(and(
-        eq(payuPaymentOrdersTable.txnid, txnid),
-        inArray(payuPaymentOrdersTable.status, [PAYU_ORDER_STATUS.INITIATED, PAYU_ORDER_STATUS.PENDING]),
-      ));
-    return { result: "hash_invalid", txnid, status, merchantId: order.merchantId, amount, hashOk: false };
-  }
+    // Hash verification — mandatory for all status types
+    const hashOk = verifyPayuResponseHash({
+      key, txnid, amount: amount ?? String(order.amount), productinfo, firstname, email,
+      udf1, udf2, udf3, udf4, udf5, status: status ?? "", salt, hash,
+    });
 
-  // Update raw response + hash flag on the order
-  await db.update(payuPaymentOrdersTable)
-    .set({ rawResponse: rawPayload.slice(0, 4000), hashVerified: true })
-    .where(eq(payuPaymentOrdersTable.txnid, txnid));
+    if (!hashOk) {
+      logger.warn({ txnid, source }, "payu_callback_hash_invalid");
+      // Best-effort audit write — MUST NOT block the hash_invalid return if it fails.
+      // raw_response / hash_verified are informational columns; a write failure here
+      // must never prevent the caller from redirecting the customer cleanly.
+      try {
+        await db.update(payuPaymentOrdersTable)
+          .set({ rawResponse: rawPayload.slice(0, 4000), hashVerified: false })
+          .where(and(
+            eq(payuPaymentOrdersTable.txnid, txnid),
+            inArray(payuPaymentOrdersTable.status, [PAYU_ORDER_STATUS.INITIATED, PAYU_ORDER_STATUS.PENDING]),
+          ));
+      } catch (rawErr) {
+        logger.warn({ rawErr, txnid, source }, "payu_raw_response_update_failed_hash_invalid");
+      }
+      return { result: "hash_invalid", txnid, status, merchantId: order.merchantId, amount, hashOk: false };
+    }
 
-  const statusUpper = (status ?? "").toUpperCase();
+    // Best-effort: persist raw response + hash flag for audit.
+    // A failure here MUST NOT block the wallet credit — raw_response is informational only.
+    // Schema-drift on the VPS (e.g. column added post-initial-deploy without an ALTER TABLE
+    // guard) would cause this to throw; wrapping it prevents that from killing the credit.
+    try {
+      await db.update(payuPaymentOrdersTable)
+        .set({ rawResponse: rawPayload.slice(0, 4000), hashVerified: true })
+        .where(eq(payuPaymentOrdersTable.txnid, txnid));
+    } catch (rawErr) {
+      logger.warn({ rawErr, txnid, source }, "payu_raw_response_update_failed");
+      // Continue — do not abort the credit because of an audit-column write failure
+    }
 
-  if (statusUpper !== "SUCCESS") {
-    // FAILED / PENDING / CANCELLED — update status, do NOT credit wallet
-    const newStatus =
-      statusUpper === "FAILURE" || statusUpper === "FAILED"  ? PAYU_ORDER_STATUS.FAILED
-      : statusUpper === "PENDING"                            ? PAYU_ORDER_STATUS.PENDING
-      : statusUpper === "CANCELLED" || statusUpper === "CANCEL" ? PAYU_ORDER_STATUS.CANCELLED
-      : PAYU_ORDER_STATUS.FAILED;
+    const statusUpper = (status ?? "").toUpperCase();
 
-    const failureReason = fields["error_Message"] ?? fields["error"] ?? null;
+    if (statusUpper !== "SUCCESS") {
+      // FAILED / PENDING / CANCELLED — update status, do NOT credit wallet
+      const newStatus =
+        statusUpper === "FAILURE" || statusUpper === "FAILED"     ? PAYU_ORDER_STATUS.FAILED
+        : statusUpper === "PENDING"                               ? PAYU_ORDER_STATUS.PENDING
+        : statusUpper === "CANCELLED" || statusUpper === "CANCEL" ? PAYU_ORDER_STATUS.CANCELLED
+        : PAYU_ORDER_STATUS.FAILED;
 
-    await db.update(payuPaymentOrdersTable)
-      .set({ status: newStatus, failureReason: failureReason ?? undefined })
-      .where(and(
-        eq(payuPaymentOrdersTable.txnid, txnid),
-        inArray(payuPaymentOrdersTable.status, [PAYU_ORDER_STATUS.INITIATED, PAYU_ORDER_STATUS.PENDING]),
-      ));
+      const failureReason = fields["error_Message"] ?? fields["error"] ?? null;
 
-    logger.info({ txnid, status, source, newStatus }, "payu_callback_non_success");
-    return { result: "ignored", txnid, status, merchantId: order.merchantId, amount, hashOk: true };
-  }
+      // Best-effort status update — if it fails, order stays INITIATED (visible in admin view).
+      try {
+        await db.update(payuPaymentOrdersTable)
+          .set({ status: newStatus, failureReason: failureReason ?? undefined })
+          .where(and(
+            eq(payuPaymentOrdersTable.txnid, txnid),
+            inArray(payuPaymentOrdersTable.status, [PAYU_ORDER_STATUS.INITIATED, PAYU_ORDER_STATUS.PENDING]),
+          ));
+      } catch (statusErr) {
+        logger.warn({ statusErr, txnid, source, newStatus }, "payu_status_update_failed");
+      }
 
-  // SUCCESS — atomically credit wallet
-  const creditResult = await creditWalletForPayu(txnid, mihpayid, bankRefNo, paymentMode, source);
+      logger.info({ txnid, status, source, newStatus }, "payu_callback_non_success");
+      return { result: "ignored", txnid, status, merchantId: order.merchantId, amount, hashOk: true };
+    }
 
-  if (creditResult.outcome === "error") {
-    // Hash verified + PayU confirmed payment, but wallet credit failed.
-    // Fire admin alert — the order is now flagged CREDIT_FAILED in the DB.
-    logger.error(
-      { txnid, source, merchantId: creditResult.merchantId, amount: creditResult.amount },
-      "payu_credit_failed_after_hash_verified",
-    );
-    notifyAdminsOfPayuCreditFailure({
+    // SUCCESS — atomically credit wallet
+    const creditResult = await creditWalletForPayu(txnid, mihpayid, bankRefNo, paymentMode, source);
+
+    if (creditResult.outcome === "error") {
+      // Hash verified + PayU confirmed payment, but wallet credit failed.
+      // Fire admin alert — the order is now flagged CREDIT_FAILED in the DB.
+      logger.error(
+        { txnid, source, merchantId: creditResult.merchantId, amount: creditResult.amount },
+        "payu_credit_failed_after_hash_verified",
+      );
+      notifyAdminsOfPayuCreditFailure({
+        txnid,
+        merchantId: creditResult.merchantId,
+        amount:     creditResult.amount ?? amount,
+        source,
+      }).catch(err => logger.error({ err, txnid }, "payu_credit_failure_notification_error"));
+    }
+
+    logger.info({ txnid, source, outcome: creditResult.outcome, mihpayid }, "payu_callback_success_processed");
+
+    const resultOutcome: "credited" | "duplicate" | "credit_failed" | "error" = creditResult.outcome;
+    return {
+      result:     resultOutcome,
       txnid,
-      merchantId: creditResult.merchantId,
-      amount:     creditResult.amount ?? amount,
-      source,
-    }).catch(err => logger.error({ err, txnid }, "payu_credit_failure_notification_error"));
+      status,
+      merchantId: creditResult.outcome === "error" ? creditResult.merchantId : order.merchantId,
+      amount,
+      hashOk:     true,
+    };
+
+  } catch (err) {
+    // Unexpected error (DB connection failure, runtime exception, etc.).
+    // Return a structured error result so the caller can redirect cleanly.
+    logger.error({ err, source, txnid }, "payu_callback_unexpected_error");
+    return {
+      result:     "error",
+      txnid,
+      status,
+      merchantId: null,
+      amount,
+      hashOk:     false,
+    };
   }
-
-  logger.info({ txnid, source, outcome: creditResult.outcome, mihpayid }, "payu_callback_success_processed");
-
-  const resultOutcome: "credited" | "duplicate" | "credit_failed" | "error" = creditResult.outcome;
-  return {
-    result:     resultOutcome,
-    txnid,
-    status,
-    merchantId: creditResult.outcome === "error" ? creditResult.merchantId : order.merchantId,
-    amount,
-    hashOk:     true,
-  };
 }
 
 // ── POST /api/payment/payu-s2s ────────────────────────────────────────────────
@@ -257,48 +298,63 @@ router.post("/payu-s2s", async (req, res) => {
 
 // ── POST /api/payment/payu-return ─────────────────────────────────────────────
 // Browser redirect from PayU (surl / furl). PayU POSTs form data here.
-// After processing, redirect browser to merchant portal result page.
+// After processing, ALWAYS redirect to the merchant portal result page.
+//
+// Critical: this handler MUST never return JSON (including INTERNAL_ERROR) to the
+// customer's browser after a real payment. Express 5 auto-catches unhandled async
+// rejections and sends the global error handler's JSON — so the entire handler body
+// is wrapped in try/catch to guarantee a redirect in all cases.
 
 router.post("/payu-return", async (req, res) => {
-  const body      = req.body as Record<string, string>;
+  const body       = req.body as Record<string, string>;
   const rawPayload = JSON.stringify(body);
-  const txnid     = body["txnid"] ?? "";
-  const statusRaw = (body["status"] ?? "").toUpperCase();
+  const txnid      = body["txnid"] ?? "";
+  const statusRaw  = (body["status"] ?? "").toUpperCase();
 
-  const { result, hashOk, merchantId } = await processPayuCallback(body, rawPayload, "browser_return");
+  try {
+    const { result, hashOk, merchantId } = await processPayuCallback(body, rawPayload, "browser_return");
 
-  await insertWebhookLog({
-    txnid: txnid || null, merchantId, amount: body["amount"] ?? null,
-    status: body["status"] ?? null, source: "browser_return",
-    rawPayload,
-    processingResult: result === "hash_invalid" ? "hash_invalid"
-      : result === "credit_failed" ? "credit_failed"
-      : result,
-    hashVerified: hashOk,
-    errorMessage: result === "error" ? "wallet credit failed — order flagged CREDIT_FAILED"
-      : result === "credit_failed" ? "order already in CREDIT_FAILED state"
-      : null,
-  });
+    await insertWebhookLog({
+      txnid: txnid || null, merchantId, amount: body["amount"] ?? null,
+      status: body["status"] ?? null, source: "browser_return",
+      rawPayload,
+      processingResult: result === "hash_invalid" ? "hash_invalid"
+        : result === "credit_failed" ? "credit_failed"
+        : result,
+      hashVerified: hashOk,
+      errorMessage: result === "error" ? "wallet credit failed — order flagged CREDIT_FAILED"
+        : result === "credit_failed" ? "order already in CREDIT_FAILED state"
+        : null,
+    });
 
-  if (!hashOk) {
-    res.redirect(`/merchant/deposits?payu_status=hash_invalid&txnid=${encodeURIComponent(txnid)}`);
-    return;
-  }
+    if (!hashOk) {
+      res.redirect(`/merchant/deposits?payu_status=hash_invalid&txnid=${encodeURIComponent(txnid)}`);
+      return;
+    }
 
-  if (result === "error" || result === "credit_failed") {
-    // Wallet credit failed (or was already marked failed by S2S).
-    // Show a neutral pending state — the merchant's payment was collected by PayU
-    // but their wallet was NOT credited. Admins are alerted to reconcile manually.
+    if (result === "error" || result === "credit_failed") {
+      // Wallet credit failed (or was already marked failed by S2S).
+      // Show a neutral pending state — the merchant's payment was collected by PayU
+      // but their wallet was NOT credited. Admins are alerted to reconcile manually.
+      res.redirect(`/merchant/deposits?payu_status=pending&txnid=${encodeURIComponent(txnid)}`);
+    } else if (result === "credited" || result === "duplicate" || statusRaw === "SUCCESS") {
+      res.redirect(`/merchant/deposits?payu_status=success&txnid=${encodeURIComponent(txnid)}`);
+    } else if (statusRaw === "PENDING") {
+      res.redirect(`/merchant/deposits?payu_status=pending&txnid=${encodeURIComponent(txnid)}`);
+    } else if (statusRaw === "CANCELLED" || statusRaw === "CANCEL") {
+      res.redirect(`/merchant/deposits?payu_status=cancelled&txnid=${encodeURIComponent(txnid)}`);
+    } else {
+      const errMsg = encodeURIComponent(body["error_Message"] ?? body["error"] ?? "Payment failed");
+      res.redirect(`/merchant/deposits?payu_status=failed&txnid=${encodeURIComponent(txnid)}&error=${errMsg}`);
+    }
+  } catch (err) {
+    // Defense-in-depth: processPayuCallback already has its own outer catch so this
+    // branch fires only if insertWebhookLog itself throws unexpectedly (its own internal
+    // catch normally swallows those) or some other truly unforeseen synchronous error.
+    // Never expose raw INTERNAL_ERROR JSON to the customer after a real payment.
+    // Redirect to pending — the S2S webhook credits the wallet independently.
+    logger.error({ err, txnid, source: "browser_return" }, "payu_return_handler_unexpected_error");
     res.redirect(`/merchant/deposits?payu_status=pending&txnid=${encodeURIComponent(txnid)}`);
-  } else if (result === "credited" || result === "duplicate" || statusRaw === "SUCCESS") {
-    res.redirect(`/merchant/deposits?payu_status=success&txnid=${encodeURIComponent(txnid)}`);
-  } else if (statusRaw === "PENDING") {
-    res.redirect(`/merchant/deposits?payu_status=pending&txnid=${encodeURIComponent(txnid)}`);
-  } else if (statusRaw === "CANCELLED" || statusRaw === "CANCEL") {
-    res.redirect(`/merchant/deposits?payu_status=cancelled&txnid=${encodeURIComponent(txnid)}`);
-  } else {
-    const errMsg = encodeURIComponent(body["error_Message"] ?? body["error"] ?? "Payment failed");
-    res.redirect(`/merchant/deposits?payu_status=failed&txnid=${encodeURIComponent(txnid)}&error=${errMsg}`);
   }
 });
 

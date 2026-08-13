@@ -1695,7 +1695,21 @@ async function runGuard(): Promise<void> {
     ALTER TABLE payu_payment_orders
       ADD COLUMN IF NOT EXISTS credit_failed_at TIMESTAMPTZ
   `);
-  logger.info({ table: "payu_payment_orders", column: "credit_failed_at" }, "schema_guard_column_added");
+  // Backfill guards for columns originally present only in CREATE TABLE IF NOT EXISTS.
+  // If the table was created by an earlier Drizzle push (before these columns were added
+  // to the CREATE TABLE template), the IF NOT EXISTS above is a no-op and these columns
+  // would be missing — causing every callback/webhook UPDATE to throw "column does not exist".
+  // Each ALTER TABLE ADD COLUMN IF NOT EXISTS is idempotent and safe to run repeatedly.
+  await db.execute(sql`ALTER TABLE payu_payment_orders ADD COLUMN IF NOT EXISTS udf1 TEXT`);
+  await db.execute(sql`ALTER TABLE payu_payment_orders ADD COLUMN IF NOT EXISTS environment TEXT NOT NULL DEFAULT 'uat'`);
+  await db.execute(sql`ALTER TABLE payu_payment_orders ADD COLUMN IF NOT EXISTS mihpayid TEXT`);
+  await db.execute(sql`ALTER TABLE payu_payment_orders ADD COLUMN IF NOT EXISTS bank_ref_no TEXT`);
+  await db.execute(sql`ALTER TABLE payu_payment_orders ADD COLUMN IF NOT EXISTS payment_mode TEXT`);
+  await db.execute(sql`ALTER TABLE payu_payment_orders ADD COLUMN IF NOT EXISTS raw_response TEXT`);
+  await db.execute(sql`ALTER TABLE payu_payment_orders ADD COLUMN IF NOT EXISTS hash_verified BOOLEAN NOT NULL DEFAULT FALSE`);
+  await db.execute(sql`ALTER TABLE payu_payment_orders ADD COLUMN IF NOT EXISTS failure_reason TEXT`);
+  await db.execute(sql`ALTER TABLE payu_payment_orders ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ`);
+  logger.info({ table: "payu_payment_orders", column: "credit_failed_at+backfill_guards" }, "schema_guard_column_added");
 
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS payu_webhook_logs (
