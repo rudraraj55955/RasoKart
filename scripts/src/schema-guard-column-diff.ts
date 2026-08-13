@@ -291,22 +291,28 @@ export function collectCreateTableColumns(source: string): Map<string, Set<strin
   return result;
 }
 /**
- * Returns every ALTER TABLE <table> DROP COLUMN IF EXISTS <col> claim found
- * in the source text, preserving the 1-based line number of the match for
- * diagnostics.
+ * Returns every ALTER TABLE <table> DROP COLUMN [IF EXISTS] <col> claim found
+ * in the source text, preserving the 1-based line number of the match and
+ * whether the IF EXISTS guard was present.
+ *
+ * Both variants are matched:
+ *   • ALTER TABLE t DROP COLUMN IF EXISTS col  (safe variant)
+ *   • ALTER TABLE t DROP COLUMN col            (unsafe variant — no IF EXISTS)
  *
  * The regex is applied over the FULL source (not line-by-line) so that
  * multiline ALTER TABLE statements are also captured.
  */
 export function collectAlterTableDropClaims(
   source: string
-): Array<{ table: string; col: string; lineNo: number }> {
-  const claims: Array<{ table: string; col: string; lineNo: number }> = [];
+): Array<{ table: string; col: string; lineNo: number; hasIfExists: boolean }> {
+  const claims: Array<{ table: string; col: string; lineNo: number; hasIfExists: boolean }> = [];
 
+  // (?:IF\s+EXISTS\s+)? makes the IF EXISTS clause optional so that bare
+  // DROP COLUMN <col> statements are also captured.
   // \s+ between tokens allows the regex to span line breaks.
   // Flags: g = find all matches, i = case-insensitive.
   const dropRe =
-    /ALTER\s+TABLE\s+["']?(\w+)["']?\s+DROP\s+COLUMN\s+IF\s+EXISTS\s+"?(\w+)"?/gi;
+    /ALTER\s+TABLE\s+["']?(\w+)["']?\s+DROP\s+COLUMN\s+(IF\s+EXISTS\s+)?"?(\w+)"?/gi;
 
   let m: RegExpExecArray | null;
   while ((m = dropRe.exec(source)) !== null) {
@@ -314,8 +320,9 @@ export function collectAlterTableDropClaims(
     const lineNo = source.slice(0, m.index).split("\n").length;
     claims.push({
       table: m[1].toLowerCase(),
-      col: m[2].toLowerCase(),
+      col: m[3].toLowerCase(),
       lineNo,
+      hasIfExists: m[2] !== undefined,
     });
   }
   return claims;
@@ -506,6 +513,7 @@ function main(): void {
     table: string;
     col: string;
     lineNo: number;
+    hasIfExists: boolean;
   }> = [];
 
   for (const [filePath, label] of filesToCheck) {
@@ -513,19 +521,19 @@ function main(): void {
     const source = fs.readFileSync(filePath, "utf8");
     const drops = collectAlterTableDropClaims(source);
 
-    for (const { table, col, lineNo } of drops) {
+    for (const { table, col, lineNo, hasIfExists } of drops) {
       const drizzleCols = drizzleLower.get(table);
       if (!drizzleCols) {
         // schemaGuard-only table — check CREATE TABLE body.
         const ctCols = createTableCols.get(table);
         if (ctCols && ctCols.has(col)) {
-          liveDrop.push({ file: label, table, col, lineNo });
+          liveDrop.push({ file: label, table, col, lineNo, hasIfExists });
         }
         continue;
       }
       // Drizzle-tracked table — the column must no longer be in the schema.
       if (drizzleCols.has(col)) {
-        liveDrop.push({ file: label, table, col, lineNo });
+        liveDrop.push({ file: label, table, col, lineNo, hasIfExists });
       }
     }
   }
@@ -533,7 +541,7 @@ function main(): void {
   let dropOk = true;
   if (liveDrop.length === 0) {
     console.log(
-      "✓ All ALTER TABLE DROP COLUMN IF EXISTS guards name columns that are no longer\n" +
+      "✓ All ALTER TABLE DROP COLUMN [IF EXISTS] guards name columns that are no longer\n" +
         "  in the Drizzle schema (or CREATE TABLE body for schemaGuard-only tables)."
     );
   } else {
@@ -548,11 +556,16 @@ function main(): void {
         "  schema (and the CREATE TABLE body for schemaGuard-only tables).\n" +
         "  • For Drizzle-tracked tables: the column must be absent from the Drizzle schema.\n" +
         "  • For schemaGuard-only tables: the column must be absent from the CREATE TABLE body\n" +
-        "    in schemaGuard.ts or db-migrate.ts.\n"
+        "    in schemaGuard.ts or db-migrate.ts.\n" +
+        "  • Bare DROP COLUMN (without IF EXISTS) is also flagged — add IF EXISTS or remove\n" +
+        "    the column from the schema first.\n"
     );
-    for (const { file, table, col, lineNo } of liveDrop) {
+    for (const { file, table, col, lineNo, hasIfExists } of liveDrop) {
+      const dropClause = hasIfExists
+        ? `DROP COLUMN IF EXISTS ${col}`
+        : `DROP COLUMN ${col}`;
       console.error(
-        `  ${file}:${lineNo}  ALTER TABLE ${table} DROP COLUMN IF EXISTS ${col}  ← column is still live in the schema`
+        `  ${file}:${lineNo}  ALTER TABLE ${table} ${dropClause}  ← column is still live in the schema`
       );
     }
     console.error();
