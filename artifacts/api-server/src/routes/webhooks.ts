@@ -295,6 +295,12 @@ router.post("/logs/:id/retry", async (req, res) => {
     return;
   }
 
+  const planCheck = await checkPlanFeatureAccess(merchantId, "webhook");
+  if (!planCheck.allowed) {
+    res.status(403).json({ error: planCheck.message });
+    return;
+  }
+
   const id = parseInt(req.params['id'] as string);
   if (isNaN(id)) {
     res.status(400).json({ error: "Invalid log id" });

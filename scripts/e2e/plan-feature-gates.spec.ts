@@ -146,3 +146,43 @@ test("Gold merchant: PUT /api/webhooks is not blocked by the plan gate", async (
   expect(typeof body.error).toBe("string");
   expect(body.error.toLowerCase()).toContain("url");
 });
+
+// ─── Retry gate helpers ───────────────────────────────────────────────────────
+
+async function retryWebhookLog(
+  token: string,
+  logId: number,
+): Promise<{ status: number; body: any }> {
+  const res = await fetch(`${API}/webhooks/logs/${logId}/retry`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+  return { status: res.status, body: await res.json() };
+}
+
+// ─── Starter merchant — retry gate ───────────────────────────────────────────
+
+test("Starter merchant: POST /api/webhooks/logs/:id/retry returns 403 with a plan-upgrade message", async () => {
+  // Use a non-existent log id (999999999). For a Starter merchant the plan
+  // gate must fire BEFORE the 404 log-not-found check, so we still get 403.
+  const { status, body } = await retryWebhookLog(starterToken, 999999999);
+
+  expect(status).toBe(403);
+  expect(typeof body.error).toBe("string");
+  expect(body.error.toLowerCase()).toMatch(/plan|upgrade|webhook access/);
+});
+
+// ─── Gold merchant — retry gate is open ──────────────────────────────────────
+
+test("Gold merchant: POST /api/webhooks/logs/:id/retry is not blocked by the plan gate", async () => {
+  // Use a non-existent log id (999999999). A Gold merchant passes the plan
+  // gate; the server then returns 404 (log not found) — proof the gate is open.
+  const { status, body } = await retryWebhookLog(goldToken, 999999999);
+
+  // Must NOT be 403 from the plan gate.
+  expect(status).not.toBe(403);
+
+  // The expected outcome for a missing log is 404.
+  expect(status).toBe(404);
+  expect(typeof body.error).toBe("string");
+});
