@@ -4025,6 +4025,110 @@ await fetch("https://your-domain.com/api/callbacks/payment", {
             />
           </div>
         </Section>
+
+        <Section title="Error Reference" badge="HTTP STATUS CODES">
+          <p className="text-sm text-muted-foreground">
+            All RasoKart API errors return a JSON body with an <code className="font-mono bg-muted px-1 rounded">error</code> string.
+            Use the HTTP status code to categorize the failure; use the error message for logging and debugging.
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="text-left py-2 pr-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">HTTP Status</th>
+                  <th className="text-left py-2 pr-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Meaning</th>
+                  <th className="text-left py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Common Causes & Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/50">
+                {[
+                  ["200 OK", "Success", "Request completed. Response body contains the requested data."],
+                  ["201 Created", "Resource created", "A new resource (API key, QR code, webhook, etc.) was successfully created."],
+                  ["400 Bad Request", "Invalid input", "Missing or malformed request fields. Check your JSON body and required parameters."],
+                  ["401 Unauthorized", "Not authenticated", "Missing or expired X-Api-Key / Authorization header. Re-authenticate or generate a new API key."],
+                  ["403 Forbidden", "Access denied", "You are authenticated but not permitted: plan does not include this feature, or attempting to access another merchant's data."],
+                  ["404 Not Found", "Resource missing", "The requested ID does not exist or does not belong to your account. Verify the resource ID."],
+                  ["409 Conflict", "Duplicate resource", "A resource with the same unique identifier already exists (e.g. duplicate order ID)."],
+                  ["422 Unprocessable", "Business rule violation", "Input is structurally valid but violates a business rule (e.g. amount below minimum, QR limit exceeded)."],
+                  ["429 Too Many Requests", "Rate limit hit", "You have exceeded the allowed request rate. Retry after the cooldown period (check Retry-After header if present)."],
+                  ["500 Internal Error", "Server error", "An unexpected error occurred on RasoKart's side. Retry with exponential backoff. Contact support if it persists."],
+                  ["503 Service Unavailable", "Temporarily down", "The service is temporarily overloaded or under maintenance. Retry after a short delay."],
+                ].map(([status, meaning, action]) => (
+                  <tr key={status} className="hover:bg-muted/10 transition-colors">
+                    <td className="py-2.5 pr-4 font-mono text-xs whitespace-nowrap">
+                      <code className={`px-1.5 py-0.5 rounded text-xs font-semibold ${
+                        status.startsWith("2") ? "bg-emerald-500/15 text-emerald-400" :
+                        status.startsWith("4") ? "bg-amber-500/15 text-amber-400" :
+                        "bg-red-500/15 text-red-400"
+                      }`}>{status}</code>
+                    </td>
+                    <td className="py-2.5 pr-4 text-xs font-medium text-foreground">{meaning}</td>
+                    <td className="py-2.5 text-xs text-muted-foreground leading-relaxed">{action}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div>
+            <p className="text-sm font-medium text-muted-foreground mb-2">Error Response Format</p>
+            <CodeBlock
+              language="json"
+              code={`{
+  "error": "Human-readable description of what went wrong"
+}`}
+            />
+          </div>
+
+          <div>
+            <p className="text-sm font-medium text-muted-foreground mb-2">Merchant-Specific Error Codes</p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="text-left py-2 pr-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Error String</th>
+                    <th className="text-left py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Explanation</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/50">
+                  {[
+                    ["Not authenticated", "No valid API key or session token provided"],
+                    ["Only merchants can access this resource", "Endpoint is restricted to merchant accounts only"],
+                    ["API key access is not included in your current plan", "Upgrade to Silver plan or higher for API key generation"],
+                    ["Webhook access is not included in your current plan", "Upgrade to Silver plan or higher for webhook configuration"],
+                    ["Daily transaction limit reached", "Your plan's daily transaction count limit is exhausted; resets at midnight"],
+                    ["Monthly transaction limit reached", "Your plan's monthly limit is exhausted; resets at month start"],
+                    ["QR code limit reached", "Dynamic QR limit for your plan is exhausted; revoke unused QRs or upgrade"],
+                    ["Virtual account limit reached", "VA limit for your plan is exhausted; upgrade or remove unused accounts"],
+                    ["Payment link limit reached", "Payment link limit for your plan is exhausted"],
+                    ["Account is not approved", "Your merchant account is pending KYC approval; contact support"],
+                    ["Account is suspended", "Your account is suspended; contact support to reinstate"],
+                    ["Callback URL is required", "Set a callback URL on the Webhook Settings page before enabling callbacks"],
+                    ["Invalid signature", "X-Signature header HMAC does not match; verify your signing secret and raw body"],
+                    ["Timestamp out of range", "X-Timestamp is more than 5 minutes old; ensure your server clock is synchronized"],
+                  ].map(([code, explanation]) => (
+                    <tr key={code} className="hover:bg-muted/10 transition-colors">
+                      <td className="py-2.5 pr-4 font-mono text-xs text-amber-400/90 whitespace-nowrap">{code}</td>
+                      <td className="py-2.5 text-xs text-muted-foreground leading-relaxed">{explanation}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 flex items-start gap-2 text-xs text-muted-foreground">
+            <ShieldCheck className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+            <div>
+              <span className="font-medium text-foreground">Retry guidance: </span>
+              Retry <code className="font-mono bg-muted px-1 rounded">5xx</code> errors with exponential backoff
+              (start at 1 s, double up to 30 s, max 5 retries). Do not retry{" "}
+              <code className="font-mono bg-muted px-1 rounded">4xx</code> errors — they indicate a client-side
+              problem that will not resolve on its own. For <code className="font-mono bg-muted px-1 rounded">429</code>,
+              wait for the cooldown period before retrying.
+            </div>
+          </div>
+        </Section>
       </div>
     </div>
     </SharedPresetContext.Provider>

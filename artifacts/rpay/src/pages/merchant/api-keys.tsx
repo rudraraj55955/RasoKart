@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Plus, Copy, Trash2, Eye, AlertTriangle, Tag, Loader2, Lock, ArrowUpRight } from "lucide-react";
+import { Plus, Copy, Trash2, Eye, AlertTriangle, Tag, Loader2, Lock, ArrowUpRight, Globe, Key, BookOpen } from "lucide-react";
 import { toast } from "sonner";
 import { getApiErrorMessage } from "@/lib/utils";
 import { format } from "date-fns";
@@ -120,6 +120,55 @@ export default function MerchantApiKeys() {
           Keep your secret key safe. Never expose it in client-side code or public repositories.
         </AlertDescription>
       </Alert>
+
+      {/* Quick Integration Reference */}
+      {!planBlocked && (
+        <Card className="border-primary/20 bg-primary/5">
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Globe className="w-4 h-4 text-primary" />
+              <span className="text-sm font-semibold">Integration Quick Reference</span>
+              <Link href="/merchant/api-docs">
+                <span className="ml-auto text-xs text-primary hover:underline inline-flex items-center gap-1 cursor-pointer">
+                  Full API Docs <BookOpen className="w-3 h-3" />
+                </span>
+              </Link>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Base URL</p>
+                <code className="text-xs font-mono bg-muted/40 px-2 py-1 rounded block break-all">
+                  https://rasokart.com/api
+                </code>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Authentication Header</p>
+                <code className="text-xs font-mono bg-muted/40 px-2 py-1 rounded block break-all">
+                  X-Api-Key: {"<your-api-key>"}
+                </code>
+              </div>
+              <div className="col-span-full space-y-1">
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Example Request</p>
+                <code className="text-xs font-mono bg-muted/40 px-2 py-1.5 rounded block whitespace-pre-wrap break-all leading-relaxed">
+                  {`curl -X GET https://rasokart.com/api/merchant/transactions \\
+  -H "X-Api-Key: rasokart_live_..." \\
+  -H "X-Api-Secret: rasokart_secret_..."`}
+                </code>
+              </div>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/30 rounded px-2 py-1">
+                <Key className="w-3 h-3 text-emerald-400" />
+                Secret key shown only once at generation
+              </div>
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/30 rounded px-2 py-1">
+                <Key className="w-3 h-3 text-amber-400" />
+                Never expose secret in client-side code
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardContent className="p-0">
