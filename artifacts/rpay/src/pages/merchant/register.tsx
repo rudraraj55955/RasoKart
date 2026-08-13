@@ -9,6 +9,7 @@ import { AuthLayout } from "@/components/layout/auth-layout";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { OtpCodeInput } from "@/components/ui/otp-code-input";
 
 function apiBase(): string {
   const base = (import.meta as any)?.env?.BASE_URL ?? "/";
@@ -76,6 +77,9 @@ export default function MerchantRegister() {
     resolver: zodResolver(registerSchema),
     defaultValues: { businessName: "", contactName: "", phone: "", website: "", password: "" },
   });
+
+  // Watch OTP value so the Verify button stays disabled until 6 digits are entered.
+  const otpValue = otpForm.watch("otp");
 
   const startCooldown = () => {
     setResendIn(RESEND_COOLDOWN_SECONDS);
@@ -264,13 +268,21 @@ export default function MerchantRegister() {
                 <FormItem>
                   <FormLabel>Verification code</FormLabel>
                   <FormControl>
-                    <Input inputMode="numeric" maxLength={6} placeholder="123456" autoFocus {...field} />
+                    <OtpCodeInput
+                      placeholder="------"
+                      autoFocus
+                      value={field.value}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                      name={field.name}
+                      ref={field.ref}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
-            <Button type="submit" className="w-full" disabled={verifying}>
+            <Button type="submit" className="w-full" disabled={verifying || (otpValue?.length ?? 0) < 6}>
               {verifying ? "Verifying…" : "Verify email"}
             </Button>
             <div className="flex items-center justify-between text-sm">
