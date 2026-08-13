@@ -460,3 +460,5 @@ export default function MerchantRegister() {
         </form>
       </Form>
     </AuthLayout>
+  );
+}

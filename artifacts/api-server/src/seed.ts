@@ -44,6 +44,8 @@ import {
   userPermissionsTable,
   promotionalCampaignsTable,
   providerProductsTable,
+  supportTicketsTable,
+  ticketRepliesTable,
 } from "@workspace/db";
 import { ALL_PERMISSION_KEYS, LEGACY_KEY_MAP, ROLE_DEFAULT_PERMISSIONS, SUPER_ADMIN_ONLY_PERMISSIONS } from "./permissions";
 
@@ -2616,6 +2618,163 @@ export async function seed() {
   }
   } catch (cmsErr) {
     logger.warn({ err: cmsErr }, "cms_campaigns_seed_skipped — table may not exist yet, will retry on next start");
+  }
+
+  // ── Support Tickets — demo tickets so the Support module isn't empty ────────
+  if (m1 && m2 && merchant1 && merchant2) {
+    const [stCount] = await db.select({ c: count() }).from(supportTicketsTable);
+    if (stCount.c === 0) {
+      // Ticket 1: payments — open, normal priority (m1)
+      const [t1] = await db.insert(supportTicketsTable).values({
+        merchantId: m1.id,
+        userId: merchant1.id,
+        category: "payments",
+        subject: "Payment not reflecting in dashboard",
+        message: "I received a UPI confirmation from my customer but the transaction is not showing up in my RasoKart dashboard. Transaction UTR: UTR2024060100123. Amount: ₹4,500. Please help resolve this urgently.",
+        status: "open",
+        priority: "high",
+        createdAt: new Date(Date.now() - 2 * 86400000),
+        updatedAt: new Date(Date.now() - 2 * 86400000),
+      }).returning();
+
+      // Ticket 2: account — in-progress, has admin reply (m1)
+      const [t2] = await db.insert(supportTicketsTable).values({
+        merchantId: m1.id,
+        userId: merchant1.id,
+        category: "account",
+        subject: "Unable to update bank account details",
+        message: "I am trying to update my settlement bank account but the form keeps showing an error: 'IFSC code invalid'. The IFSC is HDFC0001234 which is correct. I have verified it multiple times. Please assist.",
+        status: "in-progress",
+        priority: "normal",
+        createdAt: new Date(Date.now() - 5 * 86400000),
+        updatedAt: new Date(Date.now() - 4 * 86400000),
+      }).returning();
+
+      // Ticket 3: technical — resolved (m2)
+      const [t3] = await db.insert(supportTicketsTable).values({
+        merchantId: m2.id,
+        userId: merchant2.id,
+        category: "technical",
+        subject: "Webhook not firing for failed payments",
+        message: "Our webhook endpoint is receiving events for successful payments but we are not getting any events when a payment fails. We need this for our reconciliation system. Endpoint: https://api.techpay.example.com/webhooks/rasokart",
+        status: "resolved",
+        priority: "high",
+        resolvedAt: new Date(Date.now() - 1 * 86400000),
+        createdAt: new Date(Date.now() - 7 * 86400000),
+        updatedAt: new Date(Date.now() - 1 * 86400000),
+      }).returning();
+
+      // Ticket 4: billing — open, urgent priority (m2)
+      await db.insert(supportTicketsTable).values({
+        merchantId: m2.id,
+        userId: merchant2.id,
+        category: "billing",
+        subject: "Incorrect settlement fee deducted",
+        message: "According to my Gold plan, the settlement fee should be 1.5% but I am being charged 3.0% on my last three settlements (REF20240601001, REF20240602001, REF20240605001). Please review and refund the difference. Total overcharge: ₹2,340.",
+        status: "open",
+        priority: "urgent",
+        createdAt: new Date(Date.now() - 1 * 86400000),
+        updatedAt: new Date(Date.now() - 1 * 86400000),
+      });
+
+      // Ticket 5: technical — open, low priority (m1)
+      await db.insert(supportTicketsTable).values({
+        merchantId: m1.id,
+        userId: merchant1.id,
+        category: "technical",
+        subject: "QR code scanner slow to respond on mobile",
+        message: "Several of our customers have reported that scanning the dynamic QR codes takes 5-10 seconds to load the payment page on Android phones. This is causing abandoned payments. QR label: 'Checkout QR'. Please investigate.",
+        status: "open",
+        priority: "low",
+        createdAt: new Date(Date.now() - 10 * 86400000),
+        updatedAt: new Date(Date.now() - 10 * 86400000),
+      });
+
+      // Ticket 6: payments — resolved (m2)
+      const [t6] = await db.insert(supportTicketsTable).values({
+        merchantId: m2.id,
+        userId: merchant2.id,
+        category: "payments",
+        subject: "Refund not processed for order ORD-20240580",
+        message: "A customer requested a refund 8 days ago for order ORD-20240580 (₹1,299). The refund status still shows as pending in our dashboard. The customer is getting impatient. Please process this immediately.",
+        status: "resolved",
+        priority: "normal",
+        resolvedAt: new Date(Date.now() - 3 * 86400000),
+        createdAt: new Date(Date.now() - 8 * 86400000),
+        updatedAt: new Date(Date.now() - 3 * 86400000),
+      }).returning();
+
+      // Reply thread on ticket 2 (account — in-progress): admin replied
+      if (t2) {
+        await db.insert(ticketRepliesTable).values({
+          ticketId: t2.id,
+          authorId: admin.id,
+          authorRole: "admin",
+          message: "Thank you for reaching out. I have checked your account and the IFSC code HDFC0001234 is valid. The issue appears to be a temporary validation bug on our end. Our engineering team is working on a fix. As a workaround, please try clearing your browser cache and re-entering the details. I will update you once the fix is deployed.",
+          createdAt: new Date(Date.now() - 4 * 86400000),
+        });
+
+        // Merchant follow-up reply
+        await db.insert(ticketRepliesTable).values({
+          ticketId: t2.id,
+          authorId: merchant1.id,
+          authorRole: "merchant",
+          message: "Thank you for the quick response. I tried clearing cache and re-entering the details but the same error appears. Waiting for the fix to be deployed.",
+          createdAt: new Date(Date.now() - 3 * 86400000),
+        });
+      }
+
+      // Reply thread on ticket 3 (technical — resolved): admin resolved it
+      if (t3) {
+        await db.insert(ticketRepliesTable).values({
+          ticketId: t3.id,
+          authorId: admin.id,
+          authorRole: "admin",
+          message: "I have identified the issue. Your webhook was configured to only receive 'payment.success' events. The 'payment.failed' event type was not selected. I have updated your webhook configuration to include both success and failure events. You should now receive callbacks for all payment outcomes. Please test and confirm.",
+          createdAt: new Date(Date.now() - 5 * 86400000),
+        });
+
+        await db.insert(ticketRepliesTable).values({
+          ticketId: t3.id,
+          authorId: merchant2.id,
+          authorRole: "merchant",
+          message: "Confirmed — we are now receiving webhook events for failed payments as well. Thank you for the quick resolution!",
+          createdAt: new Date(Date.now() - 4 * 86400000),
+        });
+
+        await db.insert(ticketRepliesTable).values({
+          ticketId: t3.id,
+          authorId: admin.id,
+          authorRole: "admin",
+          message: "Great, glad it is resolved! Marking this ticket as resolved. Feel free to open a new ticket if you face any further issues.",
+          createdAt: new Date(Date.now() - 4 * 86400000 + 3600000),
+        });
+      }
+
+      // Reply thread on ticket 6 (payments — resolved)
+      if (t6) {
+        await db.insert(ticketRepliesTable).values({
+          ticketId: t6.id,
+          authorId: admin.id,
+          authorRole: "admin",
+          message: "I have reviewed order ORD-20240580. The refund was initiated on our end but got stuck in a processing queue due to a batch job delay. I have manually triggered the refund — it should reflect in the customer's account within 2-3 business days. Marking this as resolved.",
+          createdAt: new Date(Date.now() - 3 * 86400000),
+        });
+      }
+
+      // Reply on ticket 1 (payments — still open, admin asked for more info)
+      if (t1) {
+        await db.insert(ticketRepliesTable).values({
+          ticketId: t1.id,
+          authorId: admin.id,
+          authorRole: "admin",
+          message: "Thank you for reporting this. Could you please share the exact time of the transaction and the customer's UPI app used (Google Pay, PhonePe, Paytm, etc.)? This will help us trace the payment on our end.",
+          createdAt: new Date(Date.now() - 1 * 86400000),
+        });
+      }
+
+      console.log("Support tickets seeded");
+    }
   }
 
   console.log("Seed complete.");
