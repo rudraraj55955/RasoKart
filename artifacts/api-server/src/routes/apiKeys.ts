@@ -18,6 +18,20 @@ const apiKeyCreateLimiter = makeRateLimiter({
 const router = Router();
 router.use(requireAuth);
 
+// Plan gate middleware — runs BEFORE the rate limiter so that expired /
+// Starter-plan merchants receive a clear 403 rather than a rate-limit 429.
+async function requireApiPlanAccess(req: any, res: any, next: any) {
+  const user = req.user;
+  if (user?.role === "merchant" && user?.merchantId != null) {
+    const planCheck = await checkPlanFeatureAccess(user.merchantId as number, "api");
+    if (!planCheck.allowed) {
+      res.status(403).json({ error: planCheck.message });
+      return;
+    }
+  }
+  next();
+}
+
 // GET /api/api-keys
 router.get("/", async (req, res) => {
   const user = (req as any).user;
@@ -107,17 +121,13 @@ router.get("/history", async (req, res) => {
 });
 
 // POST /api/api-keys
-router.post("/", apiKeyCreateLimiter, requireModule("api_access"), async (req, res) => {
+router.post("/", requireApiPlanAccess, apiKeyCreateLimiter, requireModule("api_access"), async (req, res) => {
   const user = (req as any).user;
   if (user.role !== "merchant") {
     res.status(403).json({ error: "Only merchants can generate API keys" });
     return;
   }
-  const planCheck = await checkPlanFeatureAccess(user.merchantId!, "api");
-  if (!planCheck.allowed) {
-    res.status(403).json({ error: planCheck.message });
-    return;
-  }
+  // Plan access already verified in requireApiPlanAccess (runs before rate limiter).
   const rawLabel = typeof req.body?.label === "string" ? req.body.label.trim().slice(0, 64) : null;
   const label = rawLabel || null;
 

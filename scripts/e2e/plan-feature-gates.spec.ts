@@ -20,6 +20,7 @@
  */
 
 import { test, expect } from "@playwright/test";
+import { execSync } from "child_process";
 
 const BASE = "http://localhost:80";
 const API = `${BASE}/api`;
@@ -185,4 +186,89 @@ test("Gold merchant: POST /api/webhooks/logs/:id/retry is not blocked by the pla
   // The expected outcome for a missing log is 404.
   expect(status).toBe(404);
   expect(typeof body.error).toBe("string");
+});
+
+// ─── Expired Gold plan — both gates block with expiry message ─────────────────
+
+/**
+ * Helper: run a psql command and return stdout (trimmed).
+ * Throws on non-zero exit so test failures are loud.
+ */
+function psql(sql: string): string {
+  // Flatten to a single line — psql -c does not accept newlines inside the
+  // quoted command string when it is shell-expanded via JSON.stringify.
+  const flat = sql.replace(/\s+/g, " ").trim();
+  return execSync(`psql "${process.env["DATABASE_URL"]}" -t -A -c ${JSON.stringify(flat)}`, {
+    stdio: "pipe",
+  })
+    .toString()
+    .trim();
+}
+
+test.describe("Expired Gold plan", () => {
+  // We mutate the merchant_plans row for the Gold demo merchant and restore it
+  // after the group runs.  Using beforeAll/afterAll keeps the window of
+  // DB mutation as short as possible.
+  let originalExpiresAt: string | null = null;
+
+  test.beforeAll(async () => {
+    // Read the current expires_at for merchant2@demo.com's plan row.
+    const raw = psql(
+      `SELECT mp.expires_at::text
+       FROM merchant_plans mp
+       JOIN merchants m  ON m.id  = mp.merchant_id
+       JOIN users     u  ON u.merchant_id = m.id
+       WHERE u.email = 'merchant2@demo.com'
+       LIMIT 1;`,
+    );
+    // raw is either an ISO timestamp string or empty when NULL.
+    originalExpiresAt = raw === "" ? null : raw;
+
+    // Set expires_at to one day in the past.
+    psql(
+      `UPDATE merchant_plans mp
+       SET expires_at = NOW() - INTERVAL '1 day'
+       FROM merchants m, users u
+       WHERE mp.merchant_id = m.id
+         AND u.merchant_id  = m.id
+         AND u.email = 'merchant2@demo.com';`,
+    );
+  });
+
+  test.afterAll(async () => {
+    // Restore the original expires_at value.
+    const restore =
+      originalExpiresAt === null
+        ? "NULL"
+        : `'${originalExpiresAt}'::timestamptz`;
+
+    psql(
+      `UPDATE merchant_plans mp
+       SET expires_at = ${restore}
+       FROM merchants m, users u
+       WHERE mp.merchant_id = m.id
+         AND u.merchant_id  = m.id
+         AND u.email = 'merchant2@demo.com';`,
+    );
+  });
+
+  test("Expired Gold plan: POST /api/api-keys returns 403 with an expiry message", async () => {
+    const { status, body } = await postApiKey(goldToken, "expired-plan-gate-test");
+
+    expect(status).toBe(403);
+    expect(typeof body.error).toBe("string");
+    // The message must mention plan expiry — not a generic or unrelated error.
+    expect(body.error.toLowerCase()).toMatch(/expired|expir/);
+  });
+
+  test("Expired Gold plan: PUT /api/webhooks returns 403 with an expiry message", async () => {
+    const { status, body } = await putWebhook(goldToken, {
+      url: "https://example.com/hook",
+      events: ["payment.success"],
+    });
+
+    expect(status).toBe(403);
+    expect(typeof body.error).toBe("string");
+    expect(body.error.toLowerCase()).toMatch(/expired|expir/);
+  });
 });
