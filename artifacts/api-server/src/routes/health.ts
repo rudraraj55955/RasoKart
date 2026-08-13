@@ -5,6 +5,7 @@ import { pool, db, usersTable, demoAccountRemovalsTable } from "@workspace/db";
 import { DEMO_CREDENTIALS } from "@workspace/demo-credentials";
 import { logger } from "../lib/logger";
 import { isServerInitialized } from "../lib/startupState";
+import { getSchemaGuardStatus } from "../lib/schemaGuard";
 
 // Injected at build time by esbuild define (see build.mjs).
 // Falls back to the COMMIT_SHA env var (useful when running the uncompiled source
@@ -207,8 +208,30 @@ router.get("/healthz/deep", async (_req, res) => {
     }
   }
 
+  // ── Schema guard status ────────────────────────────────────────────────
+  // Reports whether the in-process schema guard completed cleanly on startup.
+  // "pass"    — every block succeeded; no schema drift expected.
+  // "partial" — guard ran but ≥1 block failed (DB may be missing columns).
+  // "fail"    — guard crashed entirely before completing.
+  // "running" — guard is still in progress (should resolve before this check
+  //             is reached, since isServerInitialized() gates above).
+  // "pending" — guard was never started (should not happen in production).
+  const guardInfo = getSchemaGuardStatus();
+  checks["schema_guard"] = guardInfo.status === "pass";
+  if (guardInfo.status !== "pass") {
+    logger.error(
+      { guardStatus: guardInfo.status, failedBlocks: guardInfo.failedBlocks },
+      "healthz_deep_schema_guard_not_clean",
+    );
+  }
+
   const allOk = Object.values(checks).every(Boolean);
-  return res.status(allOk ? 200 : 503).json({ status: allOk ? "ok" : "degraded", commit: COMMIT_SHA, checks });
+  return res.status(allOk ? 200 : 503).json({
+    status: allOk ? "ok" : "degraded",
+    commit: COMMIT_SHA,
+    schema_guard: { status: guardInfo.status, failedBlocks: guardInfo.failedBlocks },
+    checks,
+  });
 });
 
 export default router;

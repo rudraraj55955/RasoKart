@@ -11,6 +11,25 @@ export type GuardExecutor = {
   execute: (query: SQL) => Promise<{ rows: unknown[] }>;
 };
 
+// ── Guard status ─────────────────────────────────────────────────────────────
+/**
+ * - `pending`  — guard has not been started yet (process just started)
+ * - `running`  — guard is currently executing
+ * - `pass`     — guard completed with every block succeeding
+ * - `partial`  — guard completed but one or more blocks failed (best-effort)
+ * - `fail`     — guard crashed entirely before completing (unexpected throw
+ *                outside a block wrapper, or all blocks failed)
+ */
+export type GuardStatus = "pending" | "running" | "pass" | "partial" | "fail";
+
+let _guardStatus: GuardStatus = "pending";
+let _guardFailedBlocks: string[] = [];
+
+/** Returns the current schema guard status and the names of any failed blocks. */
+export function getSchemaGuardStatus(): { status: GuardStatus; failedBlocks: string[] } {
+  return { status: _guardStatus, failedBlocks: [..._guardFailedBlocks] };
+}
+
 /**
  * Permanent, in-process schema guard for the tables/columns most likely to
  * drift between the Drizzle schema files and a live (dev or VPS/prod) DB
@@ -34,216 +53,251 @@ export type GuardExecutor = {
  * NOT EXISTS) and every ADD COLUMN is nullable or has a DEFAULT — never
  * NOT NULL without a DEFAULT — so this can never fail against a table that
  * already has rows, and is safe to run any number of times.
+ *
+ * Resilience: each logical block is wrapped in its own try/catch. A failed
+ * block is logged with the block name, but does NOT abort subsequent blocks —
+ * the guard continues best-effort. `ensureSchemaGuard()` still rejects if any
+ * block failed so callers know the guard was incomplete.
  */
 let guardPromise: Promise<void> | null = null;
 
 async function runGuard(executor: GuardExecutor = db): Promise<void> {
+  _guardStatus = "running";
+  _guardFailedBlocks = [];
+  const failures: string[] = [];
+
   // Use `exec` so every db.execute() call below can be redirected to a custom
   // executor (e.g. a raw pg.PoolClient in a transaction) without changing
   // the calling code.  In normal server operation `exec === db`.
   const exec = executor;
   logger.info("schema_guard_started");
 
+  /**
+   * Runs `fn` inside a try/catch.  On error, logs the block name and error,
+   * pushes the name to `failures`, then returns so the next block can run.
+   * Never throws — the caller checks `failures` at the end.
+   */
+  async function block(name: string, fn: () => Promise<void>): Promise<void> {
+    try {
+      await fn();
+    } catch (err) {
+      logger.error({ err, block: name }, "schema_guard_block_failed");
+      failures.push(name);
+    }
+  }
+
   // ── users: super admin flag + auth/audit columns ────────────────────────
   // name: required by seed.ts INSERT/UPDATE and the Drizzle schema, but absent
   // from the original db-migrate CREATE TABLE — seed crashes in a fresh DB
   // ("column name does not exist") without this guard.
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT ''`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_super_admin BOOLEAN NOT NULL DEFAULT FALSE`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS ekqr_cap_alert_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS merchant_id INTEGER`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_updated_at TIMESTAMPTZ`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_ip TEXT`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
-  logger.info({ table: "users" }, "schema_guard_column_added");
+  await block("users_core_columns", async () => {
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT ''`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_super_admin BOOLEAN NOT NULL DEFAULT FALSE`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS ekqr_cap_alert_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS merchant_id INTEGER`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_updated_at TIMESTAMPTZ`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_ip TEXT`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
+    logger.info({ table: "users" }, "schema_guard_column_added");
+  });
 
   // ── company_settings ────────────────────────────────────────────────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS company_settings (
-      id SERIAL PRIMARY KEY,
-      company_name TEXT NOT NULL DEFAULT 'Nickey Collection Private Limited',
-      support_phone TEXT NOT NULL DEFAULT '9358774496',
-      support_email TEXT,
-      whatsapp_phone TEXT,
-      company_address TEXT,
-      footer_text TEXT,
-      updated_by INTEGER,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  logger.info({ table: "company_settings" }, "schema_guard_table_created");
-  await exec.execute(sql`ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS grievance_officer_name TEXT`);
+  await block("company_settings", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS company_settings (
+        id SERIAL PRIMARY KEY,
+        company_name TEXT NOT NULL DEFAULT 'Nickey Collection Private Limited',
+        support_phone TEXT NOT NULL DEFAULT '9358774496',
+        support_email TEXT,
+        whatsapp_phone TEXT,
+        company_address TEXT,
+        footer_text TEXT,
+        updated_by INTEGER,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info({ table: "company_settings" }, "schema_guard_table_created");
+    await exec.execute(sql`ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS grievance_officer_name TEXT`);
 
-  await exec.execute(sql`
-    INSERT INTO company_settings (id, company_name, support_phone)
-    SELECT 1, 'Nickey Collection Private Limited', '9358774496'
-    WHERE NOT EXISTS (SELECT 1 FROM company_settings)
-  `);
+    await exec.execute(sql`
+      INSERT INTO company_settings (id, company_name, support_phone)
+      SELECT 1, 'Nickey Collection Private Limited', '9358774496'
+      WHERE NOT EXISTS (SELECT 1 FROM company_settings)
+    `);
+  });
 
   // ── demo_account_removals (admin-portal permanent demo account removal) ─
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS demo_account_removals (
-      email TEXT PRIMARY KEY,
-      removed_by_admin_id INTEGER,
-      removed_by_email TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  logger.info({ table: "demo_account_removals" }, "schema_guard_table_created");
+  await block("demo_account_removals", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS demo_account_removals (
+        email TEXT PRIMARY KEY,
+        removed_by_admin_id INTEGER,
+        removed_by_email TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info({ table: "demo_account_removals" }, "schema_guard_table_created");
+  });
 
   // ── merchant_auth_otps (OTP login + password reset) ────────────────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS merchant_auth_otps (
-      id SERIAL PRIMARY KEY,
-      merchant_id INTEGER,
-      identifier_hash TEXT NOT NULL,
-      otp_hash TEXT NOT NULL,
-      purpose TEXT NOT NULL,
-      expires_at TIMESTAMPTZ NOT NULL,
-      consumed_at TIMESTAMPTZ,
-      attempts INTEGER NOT NULL DEFAULT 0,
-      resend_count INTEGER NOT NULL DEFAULT 0,
-      ip_hash TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS merchant_auth_otps_identifier_hash_idx ON merchant_auth_otps(identifier_hash)`);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS merchant_auth_otps_merchant_id_idx ON merchant_auth_otps(merchant_id)`);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS merchant_auth_otps_purpose_idx ON merchant_auth_otps(purpose)`);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS merchant_auth_otps_expires_at_idx ON merchant_auth_otps(expires_at)`);
-  logger.info({ table: "merchant_auth_otps" }, "schema_guard_table_created");
+  await block("merchant_auth_otps", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS merchant_auth_otps (
+        id SERIAL PRIMARY KEY,
+        merchant_id INTEGER,
+        identifier_hash TEXT NOT NULL,
+        otp_hash TEXT NOT NULL,
+        purpose TEXT NOT NULL,
+        expires_at TIMESTAMPTZ NOT NULL,
+        consumed_at TIMESTAMPTZ,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        resend_count INTEGER NOT NULL DEFAULT 0,
+        ip_hash TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS merchant_auth_otps_identifier_hash_idx ON merchant_auth_otps(identifier_hash)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS merchant_auth_otps_merchant_id_idx ON merchant_auth_otps(merchant_id)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS merchant_auth_otps_purpose_idx ON merchant_auth_otps(purpose)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS merchant_auth_otps_expires_at_idx ON merchant_auth_otps(expires_at)`);
+    logger.info({ table: "merchant_auth_otps" }, "schema_guard_table_created");
+  });
 
   // ── providers / provider_integrations / provider_visibility / routing ──
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS providers (
-      id SERIAL PRIMARY KEY,
-      name TEXT NOT NULL,
-      slug TEXT NOT NULL UNIQUE,
-      logo_url TEXT,
-      category TEXT NOT NULL DEFAULT 'upi',
-      status TEXT NOT NULL DEFAULT 'live',
-      description TEXT,
-      sort_order INTEGER NOT NULL DEFAULT 0,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS provider_integrations (
-      id SERIAL PRIMARY KEY,
-      provider_key VARCHAR(64) NOT NULL UNIQUE,
-      provider_name_internal VARCHAR(255) NOT NULL,
-      display_name_public VARCHAR(255) NOT NULL,
-      environment TEXT NOT NULL DEFAULT 'test',
-      is_enabled BOOLEAN NOT NULL DEFAULT FALSE,
-      product_type VARCHAR(100),
-      webhook_url TEXT,
-      notes TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await exec.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS is_custom BOOLEAN NOT NULL DEFAULT FALSE`);
-  await exec.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS api_key_encrypted TEXT`);
-  await exec.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS api_secret_encrypted TEXT`);
-  await exec.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS webhook_secret_encrypted TEXT`);
-  await exec.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS api_base_url TEXT`);
-  await exec.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS client_id_encrypted TEXT`);
-  await exec.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS client_secret_encrypted TEXT`);
-  await exec.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS min_amount NUMERIC(18,2)`);
-  await exec.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS max_amount NUMERIC(18,2)`);
-  await exec.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS daily_limit NUMERIC(18,2)`);
-  await exec.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS supports_dynamic_qr BOOLEAN NOT NULL DEFAULT FALSE`);
-  await exec.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS supports_static_qr BOOLEAN NOT NULL DEFAULT FALSE`);
-  await exec.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS supports_payment_links BOOLEAN NOT NULL DEFAULT FALSE`);
-  await exec.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS supports_webhooks BOOLEAN NOT NULL DEFAULT FALSE`);
-  await exec.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS updated_by_email VARCHAR(255)`);
-
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS provider_visibility (
-      id SERIAL PRIMARY KEY,
-      provider_id INTEGER NOT NULL,
-      merchant_id INTEGER,
-      visible BOOLEAN NOT NULL DEFAULT TRUE,
-      min_amount NUMERIC(18,2),
-      max_amount NUMERIC(18,2),
-      daily_limit NUMERIC(18,2),
-      priority_override INTEGER,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS pv_provider_merchant_idx ON provider_visibility(provider_id, merchant_id)`);
-
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS routing_configs (
-      id SERIAL PRIMARY KEY,
-      name TEXT NOT NULL,
-      is_active BOOLEAN NOT NULL DEFAULT TRUE,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS routing_rules (
-      id SERIAL PRIMARY KEY,
-      config_id INTEGER NOT NULL REFERENCES routing_configs(id) ON DELETE CASCADE,
-      provider_key VARCHAR(64) NOT NULL,
-      priority INTEGER NOT NULL DEFAULT 1,
-      weight_percent INTEGER NOT NULL DEFAULT 100,
-      min_amount NUMERIC(18,2),
-      max_amount NUMERIC(18,2),
-      allowed_payment_modes TEXT,
-      is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-      notes TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await exec.execute(sql`ALTER TABLE routing_rules ADD COLUMN IF NOT EXISTS is_fallback_only BOOLEAN NOT NULL DEFAULT FALSE`);
-  await exec.execute(sql`ALTER TABLE routing_rules ADD COLUMN IF NOT EXISTS max_retries INTEGER NOT NULL DEFAULT 1`);
-  // De-duplicate before creating the unique index — keeps the oldest (lowest id)
-  // enabled rule per (config_id, priority) and disables the rest. This is a no-op
-  // when no collisions exist, so it is always safe to run.
-  await exec.execute(sql`
-    UPDATE routing_rules SET is_enabled = false
-    WHERE is_enabled = true
-      AND id NOT IN (
-        SELECT MIN(id) FROM routing_rules
-        WHERE is_enabled = true
-        GROUP BY config_id, priority
+  await block("providers_and_routing", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS providers (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        slug TEXT NOT NULL UNIQUE,
+        logo_url TEXT,
+        category TEXT NOT NULL DEFAULT 'upi',
+        status TEXT NOT NULL DEFAULT 'live',
+        description TEXT,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
-  `);
-  await exec.execute(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS routing_rules_enabled_priority_uniq
-    ON routing_rules(config_id, priority)
-    WHERE is_enabled = true
-  `);
-  logger.info({ tables: ["providers", "provider_integrations", "provider_visibility", "routing_configs", "routing_rules"] }, "schema_guard_column_added");
+    `);
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS provider_integrations (
+        id SERIAL PRIMARY KEY,
+        provider_key VARCHAR(64) NOT NULL UNIQUE,
+        provider_name_internal VARCHAR(255) NOT NULL,
+        display_name_public VARCHAR(255) NOT NULL,
+        environment TEXT NOT NULL DEFAULT 'test',
+        is_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        product_type VARCHAR(100),
+        webhook_url TEXT,
+        notes TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS is_custom BOOLEAN NOT NULL DEFAULT FALSE`);
+    await exec.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS api_key_encrypted TEXT`);
+    await exec.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS api_secret_encrypted TEXT`);
+    await exec.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS webhook_secret_encrypted TEXT`);
+    await exec.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS api_base_url TEXT`);
+    await exec.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS client_id_encrypted TEXT`);
+    await exec.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS client_secret_encrypted TEXT`);
+    await exec.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS min_amount NUMERIC(18,2)`);
+    await exec.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS max_amount NUMERIC(18,2)`);
+    await exec.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS daily_limit NUMERIC(18,2)`);
+    await exec.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS supports_dynamic_qr BOOLEAN NOT NULL DEFAULT FALSE`);
+    await exec.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS supports_static_qr BOOLEAN NOT NULL DEFAULT FALSE`);
+    await exec.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS supports_payment_links BOOLEAN NOT NULL DEFAULT FALSE`);
+    await exec.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS supports_webhooks BOOLEAN NOT NULL DEFAULT FALSE`);
+    await exec.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS updated_by_email VARCHAR(255)`);
+
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS provider_visibility (
+        id SERIAL PRIMARY KEY,
+        provider_id INTEGER NOT NULL,
+        merchant_id INTEGER,
+        visible BOOLEAN NOT NULL DEFAULT TRUE,
+        min_amount NUMERIC(18,2),
+        max_amount NUMERIC(18,2),
+        daily_limit NUMERIC(18,2),
+        priority_override INTEGER,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS pv_provider_merchant_idx ON provider_visibility(provider_id, merchant_id)`);
+
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS routing_configs (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS routing_rules (
+        id SERIAL PRIMARY KEY,
+        config_id INTEGER NOT NULL REFERENCES routing_configs(id) ON DELETE CASCADE,
+        provider_key VARCHAR(64) NOT NULL,
+        priority INTEGER NOT NULL DEFAULT 1,
+        weight_percent INTEGER NOT NULL DEFAULT 100,
+        min_amount NUMERIC(18,2),
+        max_amount NUMERIC(18,2),
+        allowed_payment_modes TEXT,
+        is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        notes TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`ALTER TABLE routing_rules ADD COLUMN IF NOT EXISTS is_fallback_only BOOLEAN NOT NULL DEFAULT FALSE`);
+    await exec.execute(sql`ALTER TABLE routing_rules ADD COLUMN IF NOT EXISTS max_retries INTEGER NOT NULL DEFAULT 1`);
+    // De-duplicate before creating the unique index — keeps the oldest (lowest id)
+    // enabled rule per (config_id, priority) and disables the rest. This is a no-op
+    // when no collisions exist, so it is always safe to run.
+    await exec.execute(sql`
+      UPDATE routing_rules SET is_enabled = false
+      WHERE is_enabled = true
+        AND id NOT IN (
+          SELECT MIN(id) FROM routing_rules
+          WHERE is_enabled = true
+          GROUP BY config_id, priority
+        )
+    `);
+    await exec.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS routing_rules_enabled_priority_uniq
+      ON routing_rules(config_id, priority)
+      WHERE is_enabled = true
+    `);
+    logger.info({ tables: ["providers", "provider_integrations", "provider_visibility", "routing_configs", "routing_rules"] }, "schema_guard_column_added");
+  });
 
   // ── quiet_hours_queue: columns required by helpers/quietHours.ts ───────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS quiet_hours_queue (
-      id SERIAL PRIMARY KEY,
-      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      subject TEXT NOT NULL,
-      html TEXT NOT NULL,
-      queued_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await exec.execute(sql`ALTER TABLE quiet_hours_queue ADD COLUMN IF NOT EXISTS "to" TEXT NOT NULL DEFAULT ''`);
-  await exec.execute(sql`ALTER TABLE quiet_hours_queue ADD COLUMN IF NOT EXISTS deliver_after TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
-  await exec.execute(sql`ALTER TABLE quiet_hours_queue ADD COLUMN IF NOT EXISTS flushed BOOLEAN NOT NULL DEFAULT FALSE`);
-  await exec.execute(sql`ALTER TABLE quiet_hours_queue ADD COLUMN IF NOT EXISTS flushed_at TIMESTAMPTZ`);
-  await exec.execute(sql`ALTER TABLE quiet_hours_queue ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS quiet_hours_queue_user_id_idx ON quiet_hours_queue(user_id)`);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS quiet_hours_queue_flushed_deliver_after_idx ON quiet_hours_queue(flushed, deliver_after)`);
-  logger.info({ table: "quiet_hours_queue" }, "schema_guard_column_added");
+  await block("quiet_hours_queue", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS quiet_hours_queue (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        subject TEXT NOT NULL,
+        html TEXT NOT NULL,
+        queued_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`ALTER TABLE quiet_hours_queue ADD COLUMN IF NOT EXISTS "to" TEXT NOT NULL DEFAULT ''`);
+    await exec.execute(sql`ALTER TABLE quiet_hours_queue ADD COLUMN IF NOT EXISTS deliver_after TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
+    await exec.execute(sql`ALTER TABLE quiet_hours_queue ADD COLUMN IF NOT EXISTS flushed BOOLEAN NOT NULL DEFAULT FALSE`);
+    await exec.execute(sql`ALTER TABLE quiet_hours_queue ADD COLUMN IF NOT EXISTS flushed_at TIMESTAMPTZ`);
+    await exec.execute(sql`ALTER TABLE quiet_hours_queue ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS quiet_hours_queue_user_id_idx ON quiet_hours_queue(user_id)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS quiet_hours_queue_flushed_deliver_after_idx ON quiet_hours_queue(flushed, deliver_after)`);
+    logger.info({ table: "quiet_hours_queue" }, "schema_guard_column_added");
+  });
 
   // ── withdrawals: CREATE TABLE (must precede all ALTER TABLE lines below) ──
   // db-migrate.ts creates this table before the server starts, but this
@@ -252,312 +306,330 @@ async function runGuard(executor: GuardExecutor = db): Promise<void> {
   // the table the first ALTER TABLE below threw "relation does not exist",
   // crashing runGuard() and preventing every subsequent schemaGuard entry
   // (payin_charge_settings, platform_wallet_ledger, agents, etc.) from running.
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS withdrawals (
-      id SERIAL PRIMARY KEY,
-      merchant_id INTEGER NOT NULL,
-      amount NUMERIC(18,2) NOT NULL,
-      currency TEXT NOT NULL DEFAULT 'INR',
-      status TEXT NOT NULL DEFAULT 'pending',
-      transfer_status TEXT NOT NULL DEFAULT 'NOT_STARTED',
-      provider_reference_id TEXT,
-      utr TEXT,
-      failure_reason TEXT,
-      approved_by_admin_id INTEGER,
-      approved_at TIMESTAMPTZ,
-      completed_at TIMESTAMPTZ,
-      payout_mode TEXT NOT NULL DEFAULT 'IMPS',
-      upi_id TEXT,
-      remarks TEXT,
-      bank_account TEXT NOT NULL DEFAULT '',
-      bank_name TEXT NOT NULL DEFAULT '',
-      ifsc_code TEXT NOT NULL DEFAULT '',
-      account_holder TEXT NOT NULL DEFAULT '',
-      beneficiary_id INTEGER,
-      rejection_reason TEXT,
-      rejected_by_admin_id INTEGER,
-      rejected_at TIMESTAMPTZ,
-      approval_type TEXT NOT NULL DEFAULT 'MANUAL',
-      approved_by_system BOOLEAN NOT NULL DEFAULT FALSE,
-      auto_approval_rule_snapshot JSONB,
-      approved_by TEXT,
-      idempotency_key TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  logger.info({ table: "withdrawals" }, "schema_guard_table_created");
+  await block("withdrawals_table", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS withdrawals (
+        id SERIAL PRIMARY KEY,
+        merchant_id INTEGER NOT NULL,
+        amount NUMERIC(18,2) NOT NULL,
+        currency TEXT NOT NULL DEFAULT 'INR',
+        status TEXT NOT NULL DEFAULT 'pending',
+        transfer_status TEXT NOT NULL DEFAULT 'NOT_STARTED',
+        provider_reference_id TEXT,
+        utr TEXT,
+        failure_reason TEXT,
+        approved_by_admin_id INTEGER,
+        approved_at TIMESTAMPTZ,
+        completed_at TIMESTAMPTZ,
+        payout_mode TEXT NOT NULL DEFAULT 'IMPS',
+        upi_id TEXT,
+        remarks TEXT,
+        bank_account TEXT NOT NULL DEFAULT '',
+        bank_name TEXT NOT NULL DEFAULT '',
+        ifsc_code TEXT NOT NULL DEFAULT '',
+        account_holder TEXT NOT NULL DEFAULT '',
+        beneficiary_id INTEGER,
+        rejection_reason TEXT,
+        rejected_by_admin_id INTEGER,
+        rejected_at TIMESTAMPTZ,
+        approval_type TEXT NOT NULL DEFAULT 'MANUAL',
+        approved_by_system BOOLEAN NOT NULL DEFAULT FALSE,
+        auto_approval_rule_snapshot JSONB,
+        approved_by TEXT,
+        idempotency_key TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info({ table: "withdrawals" }, "schema_guard_table_created");
 
-  // Withdrawals: rejection audit columns (admin ID + timestamp)
-  await exec.execute(sql`ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS rejected_by_admin_id INTEGER`);
-  await exec.execute(sql`ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMPTZ`);
-  logger.info({ table: "withdrawals" }, "schema_guard_column_added");
+    // Withdrawals: rejection audit columns (admin ID + timestamp)
+    await exec.execute(sql`ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS rejected_by_admin_id INTEGER`);
+    await exec.execute(sql`ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMPTZ`);
+    logger.info({ table: "withdrawals" }, "schema_guard_column_added");
+  });
 
   // provider_integrations: Own Static UPI collection fields
-  await exec.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS collection_type TEXT NOT NULL DEFAULT 'api_gateway'`);
-  await exec.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS own_upi_id TEXT`);
-  await exec.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS own_qr_image_url TEXT`);
-  await exec.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS own_account_holder TEXT`);
-  await exec.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS own_instructions TEXT`);
-  logger.info({ table: "provider_integrations", columns: ["collection_type", "own_upi_id", "own_qr_image_url", "own_account_holder", "own_instructions"] }, "schema_guard_column_added");
+  await block("provider_integrations_own_upi", async () => {
+    await exec.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS collection_type TEXT NOT NULL DEFAULT 'api_gateway'`);
+    await exec.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS own_upi_id TEXT`);
+    await exec.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS own_qr_image_url TEXT`);
+    await exec.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS own_account_holder TEXT`);
+    await exec.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS own_instructions TEXT`);
+    logger.info({ table: "provider_integrations", columns: ["collection_type", "own_upi_id", "own_qr_image_url", "own_account_holder", "own_instructions"] }, "schema_guard_column_added");
+  });
 
   // ── merchant_connections: CREATE TABLE (must precede transactions FK) ──────
   // db-migrate.ts creates this table before the server starts. This guard
   // ensures it also exists in direct-push envs without db-migrate.
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS merchant_connections (
-      id SERIAL PRIMARY KEY,
-      merchant_id INTEGER NOT NULL,
-      provider TEXT NOT NULL,
-      credentials TEXT,
-      monthly_limit NUMERIC(18,2) NOT NULL DEFAULT 0,
-      is_active BOOLEAN NOT NULL DEFAULT TRUE,
-      deactivated_at TIMESTAMPTZ,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS merchant_connections_merchant_id_idx ON merchant_connections(merchant_id)`);
-  logger.info({ table: "merchant_connections" }, "schema_guard_table_created");
+  await block("merchant_connections", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS merchant_connections (
+        id SERIAL PRIMARY KEY,
+        merchant_id INTEGER NOT NULL,
+        provider TEXT NOT NULL,
+        credentials TEXT,
+        monthly_limit NUMERIC(18,2) NOT NULL DEFAULT 0,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        deactivated_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS merchant_connections_merchant_id_idx ON merchant_connections(merchant_id)`);
+    logger.info({ table: "merchant_connections" }, "schema_guard_table_created");
+  });
 
   // ── merchant_trusted_ips: per-merchant trusted IP allowlist ─────────────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS merchant_trusted_ips (
-      id SERIAL PRIMARY KEY,
-      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      merchant_id INTEGER NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
-      ip_address TEXT NOT NULL,
-      label TEXT NOT NULL,
-      labeled_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  // labeled_at was added after initial table creation in some envs
-  await exec.execute(sql`ALTER TABLE merchant_trusted_ips ADD COLUMN IF NOT EXISTS labeled_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
-  logger.info({ table: "merchant_trusted_ips" }, "schema_guard_table_created");
+  await block("merchant_trusted_ips", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS merchant_trusted_ips (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        merchant_id INTEGER NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
+        ip_address TEXT NOT NULL,
+        label TEXT NOT NULL,
+        labeled_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    // labeled_at was added after initial table creation in some envs
+    await exec.execute(sql`ALTER TABLE merchant_trusted_ips ADD COLUMN IF NOT EXISTS labeled_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
+    logger.info({ table: "merchant_trusted_ips" }, "schema_guard_table_created");
+  });
 
   // ── transactions: CREATE TABLE (must precede ALTER TABLE lines below) ──────
   // db-migrate.ts creates this table before the server starts. This guard
   // ensures it also exists in direct-push envs without db-migrate.
   // seed.ts inserts demo transactions at startup.
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS transactions (
-      id SERIAL PRIMARY KEY,
-      merchant_id INTEGER NOT NULL,
-      virtual_account_id INTEGER,
-      qr_code_id INTEGER,
-      connection_id INTEGER REFERENCES merchant_connections(id) ON DELETE SET NULL,
-      provider TEXT,
-      payment_link_id INTEGER,
-      type TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'pending',
-      amount NUMERIC(18,2) NOT NULL,
-      currency TEXT NOT NULL DEFAULT 'INR',
-      utr TEXT NOT NULL UNIQUE,
-      reference_id TEXT,
-      description TEXT,
-      metadata TEXT,
-      gross_amount NUMERIC(12,2),
-      payin_fee NUMERIC(12,2),
-      gst_amount NUMERIC(12,2),
-      net_amount NUMERIC(12,2),
-      fee_rate NUMERIC(8,4),
-      fee_rule_source TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS transactions_merchant_id_idx ON transactions(merchant_id)`);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS transactions_status_idx ON transactions(status)`);
-  logger.info({ table: "transactions" }, "schema_guard_table_created");
+  await block("transactions", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS transactions (
+        id SERIAL PRIMARY KEY,
+        merchant_id INTEGER NOT NULL,
+        virtual_account_id INTEGER,
+        qr_code_id INTEGER,
+        connection_id INTEGER REFERENCES merchant_connections(id) ON DELETE SET NULL,
+        provider TEXT,
+        payment_link_id INTEGER,
+        type TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        amount NUMERIC(18,2) NOT NULL,
+        currency TEXT NOT NULL DEFAULT 'INR',
+        utr TEXT NOT NULL UNIQUE,
+        reference_id TEXT,
+        description TEXT,
+        metadata TEXT,
+        gross_amount NUMERIC(12,2),
+        payin_fee NUMERIC(12,2),
+        gst_amount NUMERIC(12,2),
+        net_amount NUMERIC(12,2),
+        fee_rate NUMERIC(8,4),
+        fee_rule_source TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS transactions_merchant_id_idx ON transactions(merchant_id)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS transactions_status_idx ON transactions(status)`);
+    logger.info({ table: "transactions" }, "schema_guard_table_created");
 
-  // transactions: payin charge columns (nullable — safe for existing rows)
-  await exec.execute(sql`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS gross_amount  NUMERIC(12,2)`);
-  await exec.execute(sql`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS payin_fee     NUMERIC(12,2)`);
-  await exec.execute(sql`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS gst_amount    NUMERIC(12,2)`);
-  await exec.execute(sql`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS net_amount    NUMERIC(12,2)`);
-  await exec.execute(sql`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS fee_rate      NUMERIC(8,4)`);
-  await exec.execute(sql`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS fee_rule_source TEXT`);
-  logger.info({ table: "transactions", columns: ["gross_amount", "payin_fee", "gst_amount", "net_amount", "fee_rate", "fee_rule_source"] }, "schema_guard_column_added");
+    // transactions: payin charge columns (nullable — safe for existing rows)
+    await exec.execute(sql`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS gross_amount  NUMERIC(12,2)`);
+    await exec.execute(sql`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS payin_fee     NUMERIC(12,2)`);
+    await exec.execute(sql`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS gst_amount    NUMERIC(12,2)`);
+    await exec.execute(sql`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS net_amount    NUMERIC(12,2)`);
+    await exec.execute(sql`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS fee_rate      NUMERIC(8,4)`);
+    await exec.execute(sql`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS fee_rule_source TEXT`);
+    logger.info({ table: "transactions", columns: ["gross_amount", "payin_fee", "gst_amount", "net_amount", "fee_rate", "fee_rule_source"] }, "schema_guard_column_added");
+  });
 
   // payin_charge_settings: global singleton table
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS payin_charge_settings (
-      id SERIAL PRIMARY KEY,
-      enabled BOOLEAN NOT NULL DEFAULT FALSE,
-      mdr_pct NUMERIC(8,4) NOT NULL DEFAULT 0,
-      fixed_fee NUMERIC(18,2) NOT NULL DEFAULT 0,
-      min_fee NUMERIC(18,2) NOT NULL DEFAULT 0,
-      max_fee NUMERIC(18,2),
-      gst_pct NUMERIC(8,4) NOT NULL DEFAULT 18,
-      gst_enabled BOOLEAN NOT NULL DEFAULT FALSE,
-      rounding_mode TEXT NOT NULL DEFAULT 'round',
-      apply_to_own_static_upi BOOLEAN NOT NULL DEFAULT TRUE,
-      apply_to_dynamic_qr BOOLEAN NOT NULL DEFAULT TRUE,
-      apply_to_payment_links BOOLEAN NOT NULL DEFAULT TRUE,
-      apply_to_api_gateway BOOLEAN NOT NULL DEFAULT TRUE,
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_by_email TEXT
-    )
-  `);
+  await block("payin_charge_settings", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS payin_charge_settings (
+        id SERIAL PRIMARY KEY,
+        enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        mdr_pct NUMERIC(8,4) NOT NULL DEFAULT 0,
+        fixed_fee NUMERIC(18,2) NOT NULL DEFAULT 0,
+        min_fee NUMERIC(18,2) NOT NULL DEFAULT 0,
+        max_fee NUMERIC(18,2),
+        gst_pct NUMERIC(8,4) NOT NULL DEFAULT 18,
+        gst_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        rounding_mode TEXT NOT NULL DEFAULT 'round',
+        apply_to_own_static_upi BOOLEAN NOT NULL DEFAULT TRUE,
+        apply_to_dynamic_qr BOOLEAN NOT NULL DEFAULT TRUE,
+        apply_to_payment_links BOOLEAN NOT NULL DEFAULT TRUE,
+        apply_to_api_gateway BOOLEAN NOT NULL DEFAULT TRUE,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_by_email TEXT
+      )
+    `);
 
-  // merchant_charge_overrides: per-merchant override row
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS merchant_charge_overrides (
-      id SERIAL PRIMARY KEY,
-      merchant_id INTEGER NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
-      use_global BOOLEAN NOT NULL DEFAULT TRUE,
-      custom_enabled BOOLEAN NOT NULL DEFAULT FALSE,
-      mdr_pct NUMERIC(8,4),
-      fixed_fee NUMERIC(18,2),
-      min_fee NUMERIC(18,2),
-      max_fee NUMERIC(18,2),
-      gst_pct NUMERIC(8,4),
-      gst_enabled BOOLEAN,
-      rounding_mode TEXT,
-      notes TEXT,
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_by_email TEXT
-    )
-  `);
-  await exec.execute(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS merchant_charge_overrides_merchant_id_uniq
-    ON merchant_charge_overrides(merchant_id)
-  `);
-  logger.info({ tables: ["payin_charge_settings", "merchant_charge_overrides"] }, "schema_guard_table_created");
+    // merchant_charge_overrides: per-merchant override row
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS merchant_charge_overrides (
+        id SERIAL PRIMARY KEY,
+        merchant_id INTEGER NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
+        use_global BOOLEAN NOT NULL DEFAULT TRUE,
+        custom_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        mdr_pct NUMERIC(8,4),
+        fixed_fee NUMERIC(18,2),
+        min_fee NUMERIC(18,2),
+        max_fee NUMERIC(18,2),
+        gst_pct NUMERIC(8,4),
+        gst_enabled BOOLEAN,
+        rounding_mode TEXT,
+        notes TEXT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_by_email TEXT
+      )
+    `);
+    await exec.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS merchant_charge_overrides_merchant_id_uniq
+      ON merchant_charge_overrides(merchant_id)
+    `);
+    logger.info({ tables: ["payin_charge_settings", "merchant_charge_overrides"] }, "schema_guard_table_created");
+  });
 
   // ── platform_wallet_ledger: running balance of platform profit ───────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS platform_wallet_ledger (
-      id                  SERIAL PRIMARY KEY,
-      source_type         TEXT NOT NULL,
-      source_id           INTEGER,
-      merchant_id         INTEGER,
-      gross_amount        NUMERIC(12,2) NOT NULL DEFAULT 0,
-      fee_amount          NUMERIC(12,2) NOT NULL DEFAULT 0,
-      gst_amount          NUMERIC(12,2) NOT NULL DEFAULT 0,
-      provider_cost       NUMERIC(12,2) NOT NULL DEFAULT 0,
-      profit_amount       NUMERIC(12,2) NOT NULL DEFAULT 0,
-      balance_after       NUMERIC(12,2) NOT NULL DEFAULT 0,
-      description         TEXT,
-      created_by_admin_id INTEGER,
-      created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      metadata            TEXT
-    )
-  `);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS pwl_source_id_idx ON platform_wallet_ledger(source_id)`);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS pwl_merchant_id_idx ON platform_wallet_ledger(merchant_id)`);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS pwl_source_type_idx ON platform_wallet_ledger(source_type)`);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS pwl_created_at_idx ON platform_wallet_ledger(created_at DESC)`);
+  await block("platform_wallet_and_tax_ledger", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS platform_wallet_ledger (
+        id                  SERIAL PRIMARY KEY,
+        source_type         TEXT NOT NULL,
+        source_id           INTEGER,
+        merchant_id         INTEGER,
+        gross_amount        NUMERIC(12,2) NOT NULL DEFAULT 0,
+        fee_amount          NUMERIC(12,2) NOT NULL DEFAULT 0,
+        gst_amount          NUMERIC(12,2) NOT NULL DEFAULT 0,
+        provider_cost       NUMERIC(12,2) NOT NULL DEFAULT 0,
+        profit_amount       NUMERIC(12,2) NOT NULL DEFAULT 0,
+        balance_after       NUMERIC(12,2) NOT NULL DEFAULT 0,
+        description         TEXT,
+        created_by_admin_id INTEGER,
+        created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        metadata            TEXT
+      )
+    `);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS pwl_source_id_idx ON platform_wallet_ledger(source_id)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS pwl_merchant_id_idx ON platform_wallet_ledger(merchant_id)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS pwl_source_type_idx ON platform_wallet_ledger(source_type)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS pwl_created_at_idx ON platform_wallet_ledger(created_at DESC)`);
 
-  // ── tax_liability_ledger: running balance of GST collected ───────────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS tax_liability_ledger (
-      id           SERIAL PRIMARY KEY,
-      source_type  TEXT NOT NULL,
-      source_id    INTEGER,
-      merchant_id  INTEGER,
-      gst_amount   NUMERIC(12,2) NOT NULL DEFAULT 0,
-      balance_after NUMERIC(12,2) NOT NULL DEFAULT 0,
-      description  TEXT,
-      created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      metadata     TEXT
-    )
-  `);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS tll_source_id_idx ON tax_liability_ledger(source_id)`);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS tll_created_at_idx ON tax_liability_ledger(created_at DESC)`);
-  logger.info({ tables: ["platform_wallet_ledger", "tax_liability_ledger"] }, "schema_guard_table_created");
+    // ── tax_liability_ledger: running balance of GST collected ───────────────
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS tax_liability_ledger (
+        id           SERIAL PRIMARY KEY,
+        source_type  TEXT NOT NULL,
+        source_id    INTEGER,
+        merchant_id  INTEGER,
+        gst_amount   NUMERIC(12,2) NOT NULL DEFAULT 0,
+        balance_after NUMERIC(12,2) NOT NULL DEFAULT 0,
+        description  TEXT,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        metadata     TEXT
+      )
+    `);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS tll_source_id_idx ON tax_liability_ledger(source_id)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS tll_created_at_idx ON tax_liability_ledger(created_at DESC)`);
+    logger.info({ tables: ["platform_wallet_ledger", "tax_liability_ledger"] }, "schema_guard_table_created");
+  });
 
   // ── api_keys: CREATE TABLE (must precede ALTER TABLE below) ─────────────
   // db-migrate.ts creates this table before the server starts. This guard
   // ensures it also exists in direct-push envs without db-migrate.
   // seed.ts inserts demo API keys at startup.
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS api_keys (
-      id SERIAL PRIMARY KEY,
-      merchant_id INTEGER NOT NULL,
-      api_key TEXT NOT NULL UNIQUE,
-      secret_key TEXT NOT NULL,
-      key_prefix TEXT NOT NULL,
-      label TEXT,
-      is_active BOOLEAN NOT NULL DEFAULT TRUE,
-      last_used_at TIMESTAMPTZ,
-      revoked_at TIMESTAMPTZ,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS api_keys_merchant_id_idx ON api_keys(merchant_id)`);
-  logger.info({ table: "api_keys" }, "schema_guard_table_created");
+  await block("api_keys", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS api_keys (
+        id SERIAL PRIMARY KEY,
+        merchant_id INTEGER NOT NULL,
+        api_key TEXT NOT NULL UNIQUE,
+        secret_key TEXT NOT NULL,
+        key_prefix TEXT NOT NULL,
+        label TEXT,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        last_used_at TIMESTAMPTZ,
+        revoked_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS api_keys_merchant_id_idx ON api_keys(merchant_id)`);
+    logger.info({ table: "api_keys" }, "schema_guard_table_created");
 
-  // ── api_keys: label column for named/labelled API keys ───────────────────
-  await exec.execute(sql`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS label TEXT`);
-  logger.info({ table: "api_keys", column: "label" }, "schema_guard_column_added");
+    // ── api_keys: label column for named/labelled API keys ───────────────────
+    await exec.execute(sql`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS label TEXT`);
+    logger.info({ table: "api_keys", column: "label" }, "schema_guard_column_added");
 
-  // ── api_keys: normalise UNIQUE constraint name ────────────────────────────
-  // PostgreSQL auto-names an inline UNIQUE as api_keys_api_key_key. The Drizzle
-  // schema expects api_keys_api_key_unique. Rename idempotently so dev/CI match
-  // production (which already has the canonical name from an explicit ADD CONSTRAINT).
-  await exec.execute(sql`
-    DO $$ BEGIN
-      IF EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conname = 'api_keys_api_key_key'
-          AND conrelid = 'api_keys'::regclass
-      ) AND NOT EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conname = 'api_keys_api_key_unique'
-          AND conrelid = 'api_keys'::regclass
-      ) THEN
-        ALTER TABLE api_keys RENAME CONSTRAINT api_keys_api_key_key TO api_keys_api_key_unique;
-      END IF;
-    END $$
-  `);
-  logger.info({ table: "api_keys", migration: "normalise_unique_constraint_name" }, "schema_guard_constraint_renamed");
+    // ── api_keys: normalise UNIQUE constraint name ────────────────────────────
+    // PostgreSQL auto-names an inline UNIQUE as api_keys_api_key_key. The Drizzle
+    // schema expects api_keys_api_key_unique. Rename idempotently so dev/CI match
+    // production (which already has the canonical name from an explicit ADD CONSTRAINT).
+    await exec.execute(sql`
+      DO $$ BEGIN
+        IF EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'api_keys_api_key_key'
+            AND conrelid = 'api_keys'::regclass
+        ) AND NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'api_keys_api_key_unique'
+            AND conrelid = 'api_keys'::regclass
+        ) THEN
+          ALTER TABLE api_keys RENAME CONSTRAINT api_keys_api_key_key TO api_keys_api_key_unique;
+        END IF;
+      END $$
+    `);
+    logger.info({ table: "api_keys", migration: "normalise_unique_constraint_name" }, "schema_guard_constraint_renamed");
+  });
 
   // ── invoices ──────────────────────────────────────────────────────────────
   // Introduced in the plan-billing feature; schemaGuard guard was missing,
   // causing fresh-DB crashes on any invoices route.
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS invoices (
-      id            SERIAL PRIMARY KEY,
-      merchant_id   INTEGER NOT NULL,
-      plan_id       INTEGER,
-      invoice_number TEXT NOT NULL UNIQUE,
-      amount        NUMERIC(12,2) NOT NULL DEFAULT 0,
-      currency      TEXT NOT NULL DEFAULT 'INR',
-      period        TEXT,
-      period_from   TIMESTAMPTZ,
-      period_to     TIMESTAMPTZ,
-      status        TEXT NOT NULL DEFAULT 'draft',
-      due_date      TIMESTAMPTZ,
-      paid_at       TIMESTAMPTZ,
-      notes         TEXT,
-      created_by    INTEGER,
-      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  logger.info({ table: "invoices" }, "schema_guard_table_created");
+  await block("invoices", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS invoices (
+        id            SERIAL PRIMARY KEY,
+        merchant_id   INTEGER NOT NULL,
+        plan_id       INTEGER,
+        invoice_number TEXT NOT NULL UNIQUE,
+        amount        NUMERIC(12,2) NOT NULL DEFAULT 0,
+        currency      TEXT NOT NULL DEFAULT 'INR',
+        period        TEXT,
+        period_from   TIMESTAMPTZ,
+        period_to     TIMESTAMPTZ,
+        status        TEXT NOT NULL DEFAULT 'draft',
+        due_date      TIMESTAMPTZ,
+        paid_at       TIMESTAMPTZ,
+        notes         TEXT,
+        created_by    INTEGER,
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info({ table: "invoices" }, "schema_guard_table_created");
 
-  // ── invoices: normalise UNIQUE constraint name ────────────────────────────
-  // PostgreSQL auto-names an inline UNIQUE as invoices_invoice_number_key.
-  // The Drizzle schema expects invoices_invoice_number_unique. Production
-  // already has the canonical name; rename idempotently so dev/CI match.
-  await exec.execute(sql`
-    DO $$ BEGIN
-      IF EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conname = 'invoices_invoice_number_key'
-          AND conrelid = 'invoices'::regclass
-      ) AND NOT EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conname = 'invoices_invoice_number_unique'
-          AND conrelid = 'invoices'::regclass
-      ) THEN
-        ALTER TABLE invoices RENAME CONSTRAINT invoices_invoice_number_key TO invoices_invoice_number_unique;
-      END IF;
-    END $$
-  `);
-  logger.info({ table: "invoices", migration: "normalise_unique_constraint_name" }, "schema_guard_constraint_renamed");
+    // ── invoices: normalise UNIQUE constraint name ────────────────────────────
+    // PostgreSQL auto-names an inline UNIQUE as invoices_invoice_number_key.
+    // The Drizzle schema expects invoices_invoice_number_unique. Production
+    // already has the canonical name; rename idempotently so dev/CI match.
+    await exec.execute(sql`
+      DO $$ BEGIN
+        IF EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'invoices_invoice_number_key'
+            AND conrelid = 'invoices'::regclass
+        ) AND NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'invoices_invoice_number_unique'
+            AND conrelid = 'invoices'::regclass
+        ) THEN
+          ALTER TABLE invoices RENAME CONSTRAINT invoices_invoice_number_key TO invoices_invoice_number_unique;
+        END IF;
+      END $$
+    `);
+    logger.info({ table: "invoices", migration: "normalise_unique_constraint_name" }, "schema_guard_constraint_renamed");
+  });
 
   // ── Normalise ALL remaining UNIQUE constraint names ───────────────────────
   // PostgreSQL auto-names inline UNIQUE as {table}_{col}_key.  Drizzle expects
@@ -567,215 +639,225 @@ async function runGuard(executor: GuardExecutor = db): Promise<void> {
   // already exists (i.e. on production and on subsequent server restarts).
   // Special case: merchant_plans was guarded with CREATE UNIQUE INDEX (not an
   // inline UNIQUE), so it gets DROP INDEX + ADD CONSTRAINT instead of RENAME.
-  await exec.execute(sql`
-    DO $$ BEGIN
-      -- SAFETY NOTE: every conrelid filter uses a pg_class subquery instead of
-      -- 'tablename'::regclass.  The ::regclass cast raises "relation does not
-      -- exist" when the table is absent (e.g. a table added after the last
-      -- production deployment), which would abort the entire DO block and crash
-      -- the schemaGuard, preventing the server from starting.  The subquery
-      -- returns NULL / empty-set for missing tables, making the EXISTS condition
-      -- safely false and skipping the RENAME without any error.
+  await block("normalise_unique_constraints", async () => {
+    await exec.execute(sql`
+      DO $$ BEGIN
+        -- SAFETY NOTE: every conrelid filter uses a pg_class subquery instead of
+        -- 'tablename'::regclass.  The ::regclass cast raises "relation does not
+        -- exist" when the table is absent (e.g. a table added after the last
+        -- production deployment), which would abort the entire DO block and crash
+        -- the schemaGuard, preventing the server from starting.  The subquery
+        -- returns NULL / empty-set for missing tables, making the EXISTS condition
+        -- safely false and skipping the RENAME without any error.
 
-      -- merchant_features
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_features_merchant_id_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchant_features'))
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_features_merchant_id_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchant_features'))
-      THEN ALTER TABLE merchant_features RENAME CONSTRAINT merchant_features_merchant_id_key TO merchant_features_merchant_id_unique; END IF;
+        -- merchant_features
+        IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_features_merchant_id_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchant_features'))
+           AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_features_merchant_id_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchant_features'))
+        THEN ALTER TABLE merchant_features RENAME CONSTRAINT merchant_features_merchant_id_key TO merchant_features_merchant_id_unique; END IF;
 
-      -- merchants
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchants_email_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchants'))
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchants_email_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchants'))
-      THEN ALTER TABLE merchants RENAME CONSTRAINT merchants_email_key TO merchants_email_unique; END IF;
+        -- merchants
+        IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchants_email_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchants'))
+           AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchants_email_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchants'))
+        THEN ALTER TABLE merchants RENAME CONSTRAINT merchants_email_key TO merchants_email_unique; END IF;
 
-      -- merchant_plans (created as UNIQUE INDEX not CONSTRAINT — convert)
-      IF EXISTS (SELECT 1 FROM pg_indexes WHERE tablename='merchant_plans' AND indexname='merchant_plans_merchant_id_uniq')
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_plans_merchant_id_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchant_plans'))
-      THEN
-        DROP INDEX merchant_plans_merchant_id_uniq;
-        ALTER TABLE merchant_plans ADD CONSTRAINT merchant_plans_merchant_id_unique UNIQUE (merchant_id);
-      END IF;
-      -- also handle the _key auto-name on completely fresh DBs
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_plans_merchant_id_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchant_plans'))
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_plans_merchant_id_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchant_plans'))
-      THEN ALTER TABLE merchant_plans RENAME CONSTRAINT merchant_plans_merchant_id_key TO merchant_plans_merchant_id_unique; END IF;
+        -- merchant_plans (created as UNIQUE INDEX not CONSTRAINT — convert)
+        IF EXISTS (SELECT 1 FROM pg_indexes WHERE tablename='merchant_plans' AND indexname='merchant_plans_merchant_id_uniq')
+           AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_plans_merchant_id_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchant_plans'))
+        THEN
+          DROP INDEX merchant_plans_merchant_id_uniq;
+          ALTER TABLE merchant_plans ADD CONSTRAINT merchant_plans_merchant_id_unique UNIQUE (merchant_id);
+        END IF;
+        -- also handle the _key auto-name on completely fresh DBs
+        IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_plans_merchant_id_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchant_plans'))
+           AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_plans_merchant_id_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchant_plans'))
+        THEN ALTER TABLE merchant_plans RENAME CONSTRAINT merchant_plans_merchant_id_key TO merchant_plans_merchant_id_unique; END IF;
 
-      -- payment_links
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='payment_links_slug_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='payment_links'))
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='payment_links_slug_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='payment_links'))
-      THEN ALTER TABLE payment_links RENAME CONSTRAINT payment_links_slug_key TO payment_links_slug_unique; END IF;
+        -- payment_links
+        IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='payment_links_slug_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='payment_links'))
+           AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='payment_links_slug_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='payment_links'))
+        THEN ALTER TABLE payment_links RENAME CONSTRAINT payment_links_slug_key TO payment_links_slug_unique; END IF;
 
-      -- plans
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='plans_name_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='plans'))
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='plans_name_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='plans'))
-      THEN ALTER TABLE plans RENAME CONSTRAINT plans_name_key TO plans_name_unique; END IF;
+        -- plans
+        IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='plans_name_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='plans'))
+           AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='plans_name_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='plans'))
+        THEN ALTER TABLE plans RENAME CONSTRAINT plans_name_key TO plans_name_unique; END IF;
 
-      -- providers
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='providers_slug_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='providers'))
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='providers_slug_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='providers'))
-      THEN ALTER TABLE providers RENAME CONSTRAINT providers_slug_key TO providers_slug_unique; END IF;
+        -- providers
+        IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='providers_slug_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='providers'))
+           AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='providers_slug_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='providers'))
+        THEN ALTER TABLE providers RENAME CONSTRAINT providers_slug_key TO providers_slug_unique; END IF;
 
-      -- transactions
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='transactions_utr_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='transactions'))
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='transactions_utr_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='transactions'))
-      THEN ALTER TABLE transactions RENAME CONSTRAINT transactions_utr_key TO transactions_utr_unique; END IF;
+        -- transactions
+        IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='transactions_utr_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='transactions'))
+           AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='transactions_utr_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='transactions'))
+        THEN ALTER TABLE transactions RENAME CONSTRAINT transactions_utr_key TO transactions_utr_unique; END IF;
 
-      -- users
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='users_email_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='users'))
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='users_email_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='users'))
-      THEN ALTER TABLE users RENAME CONSTRAINT users_email_key TO users_email_unique; END IF;
+        -- users
+        IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='users_email_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='users'))
+           AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='users_email_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='users'))
+        THEN ALTER TABLE users RENAME CONSTRAINT users_email_key TO users_email_unique; END IF;
 
-      -- virtual_accounts
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='virtual_accounts_account_number_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='virtual_accounts'))
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='virtual_accounts_account_number_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='virtual_accounts'))
-      THEN ALTER TABLE virtual_accounts RENAME CONSTRAINT virtual_accounts_account_number_key TO virtual_accounts_account_number_unique; END IF;
+        -- virtual_accounts
+        IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='virtual_accounts_account_number_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='virtual_accounts'))
+           AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='virtual_accounts_account_number_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='virtual_accounts'))
+        THEN ALTER TABLE virtual_accounts RENAME CONSTRAINT virtual_accounts_account_number_key TO virtual_accounts_account_number_unique; END IF;
 
-      -- webhooks
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='webhooks_merchant_id_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='webhooks'))
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='webhooks_merchant_id_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='webhooks'))
-      THEN ALTER TABLE webhooks RENAME CONSTRAINT webhooks_merchant_id_key TO webhooks_merchant_id_unique; END IF;
+        -- webhooks
+        IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='webhooks_merchant_id_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='webhooks'))
+           AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='webhooks_merchant_id_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='webhooks'))
+        THEN ALTER TABLE webhooks RENAME CONSTRAINT webhooks_merchant_id_key TO webhooks_merchant_id_unique; END IF;
 
-      -- agents (3 columns: email, referral_code, agent_code)
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='agents_email_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='agents'))
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='agents_email_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='agents'))
-      THEN ALTER TABLE agents RENAME CONSTRAINT agents_email_key TO agents_email_unique; END IF;
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='agents_referral_code_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='agents'))
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='agents_referral_code_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='agents'))
-      THEN ALTER TABLE agents RENAME CONSTRAINT agents_referral_code_key TO agents_referral_code_unique; END IF;
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='agents_agent_code_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='agents'))
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='agents_agent_code_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='agents'))
-      THEN ALTER TABLE agents RENAME CONSTRAINT agents_agent_code_key TO agents_agent_code_unique; END IF;
+        -- agents (3 columns: email, referral_code, agent_code)
+        IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='agents_email_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='agents'))
+           AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='agents_email_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='agents'))
+        THEN ALTER TABLE agents RENAME CONSTRAINT agents_email_key TO agents_email_unique; END IF;
+        IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='agents_referral_code_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='agents'))
+           AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='agents_referral_code_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='agents'))
+        THEN ALTER TABLE agents RENAME CONSTRAINT agents_referral_code_key TO agents_referral_code_unique; END IF;
+        IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='agents_agent_code_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='agents'))
+           AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='agents_agent_code_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='agents'))
+        THEN ALTER TABLE agents RENAME CONSTRAINT agents_agent_code_key TO agents_agent_code_unique; END IF;
 
-      -- cashfree_payment_orders
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='cashfree_payment_orders_cashfree_order_id_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='cashfree_payment_orders'))
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='cashfree_payment_orders_cashfree_order_id_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='cashfree_payment_orders'))
-      THEN ALTER TABLE cashfree_payment_orders RENAME CONSTRAINT cashfree_payment_orders_cashfree_order_id_key TO cashfree_payment_orders_cashfree_order_id_unique; END IF;
+        -- cashfree_payment_orders
+        IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='cashfree_payment_orders_cashfree_order_id_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='cashfree_payment_orders'))
+           AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='cashfree_payment_orders_cashfree_order_id_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='cashfree_payment_orders'))
+        THEN ALTER TABLE cashfree_payment_orders RENAME CONSTRAINT cashfree_payment_orders_cashfree_order_id_key TO cashfree_payment_orders_cashfree_order_id_unique; END IF;
 
-      -- merchant_kyc_data
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_kyc_data_merchant_id_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchant_kyc_data'))
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_kyc_data_merchant_id_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchant_kyc_data'))
-      THEN ALTER TABLE merchant_kyc_data RENAME CONSTRAINT merchant_kyc_data_merchant_id_key TO merchant_kyc_data_merchant_id_unique; END IF;
+        -- merchant_kyc_data
+        IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_kyc_data_merchant_id_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchant_kyc_data'))
+           AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_kyc_data_merchant_id_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchant_kyc_data'))
+        THEN ALTER TABLE merchant_kyc_data RENAME CONSTRAINT merchant_kyc_data_merchant_id_key TO merchant_kyc_data_merchant_id_unique; END IF;
 
-      -- merchant_kyc_verifications
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_kyc_verifications_merchant_id_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchant_kyc_verifications'))
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_kyc_verifications_merchant_id_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchant_kyc_verifications'))
-      THEN ALTER TABLE merchant_kyc_verifications RENAME CONSTRAINT merchant_kyc_verifications_merchant_id_key TO merchant_kyc_verifications_merchant_id_unique; END IF;
+        -- merchant_kyc_verifications
+        IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_kyc_verifications_merchant_id_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchant_kyc_verifications'))
+           AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_kyc_verifications_merchant_id_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchant_kyc_verifications'))
+        THEN ALTER TABLE merchant_kyc_verifications RENAME CONSTRAINT merchant_kyc_verifications_merchant_id_key TO merchant_kyc_verifications_merchant_id_unique; END IF;
 
-      -- merchant_onboarding_sessions
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_onboarding_sessions_verification_id_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchant_onboarding_sessions'))
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_onboarding_sessions_verification_id_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchant_onboarding_sessions'))
-      THEN ALTER TABLE merchant_onboarding_sessions RENAME CONSTRAINT merchant_onboarding_sessions_verification_id_key TO merchant_onboarding_sessions_verification_id_unique; END IF;
+        -- merchant_onboarding_sessions
+        IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_onboarding_sessions_verification_id_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchant_onboarding_sessions'))
+           AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_onboarding_sessions_verification_id_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchant_onboarding_sessions'))
+        THEN ALTER TABLE merchant_onboarding_sessions RENAME CONSTRAINT merchant_onboarding_sessions_verification_id_key TO merchant_onboarding_sessions_verification_id_unique; END IF;
 
-      -- merchant_verifications
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_verifications_merchant_id_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchant_verifications'))
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_verifications_merchant_id_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchant_verifications'))
-      THEN ALTER TABLE merchant_verifications RENAME CONSTRAINT merchant_verifications_merchant_id_key TO merchant_verifications_merchant_id_unique; END IF;
+        -- merchant_verifications
+        IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_verifications_merchant_id_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchant_verifications'))
+           AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_verifications_merchant_id_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchant_verifications'))
+        THEN ALTER TABLE merchant_verifications RENAME CONSTRAINT merchant_verifications_merchant_id_key TO merchant_verifications_merchant_id_unique; END IF;
 
-      -- payu_payment_orders
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='payu_payment_orders_txnid_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='payu_payment_orders'))
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='payu_payment_orders_txnid_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='payu_payment_orders'))
-      THEN ALTER TABLE payu_payment_orders RENAME CONSTRAINT payu_payment_orders_txnid_key TO payu_payment_orders_txnid_unique; END IF;
+        -- payu_payment_orders
+        IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='payu_payment_orders_txnid_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='payu_payment_orders'))
+           AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='payu_payment_orders_txnid_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='payu_payment_orders'))
+        THEN ALTER TABLE payu_payment_orders RENAME CONSTRAINT payu_payment_orders_txnid_key TO payu_payment_orders_txnid_unique; END IF;
 
-      -- permissions
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='permissions_key_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='permissions'))
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='permissions_key_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='permissions'))
-      THEN ALTER TABLE permissions RENAME CONSTRAINT permissions_key_key TO permissions_key_unique; END IF;
+        -- permissions
+        IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='permissions_key_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='permissions'))
+           AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='permissions_key_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='permissions'))
+        THEN ALTER TABLE permissions RENAME CONSTRAINT permissions_key_key TO permissions_key_unique; END IF;
 
-      -- provider_integrations
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='provider_integrations_provider_key_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='provider_integrations'))
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='provider_integrations_provider_key_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='provider_integrations'))
-      THEN ALTER TABLE provider_integrations RENAME CONSTRAINT provider_integrations_provider_key_key TO provider_integrations_provider_key_unique; END IF;
+        -- provider_integrations
+        IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='provider_integrations_provider_key_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='provider_integrations'))
+           AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='provider_integrations_provider_key_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='provider_integrations'))
+        THEN ALTER TABLE provider_integrations RENAME CONSTRAINT provider_integrations_provider_key_key TO provider_integrations_provider_key_unique; END IF;
 
-      -- provider_products (_uniq → _unique: explicitly-named index becomes canonical constraint name)
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='provider_products_product_key_uniq' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='provider_products'))
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='provider_products_product_key_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='provider_products'))
-      THEN ALTER TABLE provider_products RENAME CONSTRAINT provider_products_product_key_uniq TO provider_products_product_key_unique; END IF;
-    END $$
-  `);
-  logger.info({ migration: "normalise_all_unique_constraint_names" }, "schema_guard_constraints_normalised");
+        -- provider_products (_uniq → _unique: explicitly-named index becomes canonical constraint name)
+        IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='provider_products_product_key_uniq' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='provider_products'))
+           AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='provider_products_product_key_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='provider_products'))
+        THEN ALTER TABLE provider_products RENAME CONSTRAINT provider_products_product_key_uniq TO provider_products_product_key_unique; END IF;
+      END $$
+    `);
+    logger.info({ migration: "normalise_all_unique_constraint_names" }, "schema_guard_constraints_normalised");
+  });
 
   // ── otp_sms_settings (SMS OTP provider config) ────────────────────────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS otp_sms_settings (
-      id SERIAL PRIMARY KEY,
-      provider TEXT NOT NULL DEFAULT 'msg91',
-      api_key_encrypted TEXT,
-      api_key_iv TEXT,
-      api_key_tag TEXT,
-      sender_id TEXT,
-      dlt_entity_id TEXT,
-      dlt_template_id TEXT,
-      otp_template_text TEXT DEFAULT 'Your login code is {otp}. Valid for 10 minutes. Do not share.',
-      otp_expiry_seconds INTEGER NOT NULL DEFAULT 600,
-      max_resend_count INTEGER NOT NULL DEFAULT 3,
-      max_verify_attempts INTEGER NOT NULL DEFAULT 5,
-      otp_login_enabled BOOLEAN NOT NULL DEFAULT FALSE,
-      sms_fallback_enabled BOOLEAN NOT NULL DEFAULT FALSE,
-      fallback_provider TEXT,
-      fallback_api_key_encrypted TEXT,
-      fallback_api_key_iv TEXT,
-      fallback_api_key_tag TEXT,
-      fallback_sender_id TEXT,
-      fallback_dlt_template_id TEXT,
-      updated_by_email TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  logger.info({ table: "otp_sms_settings" }, "schema_guard_table_created");
-  // Post-launch columns added to otp_sms_settings:
-  await exec.execute(sql`ALTER TABLE otp_sms_settings ADD COLUMN IF NOT EXISTS destination_country TEXT NOT NULL DEFAULT 'IN'`);
-  await exec.execute(sql`ALTER TABLE otp_sms_settings ADD COLUMN IF NOT EXISTS test_verified_at TIMESTAMPTZ`);
+  await block("otp_sms_settings", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS otp_sms_settings (
+        id SERIAL PRIMARY KEY,
+        provider TEXT NOT NULL DEFAULT 'msg91',
+        api_key_encrypted TEXT,
+        api_key_iv TEXT,
+        api_key_tag TEXT,
+        sender_id TEXT,
+        dlt_entity_id TEXT,
+        dlt_template_id TEXT,
+        otp_template_text TEXT DEFAULT 'Your login code is {otp}. Valid for 10 minutes. Do not share.',
+        otp_expiry_seconds INTEGER NOT NULL DEFAULT 600,
+        max_resend_count INTEGER NOT NULL DEFAULT 3,
+        max_verify_attempts INTEGER NOT NULL DEFAULT 5,
+        otp_login_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        sms_fallback_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        fallback_provider TEXT,
+        fallback_api_key_encrypted TEXT,
+        fallback_api_key_iv TEXT,
+        fallback_api_key_tag TEXT,
+        fallback_sender_id TEXT,
+        fallback_dlt_template_id TEXT,
+        updated_by_email TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info({ table: "otp_sms_settings" }, "schema_guard_table_created");
+    // Post-launch columns added to otp_sms_settings:
+    await exec.execute(sql`ALTER TABLE otp_sms_settings ADD COLUMN IF NOT EXISTS destination_country TEXT NOT NULL DEFAULT 'IN'`);
+    await exec.execute(sql`ALTER TABLE otp_sms_settings ADD COLUMN IF NOT EXISTS test_verified_at TIMESTAMPTZ`);
+  });
 
   // ── sms_send_logs (SMS delivery audit log) ────────────────────────────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS sms_send_logs (
-      id SERIAL PRIMARY KEY,
-      mobile_hash TEXT NOT NULL,
-      mobile_last4 TEXT,
-      otp_purpose TEXT,
-      provider_used TEXT NOT NULL,
-      status TEXT NOT NULL,
-      fallback_attempted BOOLEAN NOT NULL DEFAULT FALSE,
-      fallback_provider_used TEXT,
-      provider_msg_id TEXT,
-      error_reason TEXT,
-      merchant_id INTEGER,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS sms_send_logs_created_at_idx ON sms_send_logs(created_at DESC)`);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS sms_send_logs_status_idx ON sms_send_logs(status)`);
-  logger.info({ table: "sms_send_logs" }, "schema_guard_table_created");
+  await block("sms_send_logs", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS sms_send_logs (
+        id SERIAL PRIMARY KEY,
+        mobile_hash TEXT NOT NULL,
+        mobile_last4 TEXT,
+        otp_purpose TEXT,
+        provider_used TEXT NOT NULL,
+        status TEXT NOT NULL,
+        fallback_attempted BOOLEAN NOT NULL DEFAULT FALSE,
+        fallback_provider_used TEXT,
+        provider_msg_id TEXT,
+        error_reason TEXT,
+        merchant_id INTEGER,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS sms_send_logs_created_at_idx ON sms_send_logs(created_at DESC)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS sms_send_logs_status_idx ON sms_send_logs(status)`);
+    logger.info({ table: "sms_send_logs" }, "schema_guard_table_created");
+  });
 
   // ── merchant_tryit_presets (server-side Try It preset sync) ───────────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS merchant_tryit_presets (
-      id SERIAL PRIMARY KEY,
-      merchant_id INTEGER NOT NULL,
-      presets JSONB NOT NULL DEFAULT '{}',
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await exec.execute(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS merchant_tryit_presets_merchant_id_uidx
-    ON merchant_tryit_presets(merchant_id)
-  `);
-  logger.info({ table: "merchant_tryit_presets" }, "schema_guard_table_created");
+  await block("merchant_tryit_presets", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS merchant_tryit_presets (
+        id SERIAL PRIMARY KEY,
+        merchant_id INTEGER NOT NULL,
+        presets JSONB NOT NULL DEFAULT '{}',
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS merchant_tryit_presets_merchant_id_uidx
+      ON merchant_tryit_presets(merchant_id)
+    `);
+    logger.info({ table: "merchant_tryit_presets" }, "schema_guard_table_created");
+  });
 
   // ── admin_tryit_presets (server-side Try It preset sync for admin) ────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS admin_tryit_presets (
-      id SERIAL PRIMARY KEY,
-      user_id INTEGER NOT NULL,
-      presets JSONB NOT NULL DEFAULT '{}',
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await exec.execute(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS admin_tryit_presets_user_id_uidx
-    ON admin_tryit_presets(user_id)
-  `);
-  logger.info({ table: "admin_tryit_presets" }, "schema_guard_table_created");
+  await block("admin_tryit_presets", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS admin_tryit_presets (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        presets JSONB NOT NULL DEFAULT '{}',
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS admin_tryit_presets_user_id_uidx
+      ON admin_tryit_presets(user_id)
+    `);
+    logger.info({ table: "admin_tryit_presets" }, "schema_guard_table_created");
+  });
 
   // ── merchants: core Drizzle-schema columns missing from the original stub ────
   // The original db-migrate.ts CREATE TABLE for merchants was missing email
@@ -785,419 +867,459 @@ async function runGuard(executor: GuardExecutor = db): Promise<void> {
   // accounts, which caused GET /webhooks → 403 in the e2e global-setup.
   // The CREATE TABLE in db-migrate.ts is now fixed; these ALTER TABLEs are a
   // safety net for any existing DB still on the old stub.
-  await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS email TEXT NOT NULL DEFAULT ''`);
-  // Create UNIQUE index separately (CREATE UNIQUE INDEX IF NOT EXISTS is idempotent).
-  await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS merchants_email_uniq ON merchants(email)`);
-  await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS verification_status TEXT NOT NULL DEFAULT 'pending'`);
-  await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS rejection_reason TEXT`);
-  await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS total_deposits NUMERIC(18,2) NOT NULL DEFAULT 0`);
-  await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS total_withdrawals NUMERIC(18,2) NOT NULL DEFAULT 0`);
-  await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS balance NUMERIC(18,2) NOT NULL DEFAULT 0`);
-  await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS logo_url TEXT`);
-  await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS brand_color TEXT`);
-  await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS callback_secret TEXT`);
-  await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS callback_secret_updated_at TIMESTAMPTZ`);
-  await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS callback_timestamp_window_seconds INTEGER`);
-  logger.info({ table: "merchants", migration: "add_core_drizzle_schema_columns" }, "schema_guard_column_added");
+  await block("merchants_core_columns", async () => {
+    await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS email TEXT NOT NULL DEFAULT ''`);
+    // Create UNIQUE index separately (CREATE UNIQUE INDEX IF NOT EXISTS is idempotent).
+    await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS merchants_email_uniq ON merchants(email)`);
+    await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS verification_status TEXT NOT NULL DEFAULT 'pending'`);
+    await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS rejection_reason TEXT`);
+    await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS total_deposits NUMERIC(18,2) NOT NULL DEFAULT 0`);
+    await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS total_withdrawals NUMERIC(18,2) NOT NULL DEFAULT 0`);
+    await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS balance NUMERIC(18,2) NOT NULL DEFAULT 0`);
+    await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS logo_url TEXT`);
+    await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS brand_color TEXT`);
+    await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS callback_secret TEXT`);
+    await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS callback_secret_updated_at TIMESTAMPTZ`);
+    await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS callback_timestamp_window_seconds INTEGER`);
+    logger.info({ table: "merchants", migration: "add_core_drizzle_schema_columns" }, "schema_guard_column_added");
+  });
 
   // ── merchants: payout merchant type & service flags ──────────────────────────
-  await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS merchant_type TEXT NOT NULL DEFAULT 'NORMAL'`);
-  await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS payout_service_enabled BOOLEAN NOT NULL DEFAULT false`);
-  await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS payin_service_enabled BOOLEAN NOT NULL DEFAULT true`);
-  await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS collection_service_enabled BOOLEAN NOT NULL DEFAULT true`);
-  await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS onboarding_type TEXT NOT NULL DEFAULT 'NORMAL'`);
-  await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS agent_id INTEGER`);
-  await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS approved_for_payout_at TIMESTAMPTZ`);
-  await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS payout_limits_json JSONB`);
-  await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS payout_fee_json JSONB`);
-  logger.info({ table: "merchants", migration: "add_payout_merchant_cols" }, "schema_guard_column_added");
+  await block("merchants_payout_merchant_type", async () => {
+    await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS merchant_type TEXT NOT NULL DEFAULT 'NORMAL'`);
+    await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS payout_service_enabled BOOLEAN NOT NULL DEFAULT false`);
+    await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS payin_service_enabled BOOLEAN NOT NULL DEFAULT true`);
+    await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS collection_service_enabled BOOLEAN NOT NULL DEFAULT true`);
+    await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS onboarding_type TEXT NOT NULL DEFAULT 'NORMAL'`);
+    await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS agent_id INTEGER`);
+    await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS approved_for_payout_at TIMESTAMPTZ`);
+    await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS payout_limits_json JSONB`);
+    await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS payout_fee_json JSONB`);
+    logger.info({ table: "merchants", migration: "add_payout_merchant_cols" }, "schema_guard_column_added");
+  });
 
   // ── merchants: environment classification ─────────────────────────────────
-  await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS environment TEXT NOT NULL DEFAULT 'production'`);
-  // Backfill known demo/seed merchants that existed before this column was added.
-  // This UPDATE is idempotent (only changes rows that are still set to 'production').
-  await exec.execute(sql`
-    UPDATE merchants
-    SET environment = 'demo'
-    WHERE email IN ('merchant@demo.com','merchant2@demo.com','merchant3@demo.com','payout_test@demo.com')
-      AND environment = 'production'
-  `);
-  logger.info({ table: "merchants", migration: "add_environment_col" }, "schema_guard_column_added");
+  await block("merchants_environment", async () => {
+    await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS environment TEXT NOT NULL DEFAULT 'production'`);
+    // Backfill known demo/seed merchants that existed before this column was added.
+    // This UPDATE is idempotent (only changes rows that are still set to 'production').
+    await exec.execute(sql`
+      UPDATE merchants
+      SET environment = 'demo'
+      WHERE email IN ('merchant@demo.com','merchant2@demo.com','merchant3@demo.com','payout_test@demo.com')
+        AND environment = 'production'
+    `);
+    logger.info({ table: "merchants", migration: "add_environment_col" }, "schema_guard_column_added");
+  });
 
   // ── secure_id_settings (Cashfree Secure ID provider config) ──────────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS secure_id_settings (
-      id SERIAL PRIMARY KEY,
-      mode TEXT NOT NULL DEFAULT 'test',
-      client_id_encrypted TEXT,
-      client_id_iv TEXT,
-      client_id_tag TEXT,
-      client_secret_encrypted TEXT,
-      client_secret_iv TEXT,
-      client_secret_tag TEXT,
-      api_version TEXT NOT NULL DEFAULT '2023-08-01',
-      onboarding_enabled BOOLEAN NOT NULL DEFAULT FALSE,
-      pan_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-      gst_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-      cin_enabled BOOLEAN NOT NULL DEFAULT FALSE,
-      bank_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-      ocr_enabled BOOLEAN NOT NULL DEFAULT FALSE,
-      updated_by_email TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  logger.info({ table: "secure_id_settings" }, "schema_guard_table_created");
+  await block("secure_id_settings", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS secure_id_settings (
+        id SERIAL PRIMARY KEY,
+        mode TEXT NOT NULL DEFAULT 'test',
+        client_id_encrypted TEXT,
+        client_id_iv TEXT,
+        client_id_tag TEXT,
+        client_secret_encrypted TEXT,
+        client_secret_iv TEXT,
+        client_secret_tag TEXT,
+        api_version TEXT NOT NULL DEFAULT '2023-08-01',
+        onboarding_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        pan_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        gst_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        cin_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        bank_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        ocr_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        updated_by_email TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info({ table: "secure_id_settings" }, "schema_guard_table_created");
+  });
 
   // ── merchant_onboarding_sessions ──────────────────────────────────────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS merchant_onboarding_sessions (
-      id SERIAL PRIMARY KEY,
-      merchant_id INTEGER NOT NULL,
-      mobile_last4 TEXT,
-      mobile_hash TEXT,
-      verification_id TEXT NOT NULL UNIQUE,
-      session_id_encrypted TEXT,
-      session_id_iv TEXT,
-      session_id_tag TEXT,
-      auth_code_encrypted TEXT,
-      auth_code_iv TEXT,
-      auth_code_tag TEXT,
-      access_token_encrypted TEXT,
-      access_token_iv TEXT,
-      access_token_tag TEXT,
-      status TEXT NOT NULL DEFAULT 'INITIATED',
-      consent_status TEXT NOT NULL DEFAULT 'PENDING',
-      data_available BOOLEAN DEFAULT FALSE,
-      expires_at TIMESTAMPTZ,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS mos_merchant_id_idx ON merchant_onboarding_sessions(merchant_id)`);
-  await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS mos_verification_id_uidx ON merchant_onboarding_sessions(verification_id)`);
-  logger.info({ table: "merchant_onboarding_sessions" }, "schema_guard_table_created");
+  await block("merchant_onboarding_sessions", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS merchant_onboarding_sessions (
+        id SERIAL PRIMARY KEY,
+        merchant_id INTEGER NOT NULL,
+        mobile_last4 TEXT,
+        mobile_hash TEXT,
+        verification_id TEXT NOT NULL UNIQUE,
+        session_id_encrypted TEXT,
+        session_id_iv TEXT,
+        session_id_tag TEXT,
+        auth_code_encrypted TEXT,
+        auth_code_iv TEXT,
+        auth_code_tag TEXT,
+        access_token_encrypted TEXT,
+        access_token_iv TEXT,
+        access_token_tag TEXT,
+        status TEXT NOT NULL DEFAULT 'INITIATED',
+        consent_status TEXT NOT NULL DEFAULT 'PENDING',
+        data_available BOOLEAN DEFAULT FALSE,
+        expires_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS mos_merchant_id_idx ON merchant_onboarding_sessions(merchant_id)`);
+    await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS mos_verification_id_uidx ON merchant_onboarding_sessions(verification_id)`);
+    logger.info({ table: "merchant_onboarding_sessions" }, "schema_guard_table_created");
+  });
 
   // ── merchant_kyc_data ─────────────────────────────────────────────────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS merchant_kyc_data (
-      id SERIAL PRIMARY KEY,
-      merchant_id INTEGER NOT NULL UNIQUE,
-      onboarding_session_id INTEGER,
-      full_name TEXT,
-      dob TEXT,
-      gender TEXT,
-      email TEXT,
-      pan_masked TEXT,
-      aadhaar_last4 TEXT,
-      address_line1 TEXT,
-      address_line2 TEXT,
-      city TEXT,
-      state_name TEXT,
-      pincode TEXT,
-      business_name TEXT,
-      gstin_masked TEXT,
-      cin_number TEXT,
-      bank_account_masked TEXT,
-      bank_ifsc TEXT,
-      bank_name TEXT,
-      pan_status TEXT DEFAULT 'PENDING',
-      gst_status TEXT DEFAULT 'PENDING',
-      cin_status TEXT DEFAULT 'SKIPPED',
-      bank_status TEXT DEFAULT 'PENDING',
-      risk_score INTEGER DEFAULT 0,
-      mismatch_flags JSONB,
-      admin_decision TEXT NOT NULL DEFAULT 'PENDING',
-      rejection_reason TEXT,
-      approved_by TEXT,
-      approved_at TIMESTAMPTZ,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  logger.info({ table: "merchant_kyc_data" }, "schema_guard_table_created");
+  await block("merchant_kyc_data", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS merchant_kyc_data (
+        id SERIAL PRIMARY KEY,
+        merchant_id INTEGER NOT NULL UNIQUE,
+        onboarding_session_id INTEGER,
+        full_name TEXT,
+        dob TEXT,
+        gender TEXT,
+        email TEXT,
+        pan_masked TEXT,
+        aadhaar_last4 TEXT,
+        address_line1 TEXT,
+        address_line2 TEXT,
+        city TEXT,
+        state_name TEXT,
+        pincode TEXT,
+        business_name TEXT,
+        gstin_masked TEXT,
+        cin_number TEXT,
+        bank_account_masked TEXT,
+        bank_ifsc TEXT,
+        bank_name TEXT,
+        pan_status TEXT DEFAULT 'PENDING',
+        gst_status TEXT DEFAULT 'PENDING',
+        cin_status TEXT DEFAULT 'SKIPPED',
+        bank_status TEXT DEFAULT 'PENDING',
+        risk_score INTEGER DEFAULT 0,
+        mismatch_flags JSONB,
+        admin_decision TEXT NOT NULL DEFAULT 'PENDING',
+        rejection_reason TEXT,
+        approved_by TEXT,
+        approved_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info({ table: "merchant_kyc_data" }, "schema_guard_table_created");
 
-  // ── merchant_kyc_data new columns (aadhaar_status, udyam, bank_holder_name) ─
-  // These ALTER TABLEs MUST come AFTER the CREATE TABLE above.  Moving them
-  // earlier (before the table exists on a fresh DB) caused an unrecoverable
-  // cascade abort that prevented system_config from being created, which in
-  // turn crashed the server on every Cloud Run promote attempt.
-  await exec.execute(sql`ALTER TABLE merchant_kyc_data ADD COLUMN IF NOT EXISTS aadhaar_status TEXT DEFAULT 'PENDING'`);
-  await exec.execute(sql`ALTER TABLE merchant_kyc_data ADD COLUMN IF NOT EXISTS bank_holder_name TEXT`);
-  await exec.execute(sql`ALTER TABLE merchant_kyc_data ADD COLUMN IF NOT EXISTS udyam_number TEXT`);
-  await exec.execute(sql`ALTER TABLE merchant_kyc_data ADD COLUMN IF NOT EXISTS udyam_status TEXT DEFAULT 'SKIPPED'`);
-  // Fix defaults: gst/cin should default to SKIPPED (optional)
-  await exec.execute(sql`UPDATE merchant_kyc_data SET gst_status = 'SKIPPED' WHERE gst_status = 'PENDING'`).catch(() => {});
-  await exec.execute(sql`UPDATE merchant_kyc_data SET cin_status = 'SKIPPED' WHERE cin_status = 'PENDING'`).catch(() => {});
-  logger.info({ table: "merchant_kyc_data", migration: "add_aadhaar_udyam_cols" }, "schema_guard_column_added");
+    // ── merchant_kyc_data new columns (aadhaar_status, udyam, bank_holder_name) ─
+    // These ALTER TABLEs MUST come AFTER the CREATE TABLE above.  Moving them
+    // earlier (before the table exists on a fresh DB) caused an unrecoverable
+    // cascade abort that prevented system_config from being created, which in
+    // turn crashed the server on every Cloud Run promote attempt.
+    await exec.execute(sql`ALTER TABLE merchant_kyc_data ADD COLUMN IF NOT EXISTS aadhaar_status TEXT DEFAULT 'PENDING'`);
+    await exec.execute(sql`ALTER TABLE merchant_kyc_data ADD COLUMN IF NOT EXISTS bank_holder_name TEXT`);
+    await exec.execute(sql`ALTER TABLE merchant_kyc_data ADD COLUMN IF NOT EXISTS udyam_number TEXT`);
+    await exec.execute(sql`ALTER TABLE merchant_kyc_data ADD COLUMN IF NOT EXISTS udyam_status TEXT DEFAULT 'SKIPPED'`);
+    // Fix defaults: gst/cin should default to SKIPPED (optional)
+    await exec.execute(sql`UPDATE merchant_kyc_data SET gst_status = 'SKIPPED' WHERE gst_status = 'PENDING'`).catch(() => {});
+    await exec.execute(sql`UPDATE merchant_kyc_data SET cin_status = 'SKIPPED' WHERE cin_status = 'PENDING'`).catch(() => {});
+    logger.info({ table: "merchant_kyc_data", migration: "add_aadhaar_udyam_cols" }, "schema_guard_column_added");
+  });
 
   // ── verification_logs (encrypted raw provider responses) ──────────────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS verification_logs (
-      id SERIAL PRIMARY KEY,
-      merchant_id INTEGER NOT NULL,
-      onboarding_session_id INTEGER,
-      verification_type TEXT NOT NULL,
-      status TEXT NOT NULL,
-      request_id TEXT,
-      raw_response_encrypted TEXT,
-      raw_response_iv TEXT,
-      raw_response_tag TEXT,
-      error_encrypted TEXT,
-      error_iv TEXT,
-      error_tag TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS vl_merchant_id_idx ON verification_logs(merchant_id)`);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS vl_created_at_idx ON verification_logs(created_at DESC)`);
-  logger.info({ table: "verification_logs" }, "schema_guard_table_created");
+  await block("verification_logs", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS verification_logs (
+        id SERIAL PRIMARY KEY,
+        merchant_id INTEGER NOT NULL,
+        onboarding_session_id INTEGER,
+        verification_type TEXT NOT NULL,
+        status TEXT NOT NULL,
+        request_id TEXT,
+        raw_response_encrypted TEXT,
+        raw_response_iv TEXT,
+        raw_response_tag TEXT,
+        error_encrypted TEXT,
+        error_iv TEXT,
+        error_tag TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS vl_merchant_id_idx ON verification_logs(merchant_id)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS vl_created_at_idx ON verification_logs(created_at DESC)`);
+    logger.info({ table: "verification_logs" }, "schema_guard_table_created");
+  });
 
   // ── merchant_kyc_verifications (new dedicated auto-KYC pipeline) ──────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS merchant_kyc_verifications (
-      id SERIAL PRIMARY KEY,
-      merchant_id INTEGER NOT NULL UNIQUE,
-      pan_number_masked TEXT,
-      pan_number_hash TEXT,
-      pan_name TEXT,
-      pan_type TEXT,
-      pan_verified BOOLEAN NOT NULL DEFAULT FALSE,
-      pan_verified_at TIMESTAMPTZ,
-      pan_reference_id_encrypted TEXT,
-      pan_reference_id_iv TEXT,
-      pan_reference_id_tag TEXT,
-      aadhaar_last4 TEXT,
-      aadhaar_number_hash TEXT,
-      aadhaar_name TEXT,
-      aadhaar_verified BOOLEAN NOT NULL DEFAULT FALSE,
-      aadhaar_verified_at TIMESTAMPTZ,
-      aadhaar_reference_id_encrypted TEXT,
-      aadhaar_reference_id_iv TEXT,
-      aadhaar_reference_id_tag TEXT,
-      aadhaar_digilocker_session_encrypted TEXT,
-      aadhaar_digilocker_session_iv TEXT,
-      aadhaar_digilocker_session_tag TEXT,
-      mobile_verified BOOLEAN NOT NULL DEFAULT FALSE,
-      mobile_verified_at TIMESTAMPTZ,
-      email_verified BOOLEAN NOT NULL DEFAULT FALSE,
-      email_verified_at TIMESTAMPTZ,
-      name_match_score INTEGER,
-      verification_status TEXT NOT NULL DEFAULT 'PENDING',
-      failure_reason TEXT,
-      consent_ip TEXT,
-      consent_user_agent TEXT,
-      consent_at TIMESTAMPTZ,
-      admin_decision_by TEXT,
-      admin_decision_at TIMESTAMPTZ,
-      admin_decision_note TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS mkv_status_idx ON merchant_kyc_verifications(verification_status)`);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS mkv_pan_hash_idx ON merchant_kyc_verifications(pan_number_hash)`);
-  await exec.execute(sql`ALTER TABLE merchant_kyc_verifications ADD COLUMN IF NOT EXISTS aadhaar_digilocker_session_encrypted TEXT`);
-  await exec.execute(sql`ALTER TABLE merchant_kyc_verifications ADD COLUMN IF NOT EXISTS aadhaar_digilocker_session_iv TEXT`);
-  await exec.execute(sql`ALTER TABLE merchant_kyc_verifications ADD COLUMN IF NOT EXISTS aadhaar_digilocker_session_tag TEXT`);
-  await exec.execute(sql`ALTER TABLE merchant_kyc_verifications ADD COLUMN IF NOT EXISTS mobile_verified BOOLEAN NOT NULL DEFAULT FALSE`);
-  await exec.execute(sql`ALTER TABLE merchant_kyc_verifications ADD COLUMN IF NOT EXISTS mobile_verified_at TIMESTAMPTZ`);
-  await exec.execute(sql`ALTER TABLE merchant_kyc_verifications ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE`);
-  await exec.execute(sql`ALTER TABLE merchant_kyc_verifications ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ`);
-  await exec.execute(sql`ALTER TABLE merchant_kyc_verifications DROP COLUMN IF EXISTS aadhaar_otp_session_encrypted`);
-  await exec.execute(sql`ALTER TABLE merchant_kyc_verifications DROP COLUMN IF EXISTS aadhaar_otp_session_iv`);
-  await exec.execute(sql`ALTER TABLE merchant_kyc_verifications DROP COLUMN IF EXISTS aadhaar_otp_session_tag`);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS mkv_aadhaar_hash_idx ON merchant_kyc_verifications(aadhaar_number_hash)`);
-  logger.info({ table: "merchant_kyc_verifications" }, "schema_guard_table_created");
+  await block("merchant_kyc_verifications", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS merchant_kyc_verifications (
+        id SERIAL PRIMARY KEY,
+        merchant_id INTEGER NOT NULL UNIQUE,
+        pan_number_masked TEXT,
+        pan_number_hash TEXT,
+        pan_name TEXT,
+        pan_type TEXT,
+        pan_verified BOOLEAN NOT NULL DEFAULT FALSE,
+        pan_verified_at TIMESTAMPTZ,
+        pan_reference_id_encrypted TEXT,
+        pan_reference_id_iv TEXT,
+        pan_reference_id_tag TEXT,
+        aadhaar_last4 TEXT,
+        aadhaar_number_hash TEXT,
+        aadhaar_name TEXT,
+        aadhaar_verified BOOLEAN NOT NULL DEFAULT FALSE,
+        aadhaar_verified_at TIMESTAMPTZ,
+        aadhaar_reference_id_encrypted TEXT,
+        aadhaar_reference_id_iv TEXT,
+        aadhaar_reference_id_tag TEXT,
+        aadhaar_digilocker_session_encrypted TEXT,
+        aadhaar_digilocker_session_iv TEXT,
+        aadhaar_digilocker_session_tag TEXT,
+        mobile_verified BOOLEAN NOT NULL DEFAULT FALSE,
+        mobile_verified_at TIMESTAMPTZ,
+        email_verified BOOLEAN NOT NULL DEFAULT FALSE,
+        email_verified_at TIMESTAMPTZ,
+        name_match_score INTEGER,
+        verification_status TEXT NOT NULL DEFAULT 'PENDING',
+        failure_reason TEXT,
+        consent_ip TEXT,
+        consent_user_agent TEXT,
+        consent_at TIMESTAMPTZ,
+        admin_decision_by TEXT,
+        admin_decision_at TIMESTAMPTZ,
+        admin_decision_note TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS mkv_status_idx ON merchant_kyc_verifications(verification_status)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS mkv_pan_hash_idx ON merchant_kyc_verifications(pan_number_hash)`);
+    await exec.execute(sql`ALTER TABLE merchant_kyc_verifications ADD COLUMN IF NOT EXISTS aadhaar_digilocker_session_encrypted TEXT`);
+    await exec.execute(sql`ALTER TABLE merchant_kyc_verifications ADD COLUMN IF NOT EXISTS aadhaar_digilocker_session_iv TEXT`);
+    await exec.execute(sql`ALTER TABLE merchant_kyc_verifications ADD COLUMN IF NOT EXISTS aadhaar_digilocker_session_tag TEXT`);
+    await exec.execute(sql`ALTER TABLE merchant_kyc_verifications ADD COLUMN IF NOT EXISTS mobile_verified BOOLEAN NOT NULL DEFAULT FALSE`);
+    await exec.execute(sql`ALTER TABLE merchant_kyc_verifications ADD COLUMN IF NOT EXISTS mobile_verified_at TIMESTAMPTZ`);
+    await exec.execute(sql`ALTER TABLE merchant_kyc_verifications ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE`);
+    await exec.execute(sql`ALTER TABLE merchant_kyc_verifications ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ`);
+    await exec.execute(sql`ALTER TABLE merchant_kyc_verifications DROP COLUMN IF EXISTS aadhaar_otp_session_encrypted`);
+    await exec.execute(sql`ALTER TABLE merchant_kyc_verifications DROP COLUMN IF EXISTS aadhaar_otp_session_iv`);
+    await exec.execute(sql`ALTER TABLE merchant_kyc_verifications DROP COLUMN IF EXISTS aadhaar_otp_session_tag`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS mkv_aadhaar_hash_idx ON merchant_kyc_verifications(aadhaar_number_hash)`);
+    logger.info({ table: "merchant_kyc_verifications" }, "schema_guard_table_created");
+  });
 
   // ── kyc_verification_logs (masked audit trail for auto-KYC pipeline) ──────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS kyc_verification_logs (
-      id SERIAL PRIMARY KEY,
-      merchant_id INTEGER NOT NULL,
-      verification_type TEXT NOT NULL,
-      status TEXT NOT NULL,
-      request_masked TEXT,
-      response_masked TEXT,
-      provider_reference_id_encrypted TEXT,
-      provider_reference_id_iv TEXT,
-      provider_reference_id_tag TEXT,
-      error_reason TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS kvl_merchant_id_idx ON kyc_verification_logs(merchant_id)`);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS kvl_created_at_idx ON kyc_verification_logs(created_at DESC)`);
-  logger.info({ table: "kyc_verification_logs" }, "schema_guard_table_created");
+  await block("kyc_verification_logs", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS kyc_verification_logs (
+        id SERIAL PRIMARY KEY,
+        merchant_id INTEGER NOT NULL,
+        verification_type TEXT NOT NULL,
+        status TEXT NOT NULL,
+        request_masked TEXT,
+        response_masked TEXT,
+        provider_reference_id_encrypted TEXT,
+        provider_reference_id_iv TEXT,
+        provider_reference_id_tag TEXT,
+        error_reason TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS kvl_merchant_id_idx ON kyc_verification_logs(merchant_id)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS kvl_created_at_idx ON kyc_verification_logs(created_at DESC)`);
+    logger.info({ table: "kyc_verification_logs" }, "schema_guard_table_created");
+  });
 
   // ── merchant_kyc_settings (Super Admin auto-KYC provider config) ──────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS merchant_kyc_settings (
-      id SERIAL PRIMARY KEY,
-      pan_api_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-      aadhaar_api_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-      mode TEXT NOT NULL DEFAULT 'test',
-      client_id_encrypted TEXT,
-      client_id_iv TEXT,
-      client_id_tag TEXT,
-      client_secret_encrypted TEXT,
-      client_secret_iv TEXT,
-      client_secret_tag TEXT,
-      base_url TEXT,
-      min_name_match_score INTEGER NOT NULL DEFAULT 80,
-      auto_approve_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-      duplicate_check_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-      daily_verification_limit INTEGER NOT NULL DEFAULT 200,
-      per_merchant_attempt_limit INTEGER NOT NULL DEFAULT 5,
-      updated_by_email TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  logger.info({ table: "merchant_kyc_settings" }, "schema_guard_table_created");
+  await block("merchant_kyc_settings", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS merchant_kyc_settings (
+        id SERIAL PRIMARY KEY,
+        pan_api_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        aadhaar_api_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        mode TEXT NOT NULL DEFAULT 'test',
+        client_id_encrypted TEXT,
+        client_id_iv TEXT,
+        client_id_tag TEXT,
+        client_secret_encrypted TEXT,
+        client_secret_iv TEXT,
+        client_secret_tag TEXT,
+        base_url TEXT,
+        min_name_match_score INTEGER NOT NULL DEFAULT 80,
+        auto_approve_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        duplicate_check_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        daily_verification_limit INTEGER NOT NULL DEFAULT 200,
+        per_merchant_attempt_limit INTEGER NOT NULL DEFAULT 5,
+        updated_by_email TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info({ table: "merchant_kyc_settings" }, "schema_guard_table_created");
+  });
 
   // ── withdrawals: auto-approval tracking columns ─────────────────────────
-  await exec.execute(sql`ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS approval_type TEXT NOT NULL DEFAULT 'MANUAL'`);
-  await exec.execute(sql`ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS approved_by_system BOOLEAN NOT NULL DEFAULT FALSE`);
-  await exec.execute(sql`ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS auto_approval_rule_snapshot JSONB`);
-  await exec.execute(sql`ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS approved_by TEXT`);
-  logger.info({ table: "withdrawals", migration: "add_auto_approval_cols" }, "schema_guard_column_added");
+  await block("withdrawals_auto_approval", async () => {
+    await exec.execute(sql`ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS approval_type TEXT NOT NULL DEFAULT 'MANUAL'`);
+    await exec.execute(sql`ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS approved_by_system BOOLEAN NOT NULL DEFAULT FALSE`);
+    await exec.execute(sql`ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS auto_approval_rule_snapshot JSONB`);
+    await exec.execute(sql`ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS approved_by TEXT`);
+    logger.info({ table: "withdrawals", migration: "add_auto_approval_cols" }, "schema_guard_column_added");
+  });
 
   // ── merchants: per-merchant auto-payout settings ─────────────────────────
-  await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS auto_payout_enabled BOOLEAN NOT NULL DEFAULT FALSE`);
-  await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS auto_payout_max_single_amount NUMERIC(18,2)`);
-  await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS auto_payout_daily_limit NUMERIC(18,2)`);
-  await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS auto_payout_monthly_limit NUMERIC(18,2)`);
-  await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS per_beneficiary_daily_limit NUMERIC(18,2)`);
-  await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS auto_payout_allowed_modes JSONB`);
-  await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS auto_payout_only_verified_beneficiaries BOOLEAN NOT NULL DEFAULT TRUE`);
-  await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS auto_payout_min_wallet_balance_after_payout NUMERIC(18,2) NOT NULL DEFAULT 0`);
-  await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS auto_payout_paused BOOLEAN NOT NULL DEFAULT FALSE`);
-  await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS auto_payout_updated_by TEXT`);
-  await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS auto_payout_updated_at TIMESTAMPTZ`);
-  logger.info({ table: "merchants", migration: "add_auto_payout_cols" }, "schema_guard_column_added");
+  await block("merchants_auto_payout", async () => {
+    await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS auto_payout_enabled BOOLEAN NOT NULL DEFAULT FALSE`);
+    await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS auto_payout_max_single_amount NUMERIC(18,2)`);
+    await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS auto_payout_daily_limit NUMERIC(18,2)`);
+    await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS auto_payout_monthly_limit NUMERIC(18,2)`);
+    await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS per_beneficiary_daily_limit NUMERIC(18,2)`);
+    await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS auto_payout_allowed_modes JSONB`);
+    await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS auto_payout_only_verified_beneficiaries BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS auto_payout_min_wallet_balance_after_payout NUMERIC(18,2) NOT NULL DEFAULT 0`);
+    await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS auto_payout_paused BOOLEAN NOT NULL DEFAULT FALSE`);
+    await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS auto_payout_updated_by TEXT`);
+    await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS auto_payout_updated_at TIMESTAMPTZ`);
+    logger.info({ table: "merchants", migration: "add_auto_payout_cols" }, "schema_guard_column_added");
+  });
 
   // ── merchants: payout merchant self-registration columns ──────────────────
-  await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS registration_stage TEXT NOT NULL DEFAULT 'REGISTERED'`);
-  await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS business_type TEXT`);
-  await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS pan_number TEXT`);
-  logger.info({ table: "merchants", migration: "add_payout_merchant_registration_cols" }, "schema_guard_column_added");
+  await block("merchants_registration", async () => {
+    await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS registration_stage TEXT NOT NULL DEFAULT 'REGISTERED'`);
+    await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS business_type TEXT`);
+    await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS pan_number TEXT`);
+    logger.info({ table: "merchants", migration: "add_payout_merchant_registration_cols" }, "schema_guard_column_added");
+  });
 
   // ── users: payout admin permission columns ───────────────────────────────
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS can_manage_payout_provider_credentials BOOLEAN NOT NULL DEFAULT FALSE`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS permissions_json JSONB`);
-  logger.info({ table: "users", migration: "add_payout_admin_permission_cols" }, "schema_guard_column_added");
+  await block("users_payout_permissions", async () => {
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS can_manage_payout_provider_credentials BOOLEAN NOT NULL DEFAULT FALSE`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS permissions_json JSONB`);
+    logger.info({ table: "users", migration: "add_payout_admin_permission_cols" }, "schema_guard_column_added");
+  });
 
   // ── agents table ─────────────────────────────────────────────────────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS agents (
-      id SERIAL PRIMARY KEY,
-      user_id INTEGER,
-      name TEXT NOT NULL,
-      mobile TEXT NOT NULL,
-      email TEXT NOT NULL UNIQUE,
-      referral_code TEXT NOT NULL UNIQUE,
-      status TEXT NOT NULL DEFAULT 'active',
-      wallet_balance NUMERIC(18,2) NOT NULL DEFAULT 0,
-      total_commission_earned NUMERIC(18,2) NOT NULL DEFAULT 0,
-      total_commission_paid NUMERIC(18,2) NOT NULL DEFAULT 0,
-      created_by_admin_id INTEGER,
-      notes TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  logger.info({ table: "agents" }, "schema_guard_table_created");
+  await block("agents_table", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS agents (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER,
+        name TEXT NOT NULL,
+        mobile TEXT NOT NULL,
+        email TEXT NOT NULL UNIQUE,
+        referral_code TEXT NOT NULL UNIQUE,
+        status TEXT NOT NULL DEFAULT 'active',
+        wallet_balance NUMERIC(18,2) NOT NULL DEFAULT 0,
+        total_commission_earned NUMERIC(18,2) NOT NULL DEFAULT 0,
+        total_commission_paid NUMERIC(18,2) NOT NULL DEFAULT 0,
+        created_by_admin_id INTEGER,
+        notes TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info({ table: "agents" }, "schema_guard_table_created");
+  });
 
   // ── payout_beneficiaries ──────────────────────────────────────────────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS payout_beneficiaries (
-      id SERIAL PRIMARY KEY,
-      merchant_id INTEGER NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
-      env TEXT NOT NULL DEFAULT 'test',
-      label TEXT,
-      payout_mode TEXT NOT NULL,
-      bank_account TEXT,
-      bank_name TEXT,
-      ifsc_code TEXT,
-      account_holder TEXT,
-      upi_id TEXT,
-      beneficiary_key VARCHAR(120) NOT NULL,
-      provider_beneficiary_id VARCHAR(64),
-      local_status TEXT NOT NULL DEFAULT 'active',
-      provider_status TEXT NOT NULL DEFAULT 'not_created',
-      last_provider_error TEXT,
-      status TEXT NOT NULL DEFAULT 'active',
-      last_error TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      CONSTRAINT payout_beneficiaries_merchant_env_key_unique UNIQUE (merchant_id, env, beneficiary_key)
-    )
-  `);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS pb_merchant_idx ON payout_beneficiaries(merchant_id)`);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS pb_local_status_idx ON payout_beneficiaries(local_status)`);
-  logger.info({ table: "payout_beneficiaries" }, "schema_guard_table_created");
+  await block("payout_beneficiaries", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS payout_beneficiaries (
+        id SERIAL PRIMARY KEY,
+        merchant_id INTEGER NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
+        env TEXT NOT NULL DEFAULT 'test',
+        label TEXT,
+        payout_mode TEXT NOT NULL,
+        bank_account TEXT,
+        bank_name TEXT,
+        ifsc_code TEXT,
+        account_holder TEXT,
+        upi_id TEXT,
+        beneficiary_key VARCHAR(120) NOT NULL,
+        provider_beneficiary_id VARCHAR(64),
+        local_status TEXT NOT NULL DEFAULT 'active',
+        provider_status TEXT NOT NULL DEFAULT 'not_created',
+        last_provider_error TEXT,
+        status TEXT NOT NULL DEFAULT 'active',
+        last_error TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT payout_beneficiaries_merchant_env_key_unique UNIQUE (merchant_id, env, beneficiary_key)
+      )
+    `);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS pb_merchant_idx ON payout_beneficiaries(merchant_id)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS pb_local_status_idx ON payout_beneficiaries(local_status)`);
+    logger.info({ table: "payout_beneficiaries" }, "schema_guard_table_created");
+  });
 
   // ── payout_wallet_load_orders ─────────────────────────────────────────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS payout_wallet_load_orders (
-      id SERIAL PRIMARY KEY,
-      load_id TEXT NOT NULL,
-      merchant_id INTEGER NOT NULL REFERENCES merchants(id) ON DELETE RESTRICT,
-      amount NUMERIC(18,2) NOT NULL,
-      fee_amount NUMERIC(18,2) NOT NULL DEFAULT 0,
-      gst_amount NUMERIC(18,2) NOT NULL DEFAULT 0,
-      net_credit_amount NUMERIC(18,2) NOT NULL,
-      method TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'CREATED',
-      internal_order_id TEXT,
-      provider_payment_id TEXT,
-      utr TEXT,
-      payer_name TEXT,
-      payer_reference TEXT,
-      screenshot_url TEXT,
-      rejection_reason TEXT,
-      credited_at TIMESTAMPTZ,
-      approved_by INTEGER,
-      approved_at TIMESTAMPTZ,
-      admin_note TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS pwlo_load_id_uniq ON payout_wallet_load_orders(load_id)`);
-  await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS pwlo_internal_order_id_uniq ON payout_wallet_load_orders(internal_order_id) WHERE internal_order_id IS NOT NULL`);
-  await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS pwlo_utr_uniq ON payout_wallet_load_orders(utr) WHERE utr IS NOT NULL`);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS pwlo_merchant_created_idx ON payout_wallet_load_orders(merchant_id, created_at)`);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS pwlo_status_idx ON payout_wallet_load_orders(status)`);
-  logger.info({ table: "payout_wallet_load_orders" }, "schema_guard_table_created");
+  await block("payout_wallet_load_orders", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS payout_wallet_load_orders (
+        id SERIAL PRIMARY KEY,
+        load_id TEXT NOT NULL,
+        merchant_id INTEGER NOT NULL REFERENCES merchants(id) ON DELETE RESTRICT,
+        amount NUMERIC(18,2) NOT NULL,
+        fee_amount NUMERIC(18,2) NOT NULL DEFAULT 0,
+        gst_amount NUMERIC(18,2) NOT NULL DEFAULT 0,
+        net_credit_amount NUMERIC(18,2) NOT NULL,
+        method TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'CREATED',
+        internal_order_id TEXT,
+        provider_payment_id TEXT,
+        utr TEXT,
+        payer_name TEXT,
+        payer_reference TEXT,
+        screenshot_url TEXT,
+        rejection_reason TEXT,
+        credited_at TIMESTAMPTZ,
+        approved_by INTEGER,
+        approved_at TIMESTAMPTZ,
+        admin_note TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS pwlo_load_id_uniq ON payout_wallet_load_orders(load_id)`);
+    await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS pwlo_internal_order_id_uniq ON payout_wallet_load_orders(internal_order_id) WHERE internal_order_id IS NOT NULL`);
+    await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS pwlo_utr_uniq ON payout_wallet_load_orders(utr) WHERE utr IS NOT NULL`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS pwlo_merchant_created_idx ON payout_wallet_load_orders(merchant_id, created_at)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS pwlo_status_idx ON payout_wallet_load_orders(status)`);
+    logger.info({ table: "payout_wallet_load_orders" }, "schema_guard_table_created");
+  });
 
   // ── withdrawals: idempotency key for double-submit protection ───────────
-  await exec.execute(sql`ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS idempotency_key TEXT`);
-  await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS withdrawals_merchant_idempotency_key_uniq ON withdrawals(merchant_id, idempotency_key) WHERE idempotency_key IS NOT NULL`);
-  logger.info({ table: "withdrawals", migration: "add_idempotency_key" }, "schema_guard_column_added");
+  await block("withdrawals_idempotency", async () => {
+    await exec.execute(sql`ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS idempotency_key TEXT`);
+    await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS withdrawals_merchant_idempotency_key_uniq ON withdrawals(merchant_id, idempotency_key) WHERE idempotency_key IS NOT NULL`);
+    logger.info({ table: "withdrawals", migration: "add_idempotency_key" }, "schema_guard_column_added");
+  });
 
   // ── withdrawals: payout transaction slip fields ──────────────────────────
-  await exec.execute(sql`ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS slip_verification_token TEXT`);
-  await exec.execute(sql`ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS payout_fee NUMERIC(10,2) NOT NULL DEFAULT 0`);
-  await exec.execute(sql`ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS gst_amount NUMERIC(10,2) NOT NULL DEFAULT 0`);
-  await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS withdrawals_slip_verif_token_uniq ON withdrawals(slip_verification_token) WHERE slip_verification_token IS NOT NULL`);
-  logger.info({ table: "withdrawals", migration: "add_slip_fields" }, "schema_guard_column_added");
+  await block("withdrawals_slip", async () => {
+    await exec.execute(sql`ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS slip_verification_token TEXT`);
+    await exec.execute(sql`ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS payout_fee NUMERIC(10,2) NOT NULL DEFAULT 0`);
+    await exec.execute(sql`ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS gst_amount NUMERIC(10,2) NOT NULL DEFAULT 0`);
+    await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS withdrawals_slip_verif_token_uniq ON withdrawals(slip_verification_token) WHERE slip_verification_token IS NOT NULL`);
+    logger.info({ table: "withdrawals", migration: "add_slip_fields" }, "schema_guard_column_added");
+  });
 
   // ── system_config ────────────────────────────────────────────────────────
   // Key-value store queried by initReconciliationScheduler() at startup.
   // If it doesn't exist on a fresh DB the scheduler throws "relation
   // system_config does not exist" before the server binds to port 8080
   // → nginx returns HTTP 502 on every health-check retry (CI failure).
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS system_config (
-      key VARCHAR(100) PRIMARY KEY,
-      value TEXT NOT NULL,
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_by_email VARCHAR(255)
-    )
-  `);
-  logger.info({ table: "system_config" }, "schema_guard_table_created");
+  await block("system_config", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS system_config (
+        key VARCHAR(100) PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_by_email VARCHAR(255)
+      )
+    `);
+    logger.info({ table: "system_config" }, "schema_guard_table_created");
+  });
 
   // ── plans: full Drizzle schema column set ────────────────────────────────
   // The original db-migrate.ts stub only created 6 columns (id, name, price,
@@ -1205,26 +1327,28 @@ async function runGuard(executor: GuardExecutor = db): Promise<void> {
   // Drizzle-schema columns, so a fresh CI DB crashed immediately with
   // "column does not exist". The CREATE TABLE in db-migrate.ts is now fixed,
   // but these ALTER TABLEs are a safety net for any existing DB still on the stub.
-  await exec.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS description TEXT`);
-  await exec.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS monthly_fee TEXT NOT NULL DEFAULT '0'`);
-  await exec.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS yearly_fee TEXT NOT NULL DEFAULT '0'`);
-  await exec.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS setup_fee TEXT NOT NULL DEFAULT '0'`);
-  await exec.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS pricing TEXT NOT NULL DEFAULT '{}'`);
-  await exec.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS custom_features TEXT NOT NULL DEFAULT '[]'`);
-  await exec.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS dynamic_qr_limit INTEGER NOT NULL DEFAULT 10`);
-  await exec.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS static_qr_limit INTEGER NOT NULL DEFAULT 10`);
-  await exec.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS virtual_account_limit INTEGER NOT NULL DEFAULT 5`);
-  await exec.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS payment_link_limit INTEGER NOT NULL DEFAULT 10`);
-  await exec.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS payout_limit INTEGER NOT NULL DEFAULT 20`);
-  await exec.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS daily_transaction_limit INTEGER NOT NULL DEFAULT 999`);
-  await exec.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS monthly_transaction_limit INTEGER NOT NULL DEFAULT 9999`);
-  await exec.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS settlement_fee TEXT NOT NULL DEFAULT '2.0'`);
-  await exec.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS deposit_fee TEXT NOT NULL DEFAULT '0.0'`);
-  await exec.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS api_access BOOLEAN NOT NULL DEFAULT TRUE`);
-  await exec.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS webhook_access BOOLEAN NOT NULL DEFAULT TRUE`);
-  await exec.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS provider_access BOOLEAN NOT NULL DEFAULT FALSE`);
-  await exec.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE`);
-  logger.info({ table: "plans", migration: "add_full_drizzle_schema_columns" }, "schema_guard_column_added");
+  await block("plans_columns", async () => {
+    await exec.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS description TEXT`);
+    await exec.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS monthly_fee TEXT NOT NULL DEFAULT '0'`);
+    await exec.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS yearly_fee TEXT NOT NULL DEFAULT '0'`);
+    await exec.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS setup_fee TEXT NOT NULL DEFAULT '0'`);
+    await exec.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS pricing TEXT NOT NULL DEFAULT '{}'`);
+    await exec.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS custom_features TEXT NOT NULL DEFAULT '[]'`);
+    await exec.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS dynamic_qr_limit INTEGER NOT NULL DEFAULT 10`);
+    await exec.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS static_qr_limit INTEGER NOT NULL DEFAULT 10`);
+    await exec.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS virtual_account_limit INTEGER NOT NULL DEFAULT 5`);
+    await exec.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS payment_link_limit INTEGER NOT NULL DEFAULT 10`);
+    await exec.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS payout_limit INTEGER NOT NULL DEFAULT 20`);
+    await exec.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS daily_transaction_limit INTEGER NOT NULL DEFAULT 999`);
+    await exec.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS monthly_transaction_limit INTEGER NOT NULL DEFAULT 9999`);
+    await exec.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS settlement_fee TEXT NOT NULL DEFAULT '2.0'`);
+    await exec.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS deposit_fee TEXT NOT NULL DEFAULT '0.0'`);
+    await exec.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS api_access BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS webhook_access BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS provider_access BOOLEAN NOT NULL DEFAULT FALSE`);
+    await exec.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE`);
+    logger.info({ table: "plans", migration: "add_full_drizzle_schema_columns" }, "schema_guard_column_added");
+  });
 
   // ── merchant_plans: UNIQUE constraint + Drizzle schema columns ──────────
   // Root CI failure: db-migrate's CREATE TABLE for merchant_plans had neither
@@ -1234,73 +1358,81 @@ async function runGuard(executor: GuardExecutor = db): Promise<void> {
   // which requires a UNIQUE constraint — without it Postgres throws "no unique
   // constraint matching ON CONFLICT specification" on a fresh DB → seed
   // crashes → server never binds to port 8080 → nginx returns 502.
-  await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS merchant_plans_merchant_id_uniq ON merchant_plans(merchant_id)`);
-  await exec.execute(sql`ALTER TABLE merchant_plans ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
-  await exec.execute(sql`ALTER TABLE merchant_plans ADD COLUMN IF NOT EXISTS renewed_at TIMESTAMPTZ`);
-  await exec.execute(sql`ALTER TABLE merchant_plans ADD COLUMN IF NOT EXISTS scheduled_renewal_at TIMESTAMPTZ`);
-  await exec.execute(sql`ALTER TABLE merchant_plans ADD COLUMN IF NOT EXISTS assigned_by INTEGER`);
-  await exec.execute(sql`ALTER TABLE merchant_plans ADD COLUMN IF NOT EXISTS notes TEXT`);
-  logger.info({ table: "merchant_plans", migration: "add_unique_and_drizzle_columns" }, "schema_guard_column_added");
+  await block("merchant_plans", async () => {
+    await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS merchant_plans_merchant_id_uniq ON merchant_plans(merchant_id)`);
+    await exec.execute(sql`ALTER TABLE merchant_plans ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
+    await exec.execute(sql`ALTER TABLE merchant_plans ADD COLUMN IF NOT EXISTS renewed_at TIMESTAMPTZ`);
+    await exec.execute(sql`ALTER TABLE merchant_plans ADD COLUMN IF NOT EXISTS scheduled_renewal_at TIMESTAMPTZ`);
+    await exec.execute(sql`ALTER TABLE merchant_plans ADD COLUMN IF NOT EXISTS assigned_by INTEGER`);
+    await exec.execute(sql`ALTER TABLE merchant_plans ADD COLUMN IF NOT EXISTS notes TEXT`);
+    logger.info({ table: "merchant_plans", migration: "add_unique_and_drizzle_columns" }, "schema_guard_column_added");
+  });
 
   // ── rate_limit_hits ────────────────────────────────────────────────────
   // Persistent rate-limit counter store used by express-rate-limit on every
   // login request. Not in the original schemaGuard — missing table caused
   // POST /api/auth/login to return HTTP 500 on a fresh CI database.
   // db-migrate.ts also creates this table; this is defense-in-depth.
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS rate_limit_hits (
-      key TEXT PRIMARY KEY,
-      hits INTEGER NOT NULL DEFAULT 1,
-      expires_at TIMESTAMPTZ NOT NULL
-    )
-  `);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS rate_limit_hits_expires_at_idx ON rate_limit_hits(expires_at)`);
-  logger.info({ table: "rate_limit_hits" }, "schema_guard_table_created");
+  await block("rate_limit_hits", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS rate_limit_hits (
+        key TEXT PRIMARY KEY,
+        hits INTEGER NOT NULL DEFAULT 1,
+        expires_at TIMESTAMPTZ NOT NULL
+      )
+    `);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS rate_limit_hits_expires_at_idx ON rate_limit_hits(expires_at)`);
+    logger.info({ table: "rate_limit_hits" }, "schema_guard_table_created");
+  });
 
   // ── webhooks ───────────────────────────────────────────────────────────
   // Required by PUT /api/webhooks (merchant settings route) and seed.ts.
   // Not in the original schemaGuard — missing table caused the route to
   // return HTTP 500 on a fresh CI database.
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS webhooks (
-      id SERIAL PRIMARY KEY,
-      merchant_id INTEGER NOT NULL UNIQUE,
-      url TEXT NOT NULL,
-      is_active BOOLEAN NOT NULL DEFAULT TRUE,
-      events TEXT[] NOT NULL DEFAULT '{}',
-      secret TEXT,
-      secret_rotated_at TIMESTAMPTZ,
-      max_retries INTEGER NOT NULL DEFAULT 3,
-      retry_delay_1 INTEGER,
-      retry_delay_2 INTEGER,
-      retry_delay_3 INTEGER,
-      failure_alert_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-      failure_alert_threshold INTEGER NOT NULL DEFAULT 3,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  logger.info({ table: "webhooks" }, "schema_guard_table_created");
+  await block("webhooks", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS webhooks (
+        id SERIAL PRIMARY KEY,
+        merchant_id INTEGER NOT NULL UNIQUE,
+        url TEXT NOT NULL,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        events TEXT[] NOT NULL DEFAULT '{}',
+        secret TEXT,
+        secret_rotated_at TIMESTAMPTZ,
+        max_retries INTEGER NOT NULL DEFAULT 3,
+        retry_delay_1 INTEGER,
+        retry_delay_2 INTEGER,
+        retry_delay_3 INTEGER,
+        failure_alert_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        failure_alert_threshold INTEGER NOT NULL DEFAULT 3,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info({ table: "webhooks" }, "schema_guard_table_created");
+  });
 
   // ── scheduled_audit_reports ────────────────────────────────────────────
   // Accessed by overdueReportScheduler at startup. Not in the original
   // schemaGuard — missing table caused level-50 error logs on fresh DBs.
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS scheduled_audit_reports (
-      id SERIAL PRIMARY KEY,
-      frequency TEXT NOT NULL,
-      recipient_email TEXT NOT NULL,
-      is_active BOOLEAN NOT NULL DEFAULT TRUE,
-      last_sent_at TIMESTAMPTZ,
-      consecutive_failures INTEGER NOT NULL DEFAULT 0,
-      auto_pause_after_failures INTEGER NOT NULL DEFAULT 3,
-      failure_acknowledged_at TIMESTAMPTZ,
-      failure_acknowledged_by_email TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  logger.info({ table: "scheduled_audit_reports" }, "schema_guard_table_created");
+  await block("scheduled_audit_reports", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS scheduled_audit_reports (
+        id SERIAL PRIMARY KEY,
+        frequency TEXT NOT NULL,
+        recipient_email TEXT NOT NULL,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        last_sent_at TIMESTAMPTZ,
+        consecutive_failures INTEGER NOT NULL DEFAULT 0,
+        auto_pause_after_failures INTEGER NOT NULL DEFAULT 3,
+        failure_acknowledged_at TIMESTAMPTZ,
+        failure_acknowledged_by_email TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info({ table: "scheduled_audit_reports" }, "schema_guard_table_created");
+  });
 
   // ── users: missing notification preference + profile columns ──────────
   // The original CREATE TABLE users only had id/email/password_hash/role/
@@ -1309,345 +1441,381 @@ async function runGuard(executor: GuardExecutor = db): Promise<void> {
   // notification email/notif toggles, badge-snooze fields, is_active,
   // merchant_id, last_seen_ip, password_updated_at, last_login_at) must
   // also be guarded here so they exist on the very first server request.
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS merchant_id INTEGER`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS reconciliation_alert_emails BOOLEAN NOT NULL DEFAULT TRUE`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_expiry_alert_emails BOOLEAN NOT NULL DEFAULT TRUE`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS settlement_state_emails BOOLEAN NOT NULL DEFAULT TRUE`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS signature_failure_alert_emails BOOLEAN NOT NULL DEFAULT TRUE`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS webhook_failure_emails BOOLEAN NOT NULL DEFAULT TRUE`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS report_failure_alert_emails BOOLEAN NOT NULL DEFAULT TRUE`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS api_key_generated_emails BOOLEAN NOT NULL DEFAULT TRUE`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS api_key_revoked_emails BOOLEAN NOT NULL DEFAULT TRUE`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS login_alert_emails BOOLEAN NOT NULL DEFAULT TRUE`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS report_schedule_changed_emails BOOLEAN NOT NULL DEFAULT TRUE`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS settlement_state_changed_emails BOOLEAN NOT NULL DEFAULT TRUE`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS reconciliation_alert_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_expiry_alert_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS settlement_state_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS signature_failure_alert_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS webhook_failure_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS ekqr_sync_alert_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS report_failure_alert_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS weekly_delivery_digest_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS api_key_generated_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS api_key_revoked_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS login_alert_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS report_schedule_changed_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS settlement_state_changed_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_change_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS notif_reminder_emails BOOLEAN NOT NULL DEFAULT TRUE`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS reports_badge_snoozed_until TIMESTAMPTZ`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS badge_snoozed_until JSONB`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS notif_reminder_sent_at TIMESTAMPTZ`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS notif_field_disabled_at JSONB`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_ip TEXT`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_updated_at TIMESTAMPTZ`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ`);
-  logger.info({ table: "users", migration: "add_missing_notif_and_profile_cols" }, "schema_guard_column_added");
+  await block("users_notif_and_profile_cols", async () => {
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS merchant_id INTEGER`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS reconciliation_alert_emails BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_expiry_alert_emails BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS settlement_state_emails BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS signature_failure_alert_emails BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS webhook_failure_emails BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS report_failure_alert_emails BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS api_key_generated_emails BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS api_key_revoked_emails BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS login_alert_emails BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS report_schedule_changed_emails BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS settlement_state_changed_emails BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS reconciliation_alert_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_expiry_alert_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS settlement_state_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS signature_failure_alert_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS webhook_failure_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS ekqr_sync_alert_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS report_failure_alert_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS weekly_delivery_digest_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS api_key_generated_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS api_key_revoked_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS login_alert_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS report_schedule_changed_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS settlement_state_changed_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_change_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS notif_reminder_emails BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS reports_badge_snoozed_until TIMESTAMPTZ`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS badge_snoozed_until JSONB`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS notif_reminder_sent_at TIMESTAMPTZ`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS notif_field_disabled_at JSONB`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_ip TEXT`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_updated_at TIMESTAMPTZ`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ`);
+    logger.info({ table: "users", migration: "add_missing_notif_and_profile_cols" }, "schema_guard_column_added");
+  });
 
   // ── razorpay_payment_orders ──────────────────────────────────────────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS razorpay_payment_orders (
-      id                  SERIAL PRIMARY KEY,
-      merchant_id         INTEGER NOT NULL,
-      internal_order_id   TEXT    NOT NULL,
-      razorpay_order_id   TEXT    NOT NULL,
-      razorpay_payment_id TEXT,
-      amount              NUMERIC(18,2) NOT NULL,
-      currency            TEXT NOT NULL DEFAULT 'INR',
-      status              TEXT NOT NULL DEFAULT 'CREATED',
-      payment_method      TEXT,
-      utr                 TEXT,
-      failure_reason      TEXT,
-      paid_at             TIMESTAMPTZ,
-      created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS razorpay_orders_internal_id_uniq   ON razorpay_payment_orders(internal_order_id)`);
-  await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS razorpay_orders_rzp_order_id_uniq  ON razorpay_payment_orders(razorpay_order_id)`);
-  await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS razorpay_orders_rzp_payment_id_uniq ON razorpay_payment_orders(razorpay_payment_id) WHERE razorpay_payment_id IS NOT NULL`);
-  await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS razorpay_orders_utr_uniq           ON razorpay_payment_orders(utr) WHERE utr IS NOT NULL`);
-  await exec.execute(sql`CREATE INDEX        IF NOT EXISTS razorpay_orders_merchant_created_idx ON razorpay_payment_orders(merchant_id, created_at)`);
-  logger.info({ table: "razorpay_payment_orders" }, "schema_guard_table_ensured");
+  await block("razorpay_payment_orders", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS razorpay_payment_orders (
+        id                  SERIAL PRIMARY KEY,
+        merchant_id         INTEGER NOT NULL,
+        internal_order_id   TEXT    NOT NULL,
+        razorpay_order_id   TEXT    NOT NULL,
+        razorpay_payment_id TEXT,
+        amount              NUMERIC(18,2) NOT NULL,
+        currency            TEXT NOT NULL DEFAULT 'INR',
+        status              TEXT NOT NULL DEFAULT 'CREATED',
+        payment_method      TEXT,
+        utr                 TEXT,
+        failure_reason      TEXT,
+        paid_at             TIMESTAMPTZ,
+        created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS razorpay_orders_internal_id_uniq   ON razorpay_payment_orders(internal_order_id)`);
+    await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS razorpay_orders_rzp_order_id_uniq  ON razorpay_payment_orders(razorpay_order_id)`);
+    await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS razorpay_orders_rzp_payment_id_uniq ON razorpay_payment_orders(razorpay_payment_id) WHERE razorpay_payment_id IS NOT NULL`);
+    await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS razorpay_orders_utr_uniq           ON razorpay_payment_orders(utr) WHERE utr IS NOT NULL`);
+    await exec.execute(sql`CREATE INDEX        IF NOT EXISTS razorpay_orders_merchant_created_idx ON razorpay_payment_orders(merchant_id, created_at)`);
+    logger.info({ table: "razorpay_payment_orders" }, "schema_guard_table_ensured");
+  });
 
   // ── razorpay_webhook_logs ────────────────────────────────────────────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS razorpay_webhook_logs (
-      id                  SERIAL PRIMARY KEY,
-      webhook_event_id    TEXT,
-      event_type          TEXT,
-      razorpay_order_id   TEXT,
-      razorpay_payment_id TEXT,
-      merchant_id         INTEGER,
-      amount              TEXT,
-      processing_result   TEXT NOT NULL,
-      safe_message        TEXT,
-      received_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS razorpay_webhook_logs_event_id_uniq ON razorpay_webhook_logs(webhook_event_id) WHERE webhook_event_id IS NOT NULL`);
-  await exec.execute(sql`CREATE INDEX        IF NOT EXISTS razorpay_webhook_logs_created_idx   ON razorpay_webhook_logs(received_at)`);
-  logger.info({ table: "razorpay_webhook_logs" }, "schema_guard_table_ensured");
+  await block("razorpay_webhook_logs", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS razorpay_webhook_logs (
+        id                  SERIAL PRIMARY KEY,
+        webhook_event_id    TEXT,
+        event_type          TEXT,
+        razorpay_order_id   TEXT,
+        razorpay_payment_id TEXT,
+        merchant_id         INTEGER,
+        amount              TEXT,
+        processing_result   TEXT NOT NULL,
+        safe_message        TEXT,
+        received_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS razorpay_webhook_logs_event_id_uniq ON razorpay_webhook_logs(webhook_event_id) WHERE webhook_event_id IS NOT NULL`);
+    await exec.execute(sql`CREATE INDEX        IF NOT EXISTS razorpay_webhook_logs_created_idx   ON razorpay_webhook_logs(received_at)`);
+    logger.info({ table: "razorpay_webhook_logs" }, "schema_guard_table_ensured");
+  });
 
   // ── merchants: super admin force-approve columns ──────────────────────────
-  await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS force_approved_at TIMESTAMPTZ`);
-  await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS force_approved_by_admin_id INTEGER`);
-  await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS force_approved_by_email TEXT`);
-  await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS force_approve_reason TEXT`);
-  await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS force_approve_kyc_status TEXT`);
-  logger.info({ table: "merchants", migration: "add_force_approve_cols" }, "schema_guard_column_added");
+  await block("merchants_force_approve", async () => {
+    await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS force_approved_at TIMESTAMPTZ`);
+    await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS force_approved_by_admin_id INTEGER`);
+    await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS force_approved_by_email TEXT`);
+    await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS force_approve_reason TEXT`);
+    await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS force_approve_kyc_status TEXT`);
+    logger.info({ table: "merchants", migration: "add_force_approve_cols" }, "schema_guard_column_added");
+  });
 
   // ── merchants: merchant-preferred IANA timezone for daily-limit windows ───
-  await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS timezone TEXT`);
-  logger.info({ table: "merchants", migration: "add_timezone_col" }, "schema_guard_column_added");
+  await block("merchants_timezone", async () => {
+    await exec.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS timezone TEXT`);
+    logger.info({ table: "merchants", migration: "add_timezone_col" }, "schema_guard_column_added");
+  });
 
   // ── users: make password_hash nullable, add last_login_method ────────────
-  await exec.execute(sql`ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_method TEXT`);
-  logger.info({ table: "users", migration: "add_social_auth_cols" }, "schema_guard_column_added");
+  await block("users_social_auth_cols", async () => {
+    await exec.execute(sql`ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_method TEXT`);
+    logger.info({ table: "users", migration: "add_social_auth_cols" }, "schema_guard_column_added");
+  });
 
   // ── auth_providers: OAuth provider linkage ────────────────────────────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS auth_providers (
-      id                  SERIAL PRIMARY KEY,
-      user_id             INTEGER NOT NULL,
-      provider            TEXT NOT NULL,
-      provider_account_id TEXT NOT NULL,
-      email               TEXT,
-      display_name        TEXT,
-      avatar_url          TEXT,
-      linked_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      unlinked_at         TIMESTAMPTZ,
-      is_active           BOOLEAN NOT NULL DEFAULT TRUE
-    )
-  `);
-  await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS auth_providers_user_provider_uniq ON auth_providers(user_id, provider) WHERE is_active = TRUE`);
-  await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS auth_providers_provider_account_uniq ON auth_providers(provider, provider_account_id) WHERE is_active = TRUE`);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS auth_providers_user_id_idx ON auth_providers(user_id)`);
-  logger.info({ table: "auth_providers" }, "schema_guard_table_created");
+  await block("auth_providers", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS auth_providers (
+        id                  SERIAL PRIMARY KEY,
+        user_id             INTEGER NOT NULL,
+        provider            TEXT NOT NULL,
+        provider_account_id TEXT NOT NULL,
+        email               TEXT,
+        display_name        TEXT,
+        avatar_url          TEXT,
+        linked_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        unlinked_at         TIMESTAMPTZ,
+        is_active           BOOLEAN NOT NULL DEFAULT TRUE
+      )
+    `);
+    await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS auth_providers_user_provider_uniq ON auth_providers(user_id, provider) WHERE is_active = TRUE`);
+    await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS auth_providers_provider_account_uniq ON auth_providers(provider, provider_account_id) WHERE is_active = TRUE`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS auth_providers_user_id_idx ON auth_providers(user_id)`);
+    logger.info({ table: "auth_providers" }, "schema_guard_table_created");
+  });
 
   // ── social_provider_settings: Super Admin on/off toggles ─────────────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS social_provider_settings (
-      provider          TEXT PRIMARY KEY,
-      enabled           BOOLEAN NOT NULL DEFAULT FALSE,
-      updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_by_email  TEXT
-    )
-  `);
-  // Seed the four known providers as disabled-by-default
-  await exec.execute(sql`
-    INSERT INTO social_provider_settings (provider, enabled)
-    VALUES ('google', FALSE), ('apple', FALSE), ('microsoft', FALSE), ('facebook', FALSE)
-    ON CONFLICT (provider) DO NOTHING
-  `);
-  logger.info({ table: "social_provider_settings" }, "schema_guard_table_created");
+  await block("social_provider_settings", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS social_provider_settings (
+        provider          TEXT PRIMARY KEY,
+        enabled           BOOLEAN NOT NULL DEFAULT FALSE,
+        updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_by_email  TEXT
+      )
+    `);
+    // Seed the four known providers as disabled-by-default
+    await exec.execute(sql`
+      INSERT INTO social_provider_settings (provider, enabled)
+      VALUES ('google', FALSE), ('apple', FALSE), ('microsoft', FALSE), ('facebook', FALSE)
+      ON CONFLICT (provider) DO NOTHING
+    `);
+    logger.info({ table: "social_provider_settings" }, "schema_guard_table_created");
+  });
 
   // ── Cashfree suspension flags ─────────────────────────────────────────────
   // Seeded as "true" so that on a fresh deploy the suspension is active by
   // default. Once an admin explicitly clears the suspension (sets value to
   // "false" via DB or future admin route) the DO NOTHING clause ensures
   // server restarts do not revert the cleared value.
-  await exec.execute(sql`
-    INSERT INTO system_config (key, value, updated_at, updated_by_email)
-    VALUES
-      ('cashfree_payin_suspended',  'true', NOW(), 'system'),
-      ('cashfree_payout_suspended', 'true', NOW(), 'system')
-    ON CONFLICT (key) DO NOTHING
-  `);
-  logger.info({ keys: ["cashfree_payin_suspended", "cashfree_payout_suspended"] }, "schema_guard_cashfree_suspension_seeded");
+  await block("cashfree_suspension_flags", async () => {
+    await exec.execute(sql`
+      INSERT INTO system_config (key, value, updated_at, updated_by_email)
+      VALUES
+        ('cashfree_payin_suspended',  'true', NOW(), 'system'),
+        ('cashfree_payout_suspended', 'true', NOW(), 'system')
+      ON CONFLICT (key) DO NOTHING
+    `);
+    logger.info({ keys: ["cashfree_payin_suspended", "cashfree_payout_suspended"] }, "schema_guard_cashfree_suspension_seeded");
+  });
 
   // ── kyc_review_history: append-only audit trail for KYC approve/reject ───
   // Intentionally no FK cascade on kyc_id so history survives document
   // re-submission. CREATE TABLE IF NOT EXISTS is fully idempotent; the table
   // already exists on the dev DB and is absent from production.
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS kyc_review_history (
-      id           SERIAL PRIMARY KEY,
-      kyc_id       INTEGER NOT NULL,
-      reviewed_by  INTEGER NOT NULL,
-      status       TEXT    NOT NULL,
-      admin_note   TEXT,
-      created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await exec.execute(sql`
-    CREATE INDEX IF NOT EXISTS kyc_review_history_kyc_id_idx
-      ON kyc_review_history(kyc_id)
-  `);
-  logger.info({ table: "kyc_review_history" }, "schema_guard_table_created");
+  await block("kyc_review_history", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS kyc_review_history (
+        id           SERIAL PRIMARY KEY,
+        kyc_id       INTEGER NOT NULL,
+        reviewed_by  INTEGER NOT NULL,
+        status       TEXT    NOT NULL,
+        admin_note   TEXT,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`
+      CREATE INDEX IF NOT EXISTS kyc_review_history_kyc_id_idx
+        ON kyc_review_history(kyc_id)
+    `);
+    logger.info({ table: "kyc_review_history" }, "schema_guard_table_created");
+  });
 
   // ── webhook_failure_alert_logs ──────────────────────────────────────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS webhook_failure_alert_logs (
-      id               SERIAL PRIMARY KEY,
-      sent_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      merchant_id      INTEGER NOT NULL,
-      failed_url       TEXT NOT NULL,
-      attempt_count    INTEGER NOT NULL,
-      recipient_count  INTEGER NOT NULL DEFAULT 0,
-      recipient_emails JSONB NOT NULL DEFAULT '[]'
-    )
-  `);
-  logger.info({ table: "webhook_failure_alert_logs" }, "schema_guard_table_created");
-  // Add cooldown_hours as nullable (no DEFAULT) so rows inserted before this
-  // column existed receive NULL rather than a misleading backfill value of 1.
-  await exec.execute(sql`ALTER TABLE webhook_failure_alert_logs ADD COLUMN IF NOT EXISTS cooldown_hours INTEGER`);
-  // Drop NOT NULL if the column was previously created with NOT NULL DEFAULT 1
-  // (idempotent on DBs that already had the column added as nullable).
-  await exec.execute(sql`ALTER TABLE webhook_failure_alert_logs ALTER COLUMN cooldown_hours DROP NOT NULL`);
-  // Drop the column DEFAULT so future inserts that omit the field receive NULL
-  // rather than an implicit backfill value. The insertion path always supplies
-  // the value explicitly, but removing the default prevents silent schema drift.
-  await exec.execute(sql`ALTER TABLE webhook_failure_alert_logs ALTER COLUMN cooldown_hours DROP DEFAULT`);
+  await block("webhook_failure_alert_logs", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS webhook_failure_alert_logs (
+        id               SERIAL PRIMARY KEY,
+        sent_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        merchant_id      INTEGER NOT NULL,
+        failed_url       TEXT NOT NULL,
+        attempt_count    INTEGER NOT NULL,
+        recipient_count  INTEGER NOT NULL DEFAULT 0,
+        recipient_emails JSONB NOT NULL DEFAULT '[]'
+      )
+    `);
+    logger.info({ table: "webhook_failure_alert_logs" }, "schema_guard_table_created");
+    // Add cooldown_hours as nullable (no DEFAULT) so rows inserted before this
+    // column existed receive NULL rather than a misleading backfill value of 1.
+    await exec.execute(sql`ALTER TABLE webhook_failure_alert_logs ADD COLUMN IF NOT EXISTS cooldown_hours INTEGER`);
+    // Drop NOT NULL if the column was previously created with NOT NULL DEFAULT 1
+    // (idempotent on DBs that already had the column added as nullable).
+    await exec.execute(sql`ALTER TABLE webhook_failure_alert_logs ALTER COLUMN cooldown_hours DROP NOT NULL`);
+    // Drop the column DEFAULT so future inserts that omit the field receive NULL
+    // rather than an implicit backfill value. The insertion path always supplies
+    // the value explicitly, but removing the default prevents silent schema drift.
+    await exec.execute(sql`ALTER TABLE webhook_failure_alert_logs ALTER COLUMN cooldown_hours DROP DEFAULT`);
+  });
 
   // ── ekqr_sync_alert_logs ────────────────────────────────────────────────
   // Stores one row per EKQR stuck-QR alert event — both sent and cooldown-
   // suppressed events — so admins can review how often alerts fire and when
   // they were suppressed.
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS ekqr_sync_alert_logs (
-      id               SERIAL PRIMARY KEY,
-      sent_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      stuck_count      INTEGER NOT NULL,
-      threshold        INTEGER NOT NULL,
-      stale_minutes    INTEGER NOT NULL,
-      cooldown_hours   INTEGER,
-      suppressed       BOOLEAN NOT NULL DEFAULT FALSE,
-      recipient_count  INTEGER NOT NULL DEFAULT 0,
-      recipient_emails JSONB NOT NULL DEFAULT '[]'
-    )
-  `);
-  logger.info({ table: "ekqr_sync_alert_logs" }, "schema_guard_table_created");
+  await block("ekqr_sync_alert_logs", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS ekqr_sync_alert_logs (
+        id               SERIAL PRIMARY KEY,
+        sent_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        stuck_count      INTEGER NOT NULL,
+        threshold        INTEGER NOT NULL,
+        stale_minutes    INTEGER NOT NULL,
+        cooldown_hours   INTEGER,
+        suppressed       BOOLEAN NOT NULL DEFAULT FALSE,
+        recipient_count  INTEGER NOT NULL DEFAULT 0,
+        recipient_emails JSONB NOT NULL DEFAULT '[]'
+      )
+    `);
+    logger.info({ table: "ekqr_sync_alert_logs" }, "schema_guard_table_created");
+  });
 
   // ── otp_email_settings (Email OTP provider config — singleton id=1) ────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS otp_email_settings (
-      id                  INTEGER PRIMARY KEY,
-      otp_expiry_seconds  INTEGER NOT NULL DEFAULT 600,
-      otp_login_enabled   BOOLEAN NOT NULL DEFAULT FALSE,
-      test_verified_at    TIMESTAMPTZ,
-      updated_by_email    TEXT,
-      updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  logger.info({ table: "otp_email_settings" }, "schema_guard_table_created");
+  await block("otp_email_settings", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS otp_email_settings (
+        id                  INTEGER PRIMARY KEY,
+        otp_expiry_seconds  INTEGER NOT NULL DEFAULT 600,
+        otp_login_enabled   BOOLEAN NOT NULL DEFAULT FALSE,
+        test_verified_at    TIMESTAMPTZ,
+        updated_by_email    TEXT,
+        updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info({ table: "otp_email_settings" }, "schema_guard_table_created");
+  });
 
   // ── notifications: cleanup_failure_repeated dedup index ─────────────────
   // Prevents duplicate cleanup-failure alerts for the same admin on the same
   // calendar day when cleanup is triggered more than once (manual + cron).
-  await exec.execute(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS notifications_cleanup_failure_repeated_dedup_idx
-      ON notifications(user_id, type, ((metadata->>'dedupeKey')))
-      WHERE type = 'cleanup_failure_repeated'
-  `);
-  logger.info({ index: "notifications_cleanup_failure_repeated_dedup_idx" }, "schema_guard_index_created");
+  await block("notifications_cleanup_index", async () => {
+    await exec.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS notifications_cleanup_failure_repeated_dedup_idx
+        ON notifications(user_id, type, ((metadata->>'dedupeKey')))
+        WHERE type = 'cleanup_failure_repeated'
+    `);
+    logger.info({ index: "notifications_cleanup_failure_repeated_dedup_idx" }, "schema_guard_index_created");
+  });
 
   // ── policy_acceptances ────────────────────────────────────────────────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS policy_acceptances (
-      id              SERIAL PRIMARY KEY,
-      user_id         INTEGER,
-      merchant_id     INTEGER,
-      policy_slug     TEXT NOT NULL,
-      policy_version  TEXT NOT NULL DEFAULT '1.0',
-      ip_address      TEXT,
-      user_agent      TEXT,
-      accepted_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await exec.execute(sql`
-    CREATE INDEX IF NOT EXISTS policy_acceptances_user_idx
-      ON policy_acceptances (user_id, policy_slug)
-  `);
-  await exec.execute(sql`
-    CREATE INDEX IF NOT EXISTS policy_acceptances_merchant_idx
-      ON policy_acceptances (merchant_id, policy_slug)
-  `);
-  logger.info({ table: "policy_acceptances" }, "schema_guard_table_created");
+  await block("policy_acceptances", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS policy_acceptances (
+        id              SERIAL PRIMARY KEY,
+        user_id         INTEGER,
+        merchant_id     INTEGER,
+        policy_slug     TEXT NOT NULL,
+        policy_version  TEXT NOT NULL DEFAULT '1.0',
+        ip_address      TEXT,
+        user_agent      TEXT,
+        accepted_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`
+      CREATE INDEX IF NOT EXISTS policy_acceptances_user_idx
+        ON policy_acceptances (user_id, policy_slug)
+    `);
+    await exec.execute(sql`
+      CREATE INDEX IF NOT EXISTS policy_acceptances_merchant_idx
+        ON policy_acceptances (merchant_id, policy_slug)
+    `);
+    logger.info({ table: "policy_acceptances" }, "schema_guard_table_created");
+  });
 
   // ── contact_submissions ───────────────────────────────────────────────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS contact_submissions (
-      id          SERIAL PRIMARY KEY,
-      name        TEXT NOT NULL,
-      email       TEXT NOT NULL,
-      phone       TEXT,
-      subject     TEXT NOT NULL,
-      category    TEXT NOT NULL DEFAULT 'general',
-      message     TEXT NOT NULL,
-      ticket_ref  TEXT,
-      ip_address  TEXT,
-      user_agent  TEXT,
-      status      TEXT NOT NULL DEFAULT 'open',
-      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await exec.execute(sql`
-    CREATE INDEX IF NOT EXISTS contact_submissions_email_idx
-      ON contact_submissions (email, created_at)
-  `);
-  await exec.execute(sql`
-    CREATE INDEX IF NOT EXISTS contact_submissions_status_idx
-      ON contact_submissions (status, created_at)
-  `);
-  logger.info({ table: "contact_submissions" }, "schema_guard_table_created");
+  await block("contact_submissions", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS contact_submissions (
+        id          SERIAL PRIMARY KEY,
+        name        TEXT NOT NULL,
+        email       TEXT NOT NULL,
+        phone       TEXT,
+        subject     TEXT NOT NULL,
+        category    TEXT NOT NULL DEFAULT 'general',
+        message     TEXT NOT NULL,
+        ticket_ref  TEXT,
+        ip_address  TEXT,
+        user_agent  TEXT,
+        status      TEXT NOT NULL DEFAULT 'open',
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`
+      CREATE INDEX IF NOT EXISTS contact_submissions_email_idx
+        ON contact_submissions (email, created_at)
+    `);
+    await exec.execute(sql`
+      CREATE INDEX IF NOT EXISTS contact_submissions_status_idx
+        ON contact_submissions (status, created_at)
+    `);
+    logger.info({ table: "contact_submissions" }, "schema_guard_table_created");
+  });
 
   // ── policy_versions ───────────────────────────────────────────────────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS policy_versions (
-      id              SERIAL PRIMARY KEY,
-      slug            TEXT NOT NULL,
-      version_tag     TEXT NOT NULL DEFAULT '1.0',
-      title           TEXT NOT NULL,
-      status          TEXT NOT NULL DEFAULT 'published',
-      effective_date  TEXT NOT NULL,
-      changelog_notes TEXT,
-      updated_by_email TEXT,
-      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      published_at    TIMESTAMPTZ
-    )
-  `);
-  await exec.execute(sql`
-    CREATE INDEX IF NOT EXISTS policy_versions_slug_status_idx
-      ON policy_versions (slug, status)
-  `);
-  await exec.execute(sql`
-    CREATE INDEX IF NOT EXISTS policy_versions_slug_created_idx
-      ON policy_versions (slug, created_at)
-  `);
-  logger.info({ table: "policy_versions" }, "schema_guard_table_created");
+  await block("policy_versions", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS policy_versions (
+        id              SERIAL PRIMARY KEY,
+        slug            TEXT NOT NULL,
+        version_tag     TEXT NOT NULL DEFAULT '1.0',
+        title           TEXT NOT NULL,
+        status          TEXT NOT NULL DEFAULT 'published',
+        effective_date  TEXT NOT NULL,
+        changelog_notes TEXT,
+        updated_by_email TEXT,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        published_at    TIMESTAMPTZ
+      )
+    `);
+    await exec.execute(sql`
+      CREATE INDEX IF NOT EXISTS policy_versions_slug_status_idx
+        ON policy_versions (slug, status)
+    `);
+    await exec.execute(sql`
+      CREATE INDEX IF NOT EXISTS policy_versions_slug_created_idx
+        ON policy_versions (slug, created_at)
+    `);
+    logger.info({ table: "policy_versions" }, "schema_guard_table_created");
+  });
 
   // ── signature_failure_alert_logs: CREATE TABLE + cooldown_hours column ─────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS signature_failure_alert_logs (
-      id                     SERIAL PRIMARY KEY,
-      sent_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      failure_count          INTEGER NOT NULL,
-      affected_merchant_count INTEGER NOT NULL DEFAULT 0,
-      recipient_count        INTEGER NOT NULL DEFAULT 0,
-      recipient_emails       JSONB NOT NULL DEFAULT '[]',
-      affected_merchants     JSONB NOT NULL DEFAULT '[]',
-      window_hours           INTEGER NOT NULL,
-      threshold              INTEGER NOT NULL,
-      cooldown_hours         INTEGER
-    )
-  `);
-  logger.info({ table: "signature_failure_alert_logs" }, "schema_guard_table_created");
-  // Add as nullable (no DEFAULT) so rows inserted before this column existed
-  // receive NULL rather than a misleading backfill value of 1.
-  await exec.execute(sql`ALTER TABLE signature_failure_alert_logs ADD COLUMN IF NOT EXISTS cooldown_hours INTEGER`);
-  // Drop NOT NULL if the column was previously created with NOT NULL DEFAULT 1
-  // (idempotent on DBs that already had the column added as nullable).
-  await exec.execute(sql`ALTER TABLE signature_failure_alert_logs ALTER COLUMN cooldown_hours DROP NOT NULL`);
-  // Drop the column DEFAULT so future inserts that omit the field receive NULL
-  // rather than an implicit 1 (the old backfill value). The insertion path in
-  // signatureFailureAlert.ts always supplies the value explicitly, but removing
-  // the default prevents silent schema drift if that ever changes.
-  await exec.execute(sql`ALTER TABLE signature_failure_alert_logs ALTER COLUMN cooldown_hours DROP DEFAULT`);
+  await block("signature_failure_alert_logs", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS signature_failure_alert_logs (
+        id                     SERIAL PRIMARY KEY,
+        sent_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        failure_count          INTEGER NOT NULL,
+        affected_merchant_count INTEGER NOT NULL DEFAULT 0,
+        recipient_count        INTEGER NOT NULL DEFAULT 0,
+        recipient_emails       JSONB NOT NULL DEFAULT '[]',
+        affected_merchants     JSONB NOT NULL DEFAULT '[]',
+        window_hours           INTEGER NOT NULL,
+        threshold              INTEGER NOT NULL,
+        cooldown_hours         INTEGER
+      )
+    `);
+    logger.info({ table: "signature_failure_alert_logs" }, "schema_guard_table_created");
+    // Add as nullable (no DEFAULT) so rows inserted before this column existed
+    // receive NULL rather than a misleading backfill value of 1.
+    await exec.execute(sql`ALTER TABLE signature_failure_alert_logs ADD COLUMN IF NOT EXISTS cooldown_hours INTEGER`);
+    // Drop NOT NULL if the column was previously created with NOT NULL DEFAULT 1
+    // (idempotent on DBs that already had the column added as nullable).
+    await exec.execute(sql`ALTER TABLE signature_failure_alert_logs ALTER COLUMN cooldown_hours DROP NOT NULL`);
+    // Drop the column DEFAULT so future inserts that omit the field receive NULL
+    // rather than an implicit 1 (the old backfill value). The insertion path in
+    // signatureFailureAlert.ts always supplies the value explicitly, but removing
+    // the default prevents silent schema drift if that ever changes.
+    await exec.execute(sql`ALTER TABLE signature_failure_alert_logs ALTER COLUMN cooldown_hours DROP DEFAULT`);
+  });
 
   // ── qr_codes: columns added after initial table creation ──────────────────
   // The original qr_codes table had only the basic columns (id, merchant_id,
@@ -1658,298 +1826,318 @@ async function runGuard(executor: GuardExecutor = db): Promise<void> {
   // "column does not exist" → HTTP 500 on production.
   // ADD COLUMN IF NOT EXISTS is always idempotent — safe to run any number
   // of times, even if the column already exists.
-  await exec.execute(sql`ALTER TABLE qr_codes ADD COLUMN IF NOT EXISTS order_id TEXT`);
-  await exec.execute(sql`ALTER TABLE qr_codes ADD COLUMN IF NOT EXISTS callback_url TEXT`);
-  await exec.execute(sql`ALTER TABLE qr_codes ADD COLUMN IF NOT EXISTS merchant_reference TEXT`);
-  await exec.execute(sql`ALTER TABLE qr_codes ADD COLUMN IF NOT EXISTS ekqr_order_id TEXT`);
-  await exec.execute(sql`ALTER TABLE qr_codes ADD COLUMN IF NOT EXISTS ekqr_payment_url TEXT`);
-  await exec.execute(sql`ALTER TABLE qr_codes ADD COLUMN IF NOT EXISTS provider_key TEXT`);
-  await exec.execute(sql`ALTER TABLE qr_codes ADD COLUMN IF NOT EXISTS provider_order_id TEXT`);
-  await exec.execute(sql`ALTER TABLE qr_codes ADD COLUMN IF NOT EXISTS provider_payment_url TEXT`);
-  logger.info({ table: "qr_codes", migration: "add_missing_qr_cols" }, "schema_guard_column_added");
+  await block("qr_codes_columns", async () => {
+    await exec.execute(sql`ALTER TABLE qr_codes ADD COLUMN IF NOT EXISTS order_id TEXT`);
+    await exec.execute(sql`ALTER TABLE qr_codes ADD COLUMN IF NOT EXISTS callback_url TEXT`);
+    await exec.execute(sql`ALTER TABLE qr_codes ADD COLUMN IF NOT EXISTS merchant_reference TEXT`);
+    await exec.execute(sql`ALTER TABLE qr_codes ADD COLUMN IF NOT EXISTS ekqr_order_id TEXT`);
+    await exec.execute(sql`ALTER TABLE qr_codes ADD COLUMN IF NOT EXISTS ekqr_payment_url TEXT`);
+    await exec.execute(sql`ALTER TABLE qr_codes ADD COLUMN IF NOT EXISTS provider_key TEXT`);
+    await exec.execute(sql`ALTER TABLE qr_codes ADD COLUMN IF NOT EXISTS provider_order_id TEXT`);
+    await exec.execute(sql`ALTER TABLE qr_codes ADD COLUMN IF NOT EXISTS provider_payment_url TEXT`);
+    logger.info({ table: "qr_codes", migration: "add_missing_qr_cols" }, "schema_guard_column_added");
+  });
 
   // ── agents: extended profile + invite/first-login columns ─────────────────
   // Original agents table only had basic columns. Extended fields added for
   // the full Agent Portal: unique agent code (RSK-AG-NNNNNN), employee HR
   // fields, and the invite/first-login activation flow.
-  await exec.execute(sql`ALTER TABLE agents ADD COLUMN IF NOT EXISTS agent_code TEXT UNIQUE`);
-  await exec.execute(sql`ALTER TABLE agents ADD COLUMN IF NOT EXISTS employee_id TEXT`);
-  await exec.execute(sql`ALTER TABLE agents ADD COLUMN IF NOT EXISTS department TEXT`);
-  await exec.execute(sql`ALTER TABLE agents ADD COLUMN IF NOT EXISTS team TEXT`);
-  await exec.execute(sql`ALTER TABLE agents ADD COLUMN IF NOT EXISTS reporting_manager TEXT`);
-  await exec.execute(sql`ALTER TABLE agents ADD COLUMN IF NOT EXISTS invite_token TEXT`);
-  await exec.execute(sql`ALTER TABLE agents ADD COLUMN IF NOT EXISTS invite_token_expiry TIMESTAMPTZ`);
-  await exec.execute(sql`ALTER TABLE agents ADD COLUMN IF NOT EXISTS invite_status TEXT NOT NULL DEFAULT 'pending'`);
-  await exec.execute(sql`ALTER TABLE agents ADD COLUMN IF NOT EXISTS first_login_at TIMESTAMPTZ`);
-  await exec.execute(sql`ALTER TABLE agents ADD COLUMN IF NOT EXISTS password_set_at TIMESTAMPTZ`);
-  logger.info({ table: "agents", migration: "add_agent_portal_columns" }, "schema_guard_column_added");
+  await block("agents_portal_columns", async () => {
+    await exec.execute(sql`ALTER TABLE agents ADD COLUMN IF NOT EXISTS agent_code TEXT UNIQUE`);
+    await exec.execute(sql`ALTER TABLE agents ADD COLUMN IF NOT EXISTS employee_id TEXT`);
+    await exec.execute(sql`ALTER TABLE agents ADD COLUMN IF NOT EXISTS department TEXT`);
+    await exec.execute(sql`ALTER TABLE agents ADD COLUMN IF NOT EXISTS team TEXT`);
+    await exec.execute(sql`ALTER TABLE agents ADD COLUMN IF NOT EXISTS reporting_manager TEXT`);
+    await exec.execute(sql`ALTER TABLE agents ADD COLUMN IF NOT EXISTS invite_token TEXT`);
+    await exec.execute(sql`ALTER TABLE agents ADD COLUMN IF NOT EXISTS invite_token_expiry TIMESTAMPTZ`);
+    await exec.execute(sql`ALTER TABLE agents ADD COLUMN IF NOT EXISTS invite_status TEXT NOT NULL DEFAULT 'pending'`);
+    await exec.execute(sql`ALTER TABLE agents ADD COLUMN IF NOT EXISTS first_login_at TIMESTAMPTZ`);
+    await exec.execute(sql`ALTER TABLE agents ADD COLUMN IF NOT EXISTS password_set_at TIMESTAMPTZ`);
+    logger.info({ table: "agents", migration: "add_agent_portal_columns" }, "schema_guard_column_added");
 
-  // Backfill agent_code for existing agents that have no code yet
-  await exec.execute(sql`
-    UPDATE agents
-    SET agent_code = CONCAT('RSK-AG-', LPAD(id::text, 6, '0'))
-    WHERE agent_code IS NULL
-  `);
-  logger.info({ table: "agents", migration: "backfill_agent_codes" }, "schema_guard_column_added");
+    // Backfill agent_code for existing agents that have no code yet
+    await exec.execute(sql`
+      UPDATE agents
+      SET agent_code = CONCAT('RSK-AG-', LPAD(id::text, 6, '0'))
+      WHERE agent_code IS NULL
+    `);
+    logger.info({ table: "agents", migration: "backfill_agent_codes" }, "schema_guard_column_added");
+  });
 
   // ── PayU payment tables ──────────────────────────────────────────────────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS payu_payment_orders (
-      id              SERIAL PRIMARY KEY,
-      merchant_id     INTEGER NOT NULL,
-      txnid           TEXT NOT NULL UNIQUE,
-      amount          NUMERIC(18,2) NOT NULL,
-      productinfo     TEXT NOT NULL,
-      firstname       TEXT,
-      email           TEXT,
-      phone           TEXT,
-      udf1            TEXT,
-      environment     TEXT NOT NULL DEFAULT 'uat',
-      status          TEXT NOT NULL DEFAULT 'INITIATED',
-      mihpayid        TEXT,
-      bank_ref_no     TEXT,
-      payment_mode    TEXT,
-      raw_response    TEXT,
-      hash_verified   BOOLEAN NOT NULL DEFAULT FALSE,
-      failure_reason  TEXT,
-      paid_at         TIMESTAMPTZ,
-      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  logger.info({ table: "payu_payment_orders" }, "schema_guard_table_created");
+  await block("payu_payment_orders", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS payu_payment_orders (
+        id              SERIAL PRIMARY KEY,
+        merchant_id     INTEGER NOT NULL,
+        txnid           TEXT NOT NULL UNIQUE,
+        amount          NUMERIC(18,2) NOT NULL,
+        productinfo     TEXT NOT NULL,
+        firstname       TEXT,
+        email           TEXT,
+        phone           TEXT,
+        udf1            TEXT,
+        environment     TEXT NOT NULL DEFAULT 'uat',
+        status          TEXT NOT NULL DEFAULT 'INITIATED',
+        mihpayid        TEXT,
+        bank_ref_no     TEXT,
+        payment_mode    TEXT,
+        raw_response    TEXT,
+        hash_verified   BOOLEAN NOT NULL DEFAULT FALSE,
+        failure_reason  TEXT,
+        paid_at         TIMESTAMPTZ,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info({ table: "payu_payment_orders" }, "schema_guard_table_created");
 
-  await exec.execute(sql`
-    ALTER TABLE payu_payment_orders
-      ADD COLUMN IF NOT EXISTS credit_failed_at TIMESTAMPTZ
-  `);
-  // Backfill guards for columns originally present only in CREATE TABLE IF NOT EXISTS.
-  // If the table was created by an earlier Drizzle push (before these columns were added
-  // to the CREATE TABLE template), the IF NOT EXISTS above is a no-op and these columns
-  // would be missing — causing every callback/webhook UPDATE to throw "column does not exist".
-  // Each ALTER TABLE ADD COLUMN IF NOT EXISTS is idempotent and safe to run repeatedly.
-  await exec.execute(sql`ALTER TABLE payu_payment_orders ADD COLUMN IF NOT EXISTS udf1 TEXT`);
-  await exec.execute(sql`ALTER TABLE payu_payment_orders ADD COLUMN IF NOT EXISTS environment TEXT NOT NULL DEFAULT 'uat'`);
-  await exec.execute(sql`ALTER TABLE payu_payment_orders ADD COLUMN IF NOT EXISTS mihpayid TEXT`);
-  await exec.execute(sql`ALTER TABLE payu_payment_orders ADD COLUMN IF NOT EXISTS bank_ref_no TEXT`);
-  await exec.execute(sql`ALTER TABLE payu_payment_orders ADD COLUMN IF NOT EXISTS payment_mode TEXT`);
-  await exec.execute(sql`ALTER TABLE payu_payment_orders ADD COLUMN IF NOT EXISTS raw_response TEXT`);
-  await exec.execute(sql`ALTER TABLE payu_payment_orders ADD COLUMN IF NOT EXISTS hash_verified BOOLEAN NOT NULL DEFAULT FALSE`);
-  await exec.execute(sql`ALTER TABLE payu_payment_orders ADD COLUMN IF NOT EXISTS failure_reason TEXT`);
-  await exec.execute(sql`ALTER TABLE payu_payment_orders ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ`);
-  logger.info({ table: "payu_payment_orders", column: "credit_failed_at+backfill_guards" }, "schema_guard_column_added");
+    await exec.execute(sql`
+      ALTER TABLE payu_payment_orders
+        ADD COLUMN IF NOT EXISTS credit_failed_at TIMESTAMPTZ
+    `);
+    // Backfill guards for columns originally present only in CREATE TABLE IF NOT EXISTS.
+    // If the table was created by an earlier Drizzle push (before these columns were added
+    // to the CREATE TABLE template), the IF NOT EXISTS above is a no-op and these columns
+    // would be missing — causing every callback/webhook UPDATE to throw "column does not exist".
+    // Each ALTER TABLE ADD COLUMN IF NOT EXISTS is idempotent and safe to run repeatedly.
+    await exec.execute(sql`ALTER TABLE payu_payment_orders ADD COLUMN IF NOT EXISTS udf1 TEXT`);
+    await exec.execute(sql`ALTER TABLE payu_payment_orders ADD COLUMN IF NOT EXISTS environment TEXT NOT NULL DEFAULT 'uat'`);
+    await exec.execute(sql`ALTER TABLE payu_payment_orders ADD COLUMN IF NOT EXISTS mihpayid TEXT`);
+    await exec.execute(sql`ALTER TABLE payu_payment_orders ADD COLUMN IF NOT EXISTS bank_ref_no TEXT`);
+    await exec.execute(sql`ALTER TABLE payu_payment_orders ADD COLUMN IF NOT EXISTS payment_mode TEXT`);
+    await exec.execute(sql`ALTER TABLE payu_payment_orders ADD COLUMN IF NOT EXISTS raw_response TEXT`);
+    await exec.execute(sql`ALTER TABLE payu_payment_orders ADD COLUMN IF NOT EXISTS hash_verified BOOLEAN NOT NULL DEFAULT FALSE`);
+    await exec.execute(sql`ALTER TABLE payu_payment_orders ADD COLUMN IF NOT EXISTS failure_reason TEXT`);
+    await exec.execute(sql`ALTER TABLE payu_payment_orders ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ`);
+    logger.info({ table: "payu_payment_orders", column: "credit_failed_at+backfill_guards" }, "schema_guard_column_added");
+  });
 
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS payu_webhook_logs (
-      id                SERIAL PRIMARY KEY,
-      txnid             TEXT,
-      merchant_id       INTEGER,
-      amount            TEXT,
-      status            TEXT,
-      source            TEXT,
-      raw_payload       TEXT NOT NULL,
-      processing_result TEXT NOT NULL,
-      hash_verified     BOOLEAN NOT NULL DEFAULT FALSE,
-      error_message     TEXT,
-      received_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  logger.info({ table: "payu_webhook_logs" }, "schema_guard_table_created");
+  await block("payu_webhook_logs", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS payu_webhook_logs (
+        id                SERIAL PRIMARY KEY,
+        txnid             TEXT,
+        merchant_id       INTEGER,
+        amount            TEXT,
+        status            TEXT,
+        source            TEXT,
+        raw_payload       TEXT NOT NULL,
+        processing_result TEXT NOT NULL,
+        hash_verified     BOOLEAN NOT NULL DEFAULT FALSE,
+        error_message     TEXT,
+        received_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info({ table: "payu_webhook_logs" }, "schema_guard_table_created");
+  });
 
   // ── Promotional CMS tables ──────────────────────────────────────────────────
   // Created BEFORE the IAM migration so a failure there cannot block these.
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS promotional_campaigns (
-      id SERIAL PRIMARY KEY,
-      internal_name TEXT NOT NULL,
-      public_title TEXT,
-      subtitle TEXT,
-      description TEXT,
-      badge TEXT,
-      cta_text TEXT,
-      cta_url TEXT,
-      secondary_cta_text TEXT,
-      secondary_cta_url TEXT,
-      desktop_image_url TEXT,
-      tablet_image_url TEXT,
-      mobile_image_url TEXT,
-      video_url TEXT,
-      alt_text TEXT,
-      type TEXT NOT NULL DEFAULT 'text_banner',
-      theme TEXT DEFAULT 'dark',
-      background_color TEXT,
-      gradient_from TEXT,
-      gradient_to TEXT,
-      overlay_opacity INTEGER DEFAULT 40,
-      animation TEXT DEFAULT 'fade',
-      placement TEXT NOT NULL,
-      priority INTEGER DEFAULT 0,
-      display_order INTEGER DEFAULT 0,
-      status TEXT NOT NULL DEFAULT 'draft',
-      start_at TIMESTAMPTZ,
-      end_at TIMESTAMPTZ,
-      audience TEXT DEFAULT 'all',
-      device_targeting TEXT DEFAULT 'all',
-      language TEXT DEFAULT 'en',
-      autoplay BOOLEAN DEFAULT TRUE,
-      slide_speed_ms INTEGER DEFAULT 5000,
-      infinite_loop BOOLEAN DEFAULT TRUE,
-      show_nav_arrows BOOLEAN DEFAULT TRUE,
-      show_dots BOOLEAN DEFAULT TRUE,
-      pause_on_hover BOOLEAN DEFAULT TRUE,
-      countdown_end_at TIMESTAMPTZ,
-      is_slot_enabled BOOLEAN DEFAULT TRUE,
-      created_by INTEGER,
-      updated_by INTEGER,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  logger.info({ table: "promotional_campaigns" }, "schema_guard_table_created");
+  await block("promotional_cms", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS promotional_campaigns (
+        id SERIAL PRIMARY KEY,
+        internal_name TEXT NOT NULL,
+        public_title TEXT,
+        subtitle TEXT,
+        description TEXT,
+        badge TEXT,
+        cta_text TEXT,
+        cta_url TEXT,
+        secondary_cta_text TEXT,
+        secondary_cta_url TEXT,
+        desktop_image_url TEXT,
+        tablet_image_url TEXT,
+        mobile_image_url TEXT,
+        video_url TEXT,
+        alt_text TEXT,
+        type TEXT NOT NULL DEFAULT 'text_banner',
+        theme TEXT DEFAULT 'dark',
+        background_color TEXT,
+        gradient_from TEXT,
+        gradient_to TEXT,
+        overlay_opacity INTEGER DEFAULT 40,
+        animation TEXT DEFAULT 'fade',
+        placement TEXT NOT NULL,
+        priority INTEGER DEFAULT 0,
+        display_order INTEGER DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'draft',
+        start_at TIMESTAMPTZ,
+        end_at TIMESTAMPTZ,
+        audience TEXT DEFAULT 'all',
+        device_targeting TEXT DEFAULT 'all',
+        language TEXT DEFAULT 'en',
+        autoplay BOOLEAN DEFAULT TRUE,
+        slide_speed_ms INTEGER DEFAULT 5000,
+        infinite_loop BOOLEAN DEFAULT TRUE,
+        show_nav_arrows BOOLEAN DEFAULT TRUE,
+        show_dots BOOLEAN DEFAULT TRUE,
+        pause_on_hover BOOLEAN DEFAULT TRUE,
+        countdown_end_at TIMESTAMPTZ,
+        is_slot_enabled BOOLEAN DEFAULT TRUE,
+        created_by INTEGER,
+        updated_by INTEGER,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info({ table: "promotional_campaigns" }, "schema_guard_table_created");
 
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS promotional_analytics (
-      id SERIAL PRIMARY KEY,
-      campaign_id INTEGER NOT NULL,
-      event_type TEXT NOT NULL,
-      placement TEXT,
-      device_type TEXT,
-      session_id TEXT,
-      metadata JSONB,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  logger.info({ table: "promotional_analytics" }, "schema_guard_table_created");
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS promotional_analytics (
+        id SERIAL PRIMARY KEY,
+        campaign_id INTEGER NOT NULL,
+        event_type TEXT NOT NULL,
+        placement TEXT,
+        device_type TEXT,
+        session_id TEXT,
+        metadata JSONB,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info({ table: "promotional_analytics" }, "schema_guard_table_created");
+  });
 
   // ── notification sound / vibration preference columns ────────────────────────
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_sound_enabled BOOLEAN NOT NULL DEFAULT TRUE`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_vibration_enabled BOOLEAN NOT NULL DEFAULT TRUE`);
-  await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS ekqr_cap_alert_emails BOOLEAN NOT NULL DEFAULT TRUE`);
+  await block("users_notification_sound_prefs", async () => {
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_sound_enabled BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_vibration_enabled BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS ekqr_cap_alert_emails BOOLEAN NOT NULL DEFAULT TRUE`);
+  });
 
   // ── provider_products: full table + capability audit columns ─────────────
   // CREATE TABLE handles fresh DBs; ALTER TABLEs below are no-ops on existing tables.
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS provider_products (
-      id                   SERIAL PRIMARY KEY,
-      provider_key         VARCHAR(64),
-      product_key          VARCHAR(64) NOT NULL,
-      public_name          VARCHAR(255) NOT NULL,
-      internal_name        VARCHAR(255),
-      description          TEXT,
-      icon_key             VARCHAR(64),
-      is_enabled           BOOLEAN NOT NULL DEFAULT TRUE,
-      status               VARCHAR(32) NOT NULL DEFAULT 'coming_soon',
-      sort_order           INTEGER NOT NULL DEFAULT 0,
-      capability_status    TEXT,
-      official_api_available BOOLEAN,
-      official_sdk_available BOOLEAN,
-      test_mode_status     TEXT,
-      live_mode_status     TEXT,
-      webhook_support      BOOLEAN,
-      webhook_events       JSONB,
-      approval_required    BOOLEAN,
-      approval_reason      TEXT,
-      merchant_access      BOOLEAN,
-      customer_facing_module BOOLEAN,
-      last_test_at         TIMESTAMPTZ,
-      last_fail_at         TIMESTAMPTZ,
-      last_test_response   JSONB,
-      failure_reason       TEXT,
-      impl_notes           TEXT,
-      docs_url             TEXT,
-      created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      CONSTRAINT provider_products_product_key_uniq UNIQUE (product_key)
-    )
-  `);
-  logger.info({ table: "provider_products" }, "schema_guard_table_created");
-  await exec.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS capability_status TEXT`);
-  await exec.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS official_api_available BOOLEAN`);
-  await exec.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS official_sdk_available BOOLEAN`);
-  await exec.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS test_mode_status TEXT`);
-  await exec.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS live_mode_status TEXT`);
-  await exec.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS webhook_support BOOLEAN`);
-  await exec.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS webhook_events JSONB`);
-  await exec.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS approval_required BOOLEAN`);
-  await exec.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS approval_reason TEXT`);
-  await exec.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS merchant_access BOOLEAN`);
-  await exec.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS customer_facing_module BOOLEAN`);
-  await exec.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS last_test_at TIMESTAMPTZ`);
-  await exec.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS last_fail_at TIMESTAMPTZ`);
-  await exec.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS last_test_response JSONB`);
-  await exec.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS failure_reason TEXT`);
-  await exec.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS impl_notes TEXT`);
-  await exec.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS docs_url TEXT`);
+  await block("provider_products", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS provider_products (
+        id                   SERIAL PRIMARY KEY,
+        provider_key         VARCHAR(64),
+        product_key          VARCHAR(64) NOT NULL,
+        public_name          VARCHAR(255) NOT NULL,
+        internal_name        VARCHAR(255),
+        description          TEXT,
+        icon_key             VARCHAR(64),
+        is_enabled           BOOLEAN NOT NULL DEFAULT TRUE,
+        status               VARCHAR(32) NOT NULL DEFAULT 'coming_soon',
+        sort_order           INTEGER NOT NULL DEFAULT 0,
+        capability_status    TEXT,
+        official_api_available BOOLEAN,
+        official_sdk_available BOOLEAN,
+        test_mode_status     TEXT,
+        live_mode_status     TEXT,
+        webhook_support      BOOLEAN,
+        webhook_events       JSONB,
+        approval_required    BOOLEAN,
+        approval_reason      TEXT,
+        merchant_access      BOOLEAN,
+        customer_facing_module BOOLEAN,
+        last_test_at         TIMESTAMPTZ,
+        last_fail_at         TIMESTAMPTZ,
+        last_test_response   JSONB,
+        failure_reason       TEXT,
+        impl_notes           TEXT,
+        docs_url             TEXT,
+        created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT provider_products_product_key_uniq UNIQUE (product_key)
+      )
+    `);
+    logger.info({ table: "provider_products" }, "schema_guard_table_created");
+    await exec.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS capability_status TEXT`);
+    await exec.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS official_api_available BOOLEAN`);
+    await exec.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS official_sdk_available BOOLEAN`);
+    await exec.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS test_mode_status TEXT`);
+    await exec.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS live_mode_status TEXT`);
+    await exec.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS webhook_support BOOLEAN`);
+    await exec.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS webhook_events JSONB`);
+    await exec.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS approval_required BOOLEAN`);
+    await exec.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS approval_reason TEXT`);
+    await exec.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS merchant_access BOOLEAN`);
+    await exec.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS customer_facing_module BOOLEAN`);
+    await exec.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS last_test_at TIMESTAMPTZ`);
+    await exec.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS last_fail_at TIMESTAMPTZ`);
+    await exec.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS last_test_response JSONB`);
+    await exec.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS failure_reason TEXT`);
+    await exec.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS impl_notes TEXT`);
+    await exec.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS docs_url TEXT`);
+  });
 
   // ── razorpay_payment_orders: additional analytics columns ─────────────────
-  await exec.execute(sql`ALTER TABLE razorpay_payment_orders ADD COLUMN IF NOT EXISTS error_code TEXT`);
-  await exec.execute(sql`ALTER TABLE razorpay_payment_orders ADD COLUMN IF NOT EXISTS error_description TEXT`);
-  await exec.execute(sql`ALTER TABLE razorpay_payment_orders ADD COLUMN IF NOT EXISTS error_source TEXT`);
-  await exec.execute(sql`ALTER TABLE razorpay_payment_orders ADD COLUMN IF NOT EXISTS captured_at TIMESTAMPTZ`);
-  await exec.execute(sql`ALTER TABLE razorpay_payment_orders ADD COLUMN IF NOT EXISTS settlement_id TEXT`);
+  await block("razorpay_analytics_cols", async () => {
+    await exec.execute(sql`ALTER TABLE razorpay_payment_orders ADD COLUMN IF NOT EXISTS error_code TEXT`);
+    await exec.execute(sql`ALTER TABLE razorpay_payment_orders ADD COLUMN IF NOT EXISTS error_description TEXT`);
+    await exec.execute(sql`ALTER TABLE razorpay_payment_orders ADD COLUMN IF NOT EXISTS error_source TEXT`);
+    await exec.execute(sql`ALTER TABLE razorpay_payment_orders ADD COLUMN IF NOT EXISTS captured_at TIMESTAMPTZ`);
+    await exec.execute(sql`ALTER TABLE razorpay_payment_orders ADD COLUMN IF NOT EXISTS settlement_id TEXT`);
+  });
 
   // ── razorpay_refunds ──────────────────────────────────────────────────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS razorpay_refunds (
-      id                    SERIAL PRIMARY KEY,
-      order_id              INTEGER NOT NULL,
-      razorpay_payment_id   TEXT NOT NULL,
-      razorpay_refund_id    TEXT,
-      amount                NUMERIC(18,2) NOT NULL,
-      currency              TEXT NOT NULL DEFAULT 'INR',
-      status                TEXT NOT NULL DEFAULT 'PENDING',
-      speed                 TEXT NOT NULL DEFAULT 'normal',
-      notes                 TEXT,
-      initiated_by_admin_id INTEGER,
-      initiated_by_email    TEXT,
-      provider_response     TEXT,
-      processed_at          TIMESTAMPTZ,
-      created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS razorpay_refunds_refund_id_uniq ON razorpay_refunds(razorpay_refund_id) WHERE razorpay_refund_id IS NOT NULL`);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS razorpay_refunds_order_id_idx ON razorpay_refunds(order_id)`);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS razorpay_refunds_payment_id_idx ON razorpay_refunds(razorpay_payment_id)`);
-  logger.info({ table: "razorpay_refunds" }, "schema_guard_table_created");
+  await block("razorpay_refunds", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS razorpay_refunds (
+        id                    SERIAL PRIMARY KEY,
+        order_id              INTEGER NOT NULL,
+        razorpay_payment_id   TEXT NOT NULL,
+        razorpay_refund_id    TEXT,
+        amount                NUMERIC(18,2) NOT NULL,
+        currency              TEXT NOT NULL DEFAULT 'INR',
+        status                TEXT NOT NULL DEFAULT 'PENDING',
+        speed                 TEXT NOT NULL DEFAULT 'normal',
+        notes                 TEXT,
+        initiated_by_admin_id INTEGER,
+        initiated_by_email    TEXT,
+        provider_response     TEXT,
+        processed_at          TIMESTAMPTZ,
+        created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS razorpay_refunds_refund_id_uniq ON razorpay_refunds(razorpay_refund_id) WHERE razorpay_refund_id IS NOT NULL`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS razorpay_refunds_order_id_idx ON razorpay_refunds(order_id)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS razorpay_refunds_payment_id_idx ON razorpay_refunds(razorpay_payment_id)`);
+    logger.info({ table: "razorpay_refunds" }, "schema_guard_table_created");
+  });
 
   // ── support_tickets + ticket_replies ────────────────────────────────────────
   // Tables were defined in lib/db/src/schema/supportTickets.ts and used by
   // routes/support.ts but were never added here, causing a 500 on GET
   // /api/support/tickets because the SELECT threw "relation does not exist".
   // Root cause: fresh-DB guard gap (same pattern as razorpay_refunds).
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS support_tickets (
-      id               SERIAL PRIMARY KEY,
-      merchant_id      INTEGER NOT NULL,
-      user_id          INTEGER NOT NULL,
-      category         TEXT    NOT NULL,
-      subject          TEXT    NOT NULL,
-      message          TEXT    NOT NULL,
-      screenshot_url   TEXT,
-      status           TEXT    NOT NULL DEFAULT 'open',
-      priority         TEXT    NOT NULL DEFAULT 'normal',
-      resolved_at      TIMESTAMPTZ,
-      created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS support_tickets_merchant_idx ON support_tickets(merchant_id, status, created_at)`);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS support_tickets_status_idx ON support_tickets(status, created_at)`);
-  logger.info({ table: "support_tickets" }, "schema_guard_table_created");
+  await block("support_tickets_and_replies", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS support_tickets (
+        id               SERIAL PRIMARY KEY,
+        merchant_id      INTEGER NOT NULL,
+        user_id          INTEGER NOT NULL,
+        category         TEXT    NOT NULL,
+        subject          TEXT    NOT NULL,
+        message          TEXT    NOT NULL,
+        screenshot_url   TEXT,
+        status           TEXT    NOT NULL DEFAULT 'open',
+        priority         TEXT    NOT NULL DEFAULT 'normal',
+        resolved_at      TIMESTAMPTZ,
+        created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS support_tickets_merchant_idx ON support_tickets(merchant_id, status, created_at)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS support_tickets_status_idx ON support_tickets(status, created_at)`);
+    logger.info({ table: "support_tickets" }, "schema_guard_table_created");
 
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS ticket_replies (
-      id          SERIAL PRIMARY KEY,
-      ticket_id   INTEGER NOT NULL,
-      author_id   INTEGER NOT NULL,
-      author_role TEXT    NOT NULL,
-      message     TEXT    NOT NULL,
-      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS ticket_replies_ticket_idx ON ticket_replies(ticket_id, created_at)`);
-  logger.info({ table: "ticket_replies" }, "schema_guard_table_created");
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS ticket_replies (
+        id          SERIAL PRIMARY KEY,
+        ticket_id   INTEGER NOT NULL,
+        author_id   INTEGER NOT NULL,
+        author_role TEXT    NOT NULL,
+        message     TEXT    NOT NULL,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS ticket_replies_ticket_idx ON ticket_replies(ticket_id, created_at)`);
+    logger.info({ table: "ticket_replies" }, "schema_guard_table_created");
+  });
 
   // ── cashfree_payouts + cashfree_payout_webhook_logs ──────────────────────────
   // Tables were defined in lib/db/src/schema/cashfreePayouts.ts /
@@ -1958,173 +2146,189 @@ async function runGuard(executor: GuardExecutor = db): Promise<void> {
   // SELECT threw "relation does not exist".  On production the tables existed
   // because they were created during earlier manual migration; on dev/fresh-DB
   // they were absent.  Same fresh-DB guard gap pattern.
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS cashfree_payouts (
-      id                  SERIAL PRIMARY KEY,
-      public_transfer_id  VARCHAR(64),
-      provider_key        VARCHAR(64)  DEFAULT 'cashfree',
-      transfer_id         VARCHAR(255) NOT NULL,
-      beneficiary_name    VARCHAR(255) NOT NULL,
-      account_number      VARCHAR(100),
-      ifsc                VARCHAR(20),
-      upi_id              VARCHAR(255),
-      amount              NUMERIC(18,2) NOT NULL,
-      remark              VARCHAR(255),
-      status              TEXT    NOT NULL DEFAULT 'PENDING',
-      cashfree_transfer_id VARCHAR(255),
-      error_message       TEXT,
-      merchant_id         INTEGER,
-      initiated_by_email  VARCHAR(255) NOT NULL,
-      utr                 TEXT,
-      raw_response        TEXT,
-      created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS cashfree_payouts_transfer_id_uniq ON cashfree_payouts(transfer_id)`);
-  logger.info({ table: "cashfree_payouts" }, "schema_guard_table_created");
+  await block("cashfree_payouts", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS cashfree_payouts (
+        id                  SERIAL PRIMARY KEY,
+        public_transfer_id  VARCHAR(64),
+        provider_key        VARCHAR(64)  DEFAULT 'cashfree',
+        transfer_id         VARCHAR(255) NOT NULL,
+        beneficiary_name    VARCHAR(255) NOT NULL,
+        account_number      VARCHAR(100),
+        ifsc                VARCHAR(20),
+        upi_id              VARCHAR(255),
+        amount              NUMERIC(18,2) NOT NULL,
+        remark              VARCHAR(255),
+        status              TEXT    NOT NULL DEFAULT 'PENDING',
+        cashfree_transfer_id VARCHAR(255),
+        error_message       TEXT,
+        merchant_id         INTEGER,
+        initiated_by_email  VARCHAR(255) NOT NULL,
+        utr                 TEXT,
+        raw_response        TEXT,
+        created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS cashfree_payouts_transfer_id_uniq ON cashfree_payouts(transfer_id)`);
+    logger.info({ table: "cashfree_payouts" }, "schema_guard_table_created");
 
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS cashfree_payout_webhook_logs (
-      id                 SERIAL PRIMARY KEY,
-      received_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      endpoint           TEXT,
-      event_type         TEXT,
-      status             TEXT,
-      signature_verified BOOLEAN,
-      payout_id          INTEGER,
-      transfer_id        TEXT,
-      cf_transfer_id     TEXT,
-      utr                TEXT,
-      safe_error         TEXT,
-      processing_result  TEXT NOT NULL DEFAULT 'received',
-      raw_payload        TEXT
-    )
-  `);
-  logger.info({ table: "cashfree_payout_webhook_logs" }, "schema_guard_table_created");
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS cashfree_payout_webhook_logs (
+        id                 SERIAL PRIMARY KEY,
+        received_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        endpoint           TEXT,
+        event_type         TEXT,
+        status             TEXT,
+        signature_verified BOOLEAN,
+        payout_id          INTEGER,
+        transfer_id        TEXT,
+        cf_transfer_id     TEXT,
+        utr                TEXT,
+        safe_error         TEXT,
+        processing_result  TEXT NOT NULL DEFAULT 'received',
+        raw_payload        TEXT
+      )
+    `);
+    logger.info({ table: "cashfree_payout_webhook_logs" }, "schema_guard_table_created");
+  });
 
   // ── IAM tables ─────────────────────────────────────────────────────────────
   // Delegated to the canonical migration file (lib/db/src/migrations/add-iam-rbac.ts).
   // That file owns the DDL and its exported rollback() for emergency use.
   // Both up() and rollback() are idempotent (CREATE/DROP IF EXISTS).
-  await up(db);
-  logger.info({ tables: ["permissions", "role_permissions", "user_permissions", "iam_migration_log"] }, "schema_guard_table_created");
+  await block("iam_tables", async () => {
+    await up(db);
+    logger.info({ tables: ["permissions", "role_permissions", "user_permissions", "iam_migration_log"] }, "schema_guard_table_created");
+  });
 
   // ── reconciliation_email_logs: new metadata columns ────────────────────────
-  await exec.execute(sql`ALTER TABLE reconciliation_email_logs ADD COLUMN IF NOT EXISTS provider_message_id TEXT`);
-  await exec.execute(sql`ALTER TABLE reconciliation_email_logs ADD COLUMN IF NOT EXISTS retry_count INTEGER NOT NULL DEFAULT 0`);
-  await exec.execute(sql`ALTER TABLE reconciliation_email_logs ADD COLUMN IF NOT EXISTS failure_code TEXT`);
-  await exec.execute(sql`ALTER TABLE reconciliation_email_logs ADD COLUMN IF NOT EXISTS retry_at TIMESTAMPTZ`);
-  await exec.execute(sql`ALTER TABLE reconciliation_email_logs ADD COLUMN IF NOT EXISTS idempotency_key TEXT`);
-  logger.info({ table: "reconciliation_email_logs", migration: "add_email_metadata_columns" }, "schema_guard_column_added");
+  await block("reconciliation_email_logs", async () => {
+    await exec.execute(sql`ALTER TABLE reconciliation_email_logs ADD COLUMN IF NOT EXISTS provider_message_id TEXT`);
+    await exec.execute(sql`ALTER TABLE reconciliation_email_logs ADD COLUMN IF NOT EXISTS retry_count INTEGER NOT NULL DEFAULT 0`);
+    await exec.execute(sql`ALTER TABLE reconciliation_email_logs ADD COLUMN IF NOT EXISTS failure_code TEXT`);
+    await exec.execute(sql`ALTER TABLE reconciliation_email_logs ADD COLUMN IF NOT EXISTS retry_at TIMESTAMPTZ`);
+    await exec.execute(sql`ALTER TABLE reconciliation_email_logs ADD COLUMN IF NOT EXISTS idempotency_key TEXT`);
+    logger.info({ table: "reconciliation_email_logs", migration: "add_email_metadata_columns" }, "schema_guard_column_added");
+  });
 
   // ── agent_commission_ledger ───────────────────────────────────────────────
   // One row per credit/debit event on an agent's commission wallet.
   // type: earned | paid | adjustment
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS agent_commission_ledger (
-      id              SERIAL PRIMARY KEY,
-      agent_id        INTEGER NOT NULL,
-      type            TEXT NOT NULL,
-      amount          NUMERIC(18,2) NOT NULL,
-      balance_before  NUMERIC(18,2) NOT NULL DEFAULT 0,
-      balance_after   NUMERIC(18,2) NOT NULL DEFAULT 0,
-      description     TEXT NOT NULL,
-      reference_id    TEXT,
-      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await exec.execute(sql`
-    CREATE INDEX IF NOT EXISTS agent_commission_ledger_agent_created_idx
-      ON agent_commission_ledger(agent_id, created_at)
-  `);
-  logger.info({ table: "agent_commission_ledger" }, "schema_guard_table_created");
+  await block("agent_commission_ledger", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS agent_commission_ledger (
+        id              SERIAL PRIMARY KEY,
+        agent_id        INTEGER NOT NULL,
+        type            TEXT NOT NULL,
+        amount          NUMERIC(18,2) NOT NULL,
+        balance_before  NUMERIC(18,2) NOT NULL DEFAULT 0,
+        balance_after   NUMERIC(18,2) NOT NULL DEFAULT 0,
+        description     TEXT NOT NULL,
+        reference_id    TEXT,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`
+      CREATE INDEX IF NOT EXISTS agent_commission_ledger_agent_created_idx
+        ON agent_commission_ledger(agent_id, created_at)
+    `);
+    logger.info({ table: "agent_commission_ledger" }, "schema_guard_table_created");
+  });
 
   // ── merchant_auth_locks ────────────────────────────────────────────────
   // Progressive soft-lock table for OTP / forgot-password brute-force
   // protection. Tracks how many consecutive per-hour windows have been
   // exhausted for an identifier; sets a timed locked_until once the
   // threshold is reached.  Locks expire automatically with no admin action.
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS merchant_auth_locks (
-      identifier_hash        TEXT PRIMARY KEY,
-      locked_until           TIMESTAMPTZ,
-      window_exhaustion_count INTEGER NOT NULL DEFAULT 0,
-      updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await exec.execute(sql`
-    ALTER TABLE merchant_auth_locks
-      ADD COLUMN IF NOT EXISTS last_exhaustion_at TIMESTAMPTZ
-  `);
-  logger.info({ table: "merchant_auth_locks" }, "schema_guard_table_created");
+  await block("merchant_auth_locks", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS merchant_auth_locks (
+        identifier_hash        TEXT PRIMARY KEY,
+        locked_until           TIMESTAMPTZ,
+        window_exhaustion_count INTEGER NOT NULL DEFAULT 0,
+        updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`
+      ALTER TABLE merchant_auth_locks
+        ADD COLUMN IF NOT EXISTS last_exhaustion_at TIMESTAMPTZ
+    `);
+    logger.info({ table: "merchant_auth_locks" }, "schema_guard_table_created");
+  });
 
   // ── razorpayx_verification_log ────────────────────────────────────────────
   // Persists every RazorpayX probe result so admins can view full history.
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS razorpayx_verification_log (
-      id           SERIAL PRIMARY KEY,
-      status       TEXT NOT NULL,
-      activated    TEXT NOT NULL DEFAULT 'false',
-      message      TEXT,
-      triggered_by TEXT,
-      checked_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await exec.execute(sql`
-    CREATE INDEX IF NOT EXISTS razorpayx_verification_log_checked_at_idx
-      ON razorpayx_verification_log(checked_at)
-  `);
-  logger.info({ table: "razorpayx_verification_log" }, "schema_guard_table_created");
+  await block("razorpayx_verification_log", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS razorpayx_verification_log (
+        id           SERIAL PRIMARY KEY,
+        status       TEXT NOT NULL,
+        activated    TEXT NOT NULL DEFAULT 'false',
+        message      TEXT,
+        triggered_by TEXT,
+        checked_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`
+      CREATE INDEX IF NOT EXISTS razorpayx_verification_log_checked_at_idx
+        ON razorpayx_verification_log(checked_at)
+    `);
+    logger.info({ table: "razorpayx_verification_log" }, "schema_guard_table_created");
+  });
 
   // ── ekqr_webhook_logs ─────────────────────────────────────────────────────
   // CREATE TABLE handles fresh DBs; ALTER TABLEs below are no-ops on existing tables.
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS ekqr_webhook_logs (
-      id               SERIAL PRIMARY KEY,
-      received_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      client_txn_id    TEXT NOT NULL,
-      qr_code_id       INTEGER,
-      merchant_id      INTEGER,
-      status           TEXT,
-      amount           TEXT,
-      raw_payload      TEXT NOT NULL,
-      processing_result TEXT NOT NULL,
-      error_message    TEXT
-    )
-  `);
-  logger.info({ table: "ekqr_webhook_logs" }, "schema_guard_table_created");
-  // New columns added after initial table creation:
-  // ekqr_id: EKQR's internal order ID (the `id` field in the webhook payload)
-  // upi_txn_id: UPI bank reference / UTR
-  await exec.execute(sql`ALTER TABLE ekqr_webhook_logs ADD COLUMN IF NOT EXISTS ekqr_id TEXT`);
-  await exec.execute(sql`ALTER TABLE ekqr_webhook_logs ADD COLUMN IF NOT EXISTS upi_txn_id TEXT`);
-  logger.info({ table: "ekqr_webhook_logs", migration: "add_ekqr_id_upi_txn_id" }, "schema_guard_column_added");
+  await block("ekqr_webhook_logs", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS ekqr_webhook_logs (
+        id               SERIAL PRIMARY KEY,
+        received_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        client_txn_id    TEXT NOT NULL,
+        qr_code_id       INTEGER,
+        merchant_id      INTEGER,
+        status           TEXT,
+        amount           TEXT,
+        raw_payload      TEXT NOT NULL,
+        processing_result TEXT NOT NULL,
+        error_message    TEXT
+      )
+    `);
+    logger.info({ table: "ekqr_webhook_logs" }, "schema_guard_table_created");
+    // New columns added after initial table creation:
+    // ekqr_id: EKQR's internal order ID (the `id` field in the webhook payload)
+    // upi_txn_id: UPI bank reference / UTR
+    await exec.execute(sql`ALTER TABLE ekqr_webhook_logs ADD COLUMN IF NOT EXISTS ekqr_id TEXT`);
+    await exec.execute(sql`ALTER TABLE ekqr_webhook_logs ADD COLUMN IF NOT EXISTS upi_txn_id TEXT`);
+    logger.info({ table: "ekqr_webhook_logs", migration: "add_ekqr_id_upi_txn_id" }, "schema_guard_column_added");
+  });
 
   // cleanup_run_history — audit log for VA and QR cleanup scheduler runs.
   // Both vaCleanupScheduler and qrCleanupScheduler INSERT into this table after
   // every run (scheduled or manual).  Without this table the schedulers throw
   // "relation does not exist" and their run-history/streak features are broken.
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS cleanup_run_history (
-      id             SERIAL PRIMARY KEY,
-      type           TEXT        NOT NULL,
-      trigger        TEXT        NOT NULL DEFAULT 'scheduled',
-      ran_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
-      expired        INTEGER,
-      closed         INTEGER,
-      deleted        INTEGER     NOT NULL DEFAULT 0,
-      retention_days INTEGER     NOT NULL DEFAULT 0,
-      triggered_by   TEXT        NOT NULL DEFAULT 'scheduled'
-    )
-  `);
-  logger.info({ table: "cleanup_run_history" }, "schema_guard_table_created");
+  await block("cleanup_run_history", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS cleanup_run_history (
+        id             SERIAL PRIMARY KEY,
+        type           TEXT        NOT NULL,
+        trigger        TEXT        NOT NULL DEFAULT 'scheduled',
+        ran_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+        expired        INTEGER,
+        closed         INTEGER,
+        deleted        INTEGER     NOT NULL DEFAULT 0,
+        retention_days INTEGER     NOT NULL DEFAULT 0,
+        triggered_by   TEXT        NOT NULL DEFAULT 'scheduled'
+      )
+    `);
+    logger.info({ table: "cleanup_run_history" }, "schema_guard_table_created");
+  });
 
   // ── One-time migration: encrypt plaintext EKQR credentials ───────────────
   // ekqr_api_key and ekqr_webhook_secret were historically stored as plaintext
   // in system_config. Re-encrypt any rows that do not yet carry the enc:v1: prefix.
   // This step is idempotent: already-encrypted rows (starting with enc:v1:) are skipped.
-  {
+  await block("encrypt_ekqr_credentials", async () => {
     const { encryptSecret } = await import("../helpers/cryptoUtils");
     const credRows = await exec.execute(
       sql`SELECT key, value FROM system_config WHERE key IN ('ekqr_api_key', 'ekqr_webhook_secret') AND value IS NOT NULL AND value != '' AND value NOT LIKE 'enc:v1:%'`
@@ -2140,272 +2344,318 @@ async function runGuard(executor: GuardExecutor = db): Promise<void> {
     if (credRowsArr.length > 0) {
       logger.info({ migration: "encrypt_ekqr_credentials", count: credRowsArr.length }, "schema_guard: plaintext EKQR credential migration complete");
     }
-  }
+  });
 
   // ── account_visibility_rules ─────────────────────────────────────────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS account_visibility_rules (
-      id                SERIAL PRIMARY KEY,
-      account_detail_id INTEGER NOT NULL,
-      merchant_id       INTEGER NOT NULL,
-      visible           BOOLEAN NOT NULL DEFAULT TRUE,
-      created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  logger.info({ table: "account_visibility_rules" }, "schema_guard_table_created");
+  await block("account_visibility_rules", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS account_visibility_rules (
+        id                SERIAL PRIMARY KEY,
+        account_detail_id INTEGER NOT NULL,
+        merchant_id       INTEGER NOT NULL,
+        visible           BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info({ table: "account_visibility_rules" }, "schema_guard_table_created");
+  });
 
   // ── activation_requests ──────────────────────────────────────────────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS activation_requests (
-      id          SERIAL PRIMARY KEY,
-      merchant_id INTEGER NOT NULL,
-      product_key VARCHAR(64) NOT NULL,
-      status      VARCHAR(32) NOT NULL DEFAULT 'pending',
-      note        TEXT,
-      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  logger.info({ table: "activation_requests" }, "schema_guard_table_created");
+  await block("activation_requests", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS activation_requests (
+        id          SERIAL PRIMARY KEY,
+        merchant_id INTEGER NOT NULL,
+        product_key VARCHAR(64) NOT NULL,
+        status      VARCHAR(32) NOT NULL DEFAULT 'pending',
+        note        TEXT,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info({ table: "activation_requests" }, "schema_guard_table_created");
+  });
 
   // ── callback_nonces ──────────────────────────────────────────────────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS callback_nonces (
-      key        TEXT PRIMARY KEY,
-      expires_at TIMESTAMPTZ NOT NULL
-    )
-  `);
-  logger.info({ table: "callback_nonces" }, "schema_guard_table_created");
+  await block("callback_nonces", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS callback_nonces (
+        key        TEXT PRIMARY KEY,
+        expires_at TIMESTAMPTZ NOT NULL
+      )
+    `);
+    logger.info({ table: "callback_nonces" }, "schema_guard_table_created");
+  });
 
   // ── cashfree_payment_logs ────────────────────────────────────────────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS cashfree_payment_logs (
-      id                SERIAL PRIMARY KEY,
-      event_type        TEXT,
-      cashfree_order_id TEXT,
-      merchant_id       INTEGER,
-      amount            TEXT,
-      status            TEXT,
-      raw_payload       TEXT NOT NULL,
-      processing_result TEXT NOT NULL,
-      error_message     TEXT,
-      received_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  logger.info({ table: "cashfree_payment_logs" }, "schema_guard_table_created");
+  await block("cashfree_payment_logs", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS cashfree_payment_logs (
+        id                SERIAL PRIMARY KEY,
+        event_type        TEXT,
+        cashfree_order_id TEXT,
+        merchant_id       INTEGER,
+        amount            TEXT,
+        status            TEXT,
+        raw_payload       TEXT NOT NULL,
+        processing_result TEXT NOT NULL,
+        error_message     TEXT,
+        received_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info({ table: "cashfree_payment_logs" }, "schema_guard_table_created");
+  });
 
   // ── merchant_features ────────────────────────────────────────────────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS merchant_features (
-      id             SERIAL PRIMARY KEY,
-      merchant_id    INTEGER NOT NULL UNIQUE,
-      dynamic_qr     BOOLEAN NOT NULL DEFAULT FALSE,
-      static_qr      BOOLEAN NOT NULL DEFAULT FALSE,
-      virtual_account BOOLEAN NOT NULL DEFAULT FALSE,
-      payment_links  BOOLEAN NOT NULL DEFAULT FALSE,
-      payouts        BOOLEAN NOT NULL DEFAULT FALSE,
-      withdrawals    BOOLEAN NOT NULL DEFAULT TRUE,
-      settlements    BOOLEAN NOT NULL DEFAULT TRUE,
-      webhooks       BOOLEAN NOT NULL DEFAULT TRUE,
-      api_keys       BOOLEAN NOT NULL DEFAULT TRUE,
-      csv_export     BOOLEAN NOT NULL DEFAULT TRUE,
-      created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  logger.info({ table: "merchant_features" }, "schema_guard_table_created");
+  await block("merchant_features", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS merchant_features (
+        id             SERIAL PRIMARY KEY,
+        merchant_id    INTEGER NOT NULL UNIQUE,
+        dynamic_qr     BOOLEAN NOT NULL DEFAULT FALSE,
+        static_qr      BOOLEAN NOT NULL DEFAULT FALSE,
+        virtual_account BOOLEAN NOT NULL DEFAULT FALSE,
+        payment_links  BOOLEAN NOT NULL DEFAULT FALSE,
+        payouts        BOOLEAN NOT NULL DEFAULT FALSE,
+        withdrawals    BOOLEAN NOT NULL DEFAULT TRUE,
+        settlements    BOOLEAN NOT NULL DEFAULT TRUE,
+        webhooks       BOOLEAN NOT NULL DEFAULT TRUE,
+        api_keys       BOOLEAN NOT NULL DEFAULT TRUE,
+        csv_export     BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info({ table: "merchant_features" }, "schema_guard_table_created");
+  });
 
   // ── merchant_products ────────────────────────────────────────────────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS merchant_products (
-      id           SERIAL PRIMARY KEY,
-      merchant_id  INTEGER NOT NULL,
-      product_type TEXT NOT NULL,
-      enabled      BOOLEAN NOT NULL DEFAULT FALSE,
-      created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  logger.info({ table: "merchant_products" }, "schema_guard_table_created");
+  await block("merchant_products", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS merchant_products (
+        id           SERIAL PRIMARY KEY,
+        merchant_id  INTEGER NOT NULL,
+        product_type TEXT NOT NULL,
+        enabled      BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info({ table: "merchant_products" }, "schema_guard_table_created");
+  });
 
   // ── payment_links ────────────────────────────────────────────────────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS payment_links (
-      id           SERIAL PRIMARY KEY,
-      merchant_id  INTEGER NOT NULL,
-      title        TEXT NOT NULL,
-      description  TEXT,
-      amount       TEXT,
-      currency     TEXT NOT NULL DEFAULT 'INR',
-      slug         TEXT NOT NULL UNIQUE,
-      upi_payload  TEXT,
-      status       TEXT NOT NULL DEFAULT 'active',
-      max_payments INTEGER,
-      expires_at   TIMESTAMPTZ,
-      callback_url TEXT,
-      created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  logger.info({ table: "payment_links" }, "schema_guard_table_created");
+  await block("payment_links", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS payment_links (
+        id           SERIAL PRIMARY KEY,
+        merchant_id  INTEGER NOT NULL,
+        title        TEXT NOT NULL,
+        description  TEXT,
+        amount       TEXT,
+        currency     TEXT NOT NULL DEFAULT 'INR',
+        slug         TEXT NOT NULL UNIQUE,
+        upi_payload  TEXT,
+        status       TEXT NOT NULL DEFAULT 'active',
+        max_payments INTEGER,
+        expires_at   TIMESTAMPTZ,
+        callback_url TEXT,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info({ table: "payment_links" }, "schema_guard_table_created");
+  });
 
   // ── plan_history ─────────────────────────────────────────────────────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS plan_history (
-      id           SERIAL PRIMARY KEY,
-      merchant_id  INTEGER NOT NULL,
-      from_plan_id INTEGER,
-      to_plan_id   INTEGER,
-      action       TEXT NOT NULL,
-      assigned_by  INTEGER,
-      admin_email  TEXT,
-      notes        TEXT,
-      expires_at   TIMESTAMPTZ,
-      created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  logger.info({ table: "plan_history" }, "schema_guard_table_created");
+  await block("plan_history", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS plan_history (
+        id           SERIAL PRIMARY KEY,
+        merchant_id  INTEGER NOT NULL,
+        from_plan_id INTEGER,
+        to_plan_id   INTEGER,
+        action       TEXT NOT NULL,
+        assigned_by  INTEGER,
+        admin_email  TEXT,
+        notes        TEXT,
+        expires_at   TIMESTAMPTZ,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info({ table: "plan_history" }, "schema_guard_table_created");
+  });
 
   // ── provider_metrics ─────────────────────────────────────────────────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS provider_metrics (
-      id               SERIAL PRIMARY KEY,
-      provider_key     VARCHAR(64) NOT NULL,
-      time_window      VARCHAR(8) NOT NULL DEFAULT '24h',
-      total_attempts   INTEGER NOT NULL DEFAULT 0,
-      success_count    INTEGER NOT NULL DEFAULT 0,
-      failed_count     INTEGER NOT NULL DEFAULT 0,
-      timeout_count    INTEGER NOT NULL DEFAULT 0,
-      avg_response_ms  INTEGER,
-      success_rate     NUMERIC(5,2) DEFAULT 0.00,
-      last_computed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS provider_metrics_key_window_uidx ON provider_metrics(provider_key, time_window)`);
-  logger.info({ table: "provider_metrics" }, "schema_guard_table_created");
+  await block("provider_metrics", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS provider_metrics (
+        id               SERIAL PRIMARY KEY,
+        provider_key     VARCHAR(64) NOT NULL,
+        time_window      VARCHAR(8) NOT NULL DEFAULT '24h',
+        total_attempts   INTEGER NOT NULL DEFAULT 0,
+        success_count    INTEGER NOT NULL DEFAULT 0,
+        failed_count     INTEGER NOT NULL DEFAULT 0,
+        timeout_count    INTEGER NOT NULL DEFAULT 0,
+        avg_response_ms  INTEGER,
+        success_rate     NUMERIC(5,2) DEFAULT 0.00,
+        last_computed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS provider_metrics_key_window_uidx ON provider_metrics(provider_key, time_window)`);
+    logger.info({ table: "provider_metrics" }, "schema_guard_table_created");
+  });
 
   // ── provider_product_visibility ──────────────────────────────────────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS provider_product_visibility (
-      id                SERIAL PRIMARY KEY,
-      product_key       VARCHAR(64) NOT NULL,
-      merchant_id       INTEGER NOT NULL,
-      visibility_status VARCHAR(32) NOT NULL DEFAULT 'visible',
-      created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS ppv_product_merchant_uidx ON provider_product_visibility(product_key, merchant_id)`);
-  logger.info({ table: "provider_product_visibility" }, "schema_guard_table_created");
+  await block("provider_product_visibility", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS provider_product_visibility (
+        id                SERIAL PRIMARY KEY,
+        product_key       VARCHAR(64) NOT NULL,
+        merchant_id       INTEGER NOT NULL,
+        visibility_status VARCHAR(32) NOT NULL DEFAULT 'visible',
+        created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS ppv_product_merchant_uidx ON provider_product_visibility(product_key, merchant_id)`);
+    logger.info({ table: "provider_product_visibility" }, "schema_guard_table_created");
+  });
 
   // ── qr_payment_events ────────────────────────────────────────────────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS qr_payment_events (
-      id                 SERIAL PRIMARY KEY,
-      qr_code_id         INTEGER NOT NULL,
-      merchant_id        INTEGER NOT NULL,
-      transaction_id     INTEGER,
-      amount             TEXT,
-      order_id           TEXT,
-      merchant_reference TEXT,
-      received_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  logger.info({ table: "qr_payment_events" }, "schema_guard_table_created");
+  await block("qr_payment_events", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS qr_payment_events (
+        id                 SERIAL PRIMARY KEY,
+        qr_code_id         INTEGER NOT NULL,
+        merchant_id        INTEGER NOT NULL,
+        transaction_id     INTEGER,
+        amount             TEXT,
+        order_id           TEXT,
+        merchant_reference TEXT,
+        received_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info({ table: "qr_payment_events" }, "schema_guard_table_created");
+  });
 
   // ── routing_logs ─────────────────────────────────────────────────────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS routing_logs (
-      id                    SERIAL PRIMARY KEY,
-      merchant_id           INTEGER NOT NULL,
-      config_id             INTEGER,
-      config_name           VARCHAR(64),
-      strategy_used         VARCHAR(32),
-      attempt_number        INTEGER NOT NULL DEFAULT 1,
-      provider_key          VARCHAR(64) NOT NULL,
-      result                VARCHAR(32) NOT NULL,
-      response_time_ms      INTEGER,
-      amount                NUMERIC(18,2),
-      payment_mode          VARCHAR(32),
-      public_reference_id   VARCHAR(64),
-      provider_reference_id VARCHAR(128),
-      error_message         TEXT,
-      created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS routing_logs_merchant_idx ON routing_logs(merchant_id)`);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS routing_logs_created_idx ON routing_logs(created_at)`);
-  logger.info({ table: "routing_logs" }, "schema_guard_table_created");
+  await block("routing_logs", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS routing_logs (
+        id                    SERIAL PRIMARY KEY,
+        merchant_id           INTEGER NOT NULL,
+        config_id             INTEGER,
+        config_name           VARCHAR(64),
+        strategy_used         VARCHAR(32),
+        attempt_number        INTEGER NOT NULL DEFAULT 1,
+        provider_key          VARCHAR(64) NOT NULL,
+        result                VARCHAR(32) NOT NULL,
+        response_time_ms      INTEGER,
+        amount                NUMERIC(18,2),
+        payment_mode          VARCHAR(32),
+        public_reference_id   VARCHAR(64),
+        provider_reference_id VARCHAR(128),
+        error_message         TEXT,
+        created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS routing_logs_merchant_idx ON routing_logs(merchant_id)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS routing_logs_created_idx ON routing_logs(created_at)`);
+    logger.info({ table: "routing_logs" }, "schema_guard_table_created");
+  });
 
   // ── saved_filters ────────────────────────────────────────────────────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS saved_filters (
-      id          SERIAL PRIMARY KEY,
-      user_id     INTEGER NOT NULL,
-      merchant_id INTEGER,
-      name        TEXT NOT NULL,
-      raw_input   TEXT NOT NULL,
-      filter_data JSONB NOT NULL,
-      context     TEXT NOT NULL DEFAULT '',
-      sort_order  INTEGER NOT NULL DEFAULT 0,
-      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS saved_filters_user_idx ON saved_filters(user_id)`);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS saved_filters_merchant_context_idx ON saved_filters(merchant_id, context)`);
-  logger.info({ table: "saved_filters" }, "schema_guard_table_created");
+  await block("saved_filters", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS saved_filters (
+        id          SERIAL PRIMARY KEY,
+        user_id     INTEGER NOT NULL,
+        merchant_id INTEGER,
+        name        TEXT NOT NULL,
+        raw_input   TEXT NOT NULL,
+        filter_data JSONB NOT NULL,
+        context     TEXT NOT NULL DEFAULT '',
+        sort_order  INTEGER NOT NULL DEFAULT 0,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS saved_filters_user_idx ON saved_filters(user_id)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS saved_filters_merchant_context_idx ON saved_filters(merchant_id, context)`);
+    logger.info({ table: "saved_filters" }, "schema_guard_table_created");
+  });
 
   // ── storage_cleanup_runs ─────────────────────────────────────────────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS storage_cleanup_runs (
-      id             SERIAL PRIMARY KEY,
-      created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      total_scanned  INTEGER NOT NULL DEFAULT 0,
-      deleted        INTEGER NOT NULL DEFAULT 0,
-      errors         INTEGER NOT NULL DEFAULT 0,
-      triggered_by   TEXT
-    )
-  `);
-  logger.info({ table: "storage_cleanup_runs" }, "schema_guard_table_created");
+  await block("storage_cleanup_runs", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS storage_cleanup_runs (
+        id             SERIAL PRIMARY KEY,
+        created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        total_scanned  INTEGER NOT NULL DEFAULT 0,
+        deleted        INTEGER NOT NULL DEFAULT 0,
+        errors         INTEGER NOT NULL DEFAULT 0,
+        triggered_by   TEXT
+      )
+    `);
+    logger.info({ table: "storage_cleanup_runs" }, "schema_guard_table_created");
+  });
 
   // ── va_balance_history ───────────────────────────────────────────────────
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS va_balance_history (
-      id                   SERIAL PRIMARY KEY,
-      virtual_account_id   INTEGER NOT NULL,
-      changed_by           INTEGER NOT NULL,
-      changed_by_role      TEXT NOT NULL,
-      changed_by_name      TEXT NOT NULL,
-      old_balance          TEXT,
-      new_balance          TEXT,
-      old_total_collection TEXT,
-      new_total_collection TEXT,
-      reason               TEXT,
-      created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  logger.info({ table: "va_balance_history" }, "schema_guard_table_created");
+  await block("va_balance_history", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS va_balance_history (
+        id                   SERIAL PRIMARY KEY,
+        virtual_account_id   INTEGER NOT NULL,
+        changed_by           INTEGER NOT NULL,
+        changed_by_role      TEXT NOT NULL,
+        changed_by_name      TEXT NOT NULL,
+        old_balance          TEXT,
+        new_balance          TEXT,
+        old_total_collection TEXT,
+        new_total_collection TEXT,
+        reason               TEXT,
+        created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info({ table: "va_balance_history" }, "schema_guard_table_created");
+  });
 
   // ── uploaded_objects: object storage dedup tracking table ────────────────
   // Used by routes/storage.ts (POST /api/storage/upload) and
   // routes/systemConfig.ts (cleanup scheduler) to deduplicate uploads by
   // content hash and to list/delete objects for a merchant.  Missing from
   // both guards — detected by the schema-guard-coverage check.
-  await exec.execute(sql`
-    CREATE TABLE IF NOT EXISTS uploaded_objects (
-      id           SERIAL PRIMARY KEY,
-      merchant_id  INTEGER NOT NULL,
-      content_hash TEXT NOT NULL,
-      object_path  TEXT NOT NULL,
-      content_type TEXT NOT NULL,
-      created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      CONSTRAINT uploaded_objects_merchant_hash_unique UNIQUE (merchant_id, content_hash)
-    )
-  `);
-  await exec.execute(sql`CREATE INDEX IF NOT EXISTS uploaded_objects_merchant_id_idx ON uploaded_objects(merchant_id)`);
-  logger.info({ table: "uploaded_objects" }, "schema_guard_table_created");
+  await block("uploaded_objects", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS uploaded_objects (
+        id           SERIAL PRIMARY KEY,
+        merchant_id  INTEGER NOT NULL,
+        content_hash TEXT NOT NULL,
+        object_path  TEXT NOT NULL,
+        content_type TEXT NOT NULL,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT uploaded_objects_merchant_hash_unique UNIQUE (merchant_id, content_hash)
+      )
+    `);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS uploaded_objects_merchant_id_idx ON uploaded_objects(merchant_id)`);
+    logger.info({ table: "uploaded_objects" }, "schema_guard_table_created");
+  });
 
+  // ── Evaluate block results ────────────────────────────────────────────────
+  if (failures.length > 0) {
+    _guardFailedBlocks = failures;
+    _guardStatus = "partial";
+    logger.error(
+      { failedBlocks: failures, failedCount: failures.length },
+      "schema_guard_completed_with_failures",
+    );
+    throw new Error(
+      `schemaGuard completed with ${failures.length} failed block(s): ${failures.join(", ")}`,
+    );
+  }
+
+  _guardStatus = "pass";
   logger.info("schema_guard_completed");
 }
 
@@ -2419,6 +2669,13 @@ async function runGuard(executor: GuardExecutor = db): Promise<void> {
 export async function ensureSchemaGuard(): Promise<void> {
   if (!guardPromise) {
     guardPromise = runGuard().catch((err) => {
+      // If _guardStatus is still "running" here the guard crashed before the
+      // failure-accumulation check at the end (e.g. an error in the preamble
+      // or an unhandled throw outside a block()). Mark it as a total "fail"
+      // rather than "partial" so health checks can distinguish the two cases.
+      if (_guardStatus === "running") {
+        _guardStatus = "fail";
+      }
       guardPromise = null;
       throw err;
     });
@@ -2447,4 +2704,6 @@ export async function runSchemaGuardWith(executor: GuardExecutor): Promise<void>
 /** Test-only: clears the cached guard promise so each test starts fresh. */
 export function resetSchemaGuardCacheForTests(): void {
   guardPromise = null;
+  _guardStatus = "pending";
+  _guardFailedBlocks = [];
 }
