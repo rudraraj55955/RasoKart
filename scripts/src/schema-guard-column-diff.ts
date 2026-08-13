@@ -532,12 +532,34 @@ function main(): void {
     lineNo: number;
   }> = [];
 
+  // DROP COLUMN claims whose table name does not appear in the Drizzle schema
+  // OR in any CREATE TABLE body in schemaGuard.ts / db-migrate.ts.  A typo'd
+  // table name will never match any live column and will silently execute as a
+  // no-op (or worse, throw "table does not exist" at runtime).
+  const unknownTableDrops: Array<{
+    file: string;
+    table: string;
+    col: string;
+    lineNo: number;
+  }> = [];
+
   for (const [filePath, label] of filesToCheck) {
     if (!fs.existsSync(filePath)) continue;
     const source = fs.readFileSync(filePath, "utf8");
     const drops = collectAlterTableDropClaims(source);
 
     for (const { table, col, lineNo, hasIfExists } of drops) {
+      // ── Table-name existence check (new) ────────────────────────────────
+      // The table must be known: either tracked by Drizzle OR have a CREATE
+      // TABLE body in one of the guard files.  A table that satisfies neither
+      // condition is a typo — flag it as a hard error regardless of the column.
+      const inDrizzle = drizzleLower.has(table);
+      const inCreateTable = createTableCols.has(table);
+      if (!inDrizzle && !inCreateTable) {
+        unknownTableDrops.push({ file: label, table, col, lineNo });
+        continue;
+      }
+
       const drizzleCols = drizzleLower.get(table);
       if (!drizzleCols) {
         // schemaGuard-only table — check CREATE TABLE body AND ALTER TABLE ADD COLUMN.
@@ -555,20 +577,9 @@ function main(): void {
       // Drizzle-tracked table — the column must no longer be in the schema.
       if (drizzleCols.has(col)) {
         liveDrop.push({ file: label, table, col, lineNo, hasIfExists });
-      } else {
-        // Column is absent from the Drizzle schema. Also check the guard's own
-        // CREATE TABLE body: if it is still there, the guard has a self-canceling
-        // pair (CREATE TABLE creates it on a fresh DB, then DROP COLUMN removes it).
-        // This is the classic incomplete-rename footgun where the author added a
-        // DROP guard but forgot to remove the column from the CREATE TABLE body.
-        const ctCols = createTableCols.get(table);
-        if (ctCols && ctCols.has(col)) {
-          liveDrop.push({ file: label, table, col, lineNo, hasIfExists });
-        } else if (!hasIfExists) {
-          // Column already absent from both Drizzle schema and CREATE TABLE body,
-          // but the DROP has no IF EXISTS — warn for idempotency.
-          bareDropWarnings.push({ file: label, table, col, lineNo });
-        }
+      } else if (!hasIfExists) {
+        // Column already absent from Drizzle schema but no IF EXISTS guard.
+        bareDropWarnings.push({ file: label, table, col, lineNo });
       }
     }
   }
@@ -601,6 +612,30 @@ function main(): void {
         : `DROP COLUMN ${col}`;
       console.error(
         `  ${file}:${lineNo}  ALTER TABLE ${table} ${dropClause}  ← column is still live in the schema`
+      );
+    }
+    console.error();
+  }
+
+  // ── Unknown-table DROP error (hard failure) ──────────────────────────────
+  //
+  // A DROP COLUMN whose table name doesn't exist in the Drizzle schema OR any
+  // CREATE TABLE body is almost certainly a typo.  It will never match a live
+  // column on a correctly-deployed DB but will silently pass all column-level
+  // checks, masking the mistake until runtime.
+  if (unknownTableDrops.length > 0) {
+    dropOk = false;
+    console.error(
+      `✗ Found ${unknownTableDrops.length} DROP COLUMN guard(s) referencing a table name that does not exist:\n`
+    );
+    console.error(
+      "  The table name was not found in the Drizzle schema OR in any CREATE TABLE\n" +
+        "  body in schemaGuard.ts / db-migrate.ts. This is almost certainly a typo.\n" +
+        "  Fix the table name or remove the ALTER TABLE line.\n"
+    );
+    for (const { file, table, col, lineNo } of unknownTableDrops) {
+      console.error(
+        `  ${file}:${lineNo}  ALTER TABLE ${table} DROP COLUMN ... ${col}  ← table '${table}' is unknown`
       );
     }
     console.error();

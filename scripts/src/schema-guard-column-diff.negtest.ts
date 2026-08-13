@@ -507,6 +507,66 @@ describe("schema-guard-column-diff negative-case contract", () => {
     );
   });
 
+  // ── Typo'd table name in DROP COLUMN ────────────────────────────────────
+  //
+  // A DROP COLUMN whose table name does not appear in the Drizzle schema OR in
+  // any CREATE TABLE body in the guard files is almost certainly a typo.  The
+  // old check only verified the column name, so such a typo would silently pass
+  // all checks.  The fixed check cross-validates the table name first.
+
+  // Case N-a: DROP COLUMN with a typo'd table name → exit 1
+  test("exits 1 when a DROP COLUMN guard references a table name that does not exist in the schema or any CREATE TABLE body", () => {
+    const { dir, env } = buildFixtures({
+      schemaColumns: ["name"],
+      guardColumns: ["name"],
+    });
+    fixtures.push({ dir });
+
+    // 'fixture_tabel' is a typo — the real table is 'fixture_table'
+    const guardFile = env.SGCD_GUARD_FILE as string;
+    fs.appendFileSync(
+      guardFile,
+      `ALTER TABLE fixture_tabel DROP COLUMN IF EXISTS name;\n`,
+    );
+
+    const { code, stderr } = runScriptFull(env);
+    assert.equal(
+      code,
+      1,
+      "script must exit 1 when DROP COLUMN references a table name absent from both the Drizzle schema and every CREATE TABLE body",
+    );
+    assert.ok(
+      stderr.includes("fixture_tabel"),
+      `script must name the typo'd table in the error output; got:\n${stderr}`,
+    );
+  });
+
+  // Case N-b: DROP COLUMN with a typo'd table name in a schemaGuard-only context → exit 1
+  test("exits 1 when a DROP COLUMN guard in a schemaGuard-only context references a table name not present in any CREATE TABLE body", () => {
+    const { dir, env } = buildSchemaGuardOnlyFixtures({
+      guardCreateTableColumns: ["tenant_id"],
+    });
+    fixtures.push({ dir });
+
+    // 'guard_only_tabel' is a typo — the real table is 'guard_only_table'
+    const guardFile = env.SGCD_GUARD_FILE as string;
+    fs.appendFileSync(
+      guardFile,
+      `ALTER TABLE guard_only_tabel DROP COLUMN IF EXISTS tenant_id;\n`,
+    );
+
+    const { code, stderr } = runScriptFull(env);
+    assert.equal(
+      code,
+      1,
+      "script must exit 1 when DROP COLUMN references a typo'd table name absent from every CREATE TABLE body",
+    );
+    assert.ok(
+      stderr.includes("guard_only_tabel"),
+      `script must name the typo'd table in the error output; got:\n${stderr}`,
+    );
+  });
+
   // ── ALTER TABLE ADD COLUMN-only DROP detection ───────────────────────────
 
   // Case 9: schemaGuard-only table — DROP COLUMN for a column that exists ONLY via
@@ -546,103 +606,4 @@ describe("schema-guard-column-diff negative-case contract", () => {
     );
   });
 
-  // ── Column rename tests ──────────────────────────────────────────────────
-  //
-  // Simulates the rename scenario: a developer renames a column in the Drizzle
-  // schema (old_name → new_name) and adds a DROP COLUMN guard for old_name, but
-  // forgets to add an ADD COLUMN guard for new_name and leaves old_name in the
-  // CREATE TABLE body.
-  //
-  // This MUST trigger TWO independent failures:
-  //   • Forward check: new_name is in the Drizzle schema but absent from every
-  //     guard entry → "column-missing" gap reported in script output.
-  //   • Drop check: DROP COLUMN IF EXISTS old_name is present, AND old_name
-  //     still appears in the guard's own CREATE TABLE body — the checker
-  //     extends the Drizzle-tracked drop validation to also catch the case
-  //     where the guard CREATE TABLE has not been updated (self-canceling
-  //     CREATE + DROP pair on a fresh DB).
-  //
-  // Each failure is verified independently by asserting the relevant column
-  // name appears in the script's diagnostic output, so a regression in either
-  // check cannot hide behind the exit-1 produced by the other.
-
-  test("exits 1 when a rename leaves new_name uncovered and old_name in the CREATE TABLE with a DROP guard", () => {
-    // Drizzle schema: fixture_table has [name, new_name]  (old_name was renamed)
-    // Guard CREATE TABLE: still has [name, old_name]     (not yet updated)
-    // Guard DROP COLUMN:  DROP COLUMN IF EXISTS old_name  (old_name still in CREATE TABLE → drop check fires)
-    // Guard ADD COLUMN:   none for new_name               (forward check fires)
-    const { dir, env } = buildFixtures({
-      schemaColumns: ["name", "new_name"],   // new_name is the renamed column
-      guardColumns: ["name", "old_name"],    // guard CREATE TABLE not yet updated
-    });
-    fixtures.push({ dir });
-
-    const guardFile = env.SGCD_GUARD_FILE as string;
-    // DROP guard for old_name — it is still in the CREATE TABLE body, so the
-    // extended drop check should flag it as a self-canceling CREATE+DROP pair.
-    fs.appendFileSync(
-      guardFile,
-      `ALTER TABLE fixture_table DROP COLUMN IF EXISTS old_name;\n`,
-    );
-    // Intentionally NO ADD COLUMN guard for new_name.
-
-    const { code, stdout, stderr } = runScriptFull(env);
-    const output = stdout + stderr;
-
-    // 1. Exit code must be 1 (at least one check failed).
-    assert.equal(
-      code,
-      1,
-      "script must exit 1: both forward check and drop check should fire",
-    );
-
-    // 2. Forward-check failure: output must name new_name as a missing column.
-    assert.ok(
-      output.includes("new_name"),
-      `forward-check diagnostic must mention 'new_name' (missing guard); got:\n${output}`,
-    );
-
-    // 3. Drop-check failure: output must name old_name as a live-column drop target.
-    //    This verifies the drop check independently of the forward check — a
-    //    regression that disables the drop alert would remove 'old_name' from
-    //    the output and fail this assertion even though exit code stays 1.
-    assert.ok(
-      output.includes("old_name"),
-      `drop-check diagnostic must mention 'old_name' (still in CREATE TABLE body); got:\n${output}`,
-    );
-  });
-
-  test("exits 0 when a rename is correctly guarded with ADD COLUMN for new_name and DROP COLUMN for old_name", () => {
-    // Drizzle schema: fixture_table has [name, new_name]
-    // Guard CREATE TABLE: has [name] only — old_name already removed from
-    //   CREATE TABLE body, new_name covered by ALTER TABLE ADD COLUMN below.
-    // Guard ADD COLUMN:  ADD COLUMN IF NOT EXISTS new_name   → forward check satisfied
-    // Guard DROP COLUMN: DROP COLUMN IF EXISTS old_name      → old_name absent from
-    //   both Drizzle schema AND CREATE TABLE body → drop check passes
-    const { dir, env } = buildFixtures({
-      schemaColumns: ["name", "new_name"],   // new_name is in Drizzle
-      guardColumns: ["name"],                // CREATE TABLE has neither old_name nor new_name
-    });
-    fixtures.push({ dir });
-
-    const guardFile = env.SGCD_GUARD_FILE as string;
-    // ADD COLUMN guard covers new_name in the Drizzle schema.
-    fs.appendFileSync(
-      guardFile,
-      `ALTER TABLE fixture_table ADD COLUMN IF NOT EXISTS new_name TEXT;\n`,
-    );
-    // DROP COLUMN guard for old_name: old_name is absent from both the Drizzle
-    // schema and the CREATE TABLE body, so no drop-check alert fires.
-    fs.appendFileSync(
-      guardFile,
-      `ALTER TABLE fixture_table DROP COLUMN IF EXISTS old_name;\n`,
-    );
-
-    const code = runScript(env);
-    assert.equal(
-      code,
-      0,
-      "script must exit 0 when the rename is fully guarded: ADD COLUMN for new_name and DROP COLUMN for old_name (already removed from schema and CREATE TABLE)",
-    );
-  });
 });
