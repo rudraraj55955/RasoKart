@@ -9,7 +9,6 @@ import { AuthLayout } from "@/components/layout/auth-layout";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { OtpCodeInput } from "@/components/ui/otp-code-input";
 
 function apiBase(): string {
   const base = (import.meta as any)?.env?.BASE_URL ?? "/";
@@ -268,14 +267,34 @@ export default function MerchantRegister() {
                 <FormItem>
                   <FormLabel>Verification code</FormLabel>
                   <FormControl>
-                    <OtpCodeInput
-                      placeholder="------"
+                    {/*
+                     * Single native <input> — intentionally NOT OtpCodeInput.
+                     * OtpCodeInput splits into 6 DOM nodes and uses programmatic
+                     * focus() to advance between them. iOS Safari does not honour
+                     * focus() calls that fire outside a synchronous user-gesture
+                     * stack, so React's re-render between digits dismisses the
+                     * keyboard. A single input with autoComplete="one-time-code"
+                     * and inputMode="numeric" works natively on all mobile browsers.
+                     */}
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      pattern="[0-9]*"
+                      maxLength={6}
+                      placeholder="123456"
                       autoFocus
-                      value={field.value}
-                      onChange={field.onChange}
-                      onBlur={field.onBlur}
+                      disabled={verifying}
+                      className="flex h-14 w-full rounded-md border border-input bg-transparent px-4 py-2 text-center text-2xl font-mono tracking-[0.5em] shadow-sm transition-colors placeholder:text-muted-foreground/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                       name={field.name}
                       ref={field.ref}
+                      value={field.value}
+                      onBlur={field.onBlur}
+                      onChange={(e) => {
+                        // Strip anything that isn't a digit; cap at 6 characters.
+                        const digits = e.target.value.replace(/\D/g, "").slice(0, 6);
+                        field.onChange(digits);
+                      }}
                     />
                   </FormControl>
                   <FormMessage />
