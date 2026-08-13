@@ -127,6 +127,25 @@ export async function detectDummyData(): Promise<DetectionResult> {
     }
   }
 
+  // User rows linked to deletable (non-protected) dummy merchants.
+  // These have no FK cascade from merchants → users, so they must be
+  // deleted explicitly before the merchant row to prevent orphan users.
+  // Protected demo merchant users are NOT included — those logins are kept.
+  if (deletableIds.length > 0) {
+    const orphanUsers = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(inArray(usersTable.merchantId, deletableIds));
+    if (orphanUsers.length > 0) {
+      findings.push({
+        table: "users",
+        count: orphanUsers.length,
+        sampleIds: orphanUsers.slice(0, 10).map((u) => u.id),
+        reason: "user account linked to a deletable dummy merchant — deleted inside the same transaction before the merchant row (no orphan users remain after cleanup)",
+      });
+    }
+  }
+
   // Reference-pattern rows not already covered above (e.g. a real merchant's
   // stray TEST/DEMO/DUMMY/SAMPLE-labeled transaction or payout reference).
   const stray = await db.execute(
@@ -151,64 +170,90 @@ export interface CleanupResult {
   rowsDeleted: number;
 }
 
+// executeCleanup wraps every DELETE and the wallet-balance reset in a single
+// PostgreSQL transaction.  If any step throws, the entire operation is rolled
+// back — the database is left exactly as it was before the call.
 export async function executeCleanup(performedBy: { adminId: number; adminEmail: string }): Promise<CleanupResult[]> {
   const { protectedDemoMerchantIds, deletableDummyMerchantIds, seededMerchantIds } = await detectDummyData();
   const results: CleanupResult[] = [];
 
-  async function del(table: string, whereSql: any) {
-    const res: any = await db.execute(sql`DELETE FROM ${sql.raw(table)} WHERE ${whereSql}`);
-    const rowsDeleted = res.rowCount ?? res.rows?.length ?? 0;
-    if (rowsDeleted > 0) {
-      results.push({ table, rowsDeleted });
-      await db.insert(auditLogsTable).values({
-        adminId: performedBy.adminId,
-        adminEmail: performedBy.adminEmail,
-        action: "DUMMY_DATA_CLEANUP",
-        targetType: table,
-        targetId: null,
-        details: JSON.stringify({ rowsDeleted, tableName: table }),
-      });
+  await db.transaction(async (tx) => {
+    // Helper: execute a DELETE inside the transaction and write one audit-log row
+    // per table (also inside the transaction — rolled back on failure).
+    async function del(table: string, whereSql: any) {
+      const res: any = await tx.execute(sql`DELETE FROM ${sql.raw(table)} WHERE ${whereSql}`);
+      const rowsDeleted = res.rowCount ?? res.rows?.length ?? 0;
+      if (rowsDeleted > 0) {
+        results.push({ table, rowsDeleted });
+        await tx.insert(auditLogsTable).values({
+          adminId: performedBy.adminId,
+          adminEmail: performedBy.adminEmail,
+          action: "DUMMY_DATA_CLEANUP",
+          targetType: table,
+          targetId: null,
+          details: JSON.stringify({ rowsDeleted, tableName: table }),
+        });
+      }
     }
-  }
 
-  if (seededMerchantIds.length > 0) {
-    const idList = sql.join(seededMerchantIds.map((id) => sql`${id}`), sql`, `);
-    await del("notifications", sql`user_id IN (SELECT id FROM users WHERE merchant_id IN (${idList}))`);
-    await del("report_delivery_logs", sql`merchant_id IN (${idList})`);
-    await del("kyc_verification_logs", sql`merchant_id IN (${idList})`);
-    await del("verification_logs", sql`merchant_id IN (${idList})`);
-    await del("virtual_accounts", sql`merchant_id IN (${idList})`);
-    await del("qr_codes", sql`merchant_id IN (${idList})`);
-    await del("settlements", sql`merchant_id IN (${idList})`);
-    await del("wallet_ledger", sql`merchant_id IN (${idList})`);
-    await del("withdrawals", sql`merchant_id IN (${idList})`);
-    await del("transactions", sql`merchant_id IN (${idList})`);
-  }
+    // ── Step 1: delete all dependent rows for every seeded merchant ──────────
+    // Order: leaf rows first so no FK violations fire.
+    if (seededMerchantIds.length > 0) {
+      const idList = sql.join(seededMerchantIds.map((id) => sql`${id}`), sql`, `);
+      await del("notifications",         sql`user_id IN (SELECT id FROM users WHERE merchant_id IN (${idList}))`);
+      await del("report_delivery_logs",  sql`merchant_id IN (${idList})`);
+      await del("kyc_verification_logs", sql`merchant_id IN (${idList})`);
+      await del("verification_logs",     sql`merchant_id IN (${idList})`);
+      await del("virtual_accounts",      sql`merchant_id IN (${idList})`);
+      await del("qr_codes",              sql`merchant_id IN (${idList})`);
+      await del("settlements",           sql`merchant_id IN (${idList})`);
+      await del("wallet_ledger",         sql`merchant_id IN (${idList})`);
+      await del("withdrawals",           sql`merchant_id IN (${idList})`);
+      await del("transactions",          sql`merchant_id IN (${idList})`);
+    }
 
-  // Protected demo merchants keep their wallet row (required for login to
-  // keep working normally) but the seeded balance is reset to zero since its
-  // history was just deleted above.
-  if (protectedDemoMerchantIds.length > 0) {
-    await db
-      .update(merchantWalletsTable)
-      .set({
-        availableBalance: "0", pendingBalance: "0", holdBalance: "0", settlementBalance: "0", payoutBalance: "0",
-        totalCollection: "0", totalPayout: "0", totalCharges: "0", totalRefunds: "0", totalReversals: "0",
-      })
-      .where(inArray(merchantWalletsTable.merchantId, protectedDemoMerchantIds));
-  }
+    // ── Step 2: reset wallet balances for the 3 protected demo merchants ─────
+    // Their merchant/user rows stay; their seeded history was just deleted above.
+    if (protectedDemoMerchantIds.length > 0) {
+      await tx
+        .update(merchantWalletsTable)
+        .set({
+          availableBalance: "0", pendingBalance: "0", holdBalance: "0",
+          settlementBalance: "0", payoutBalance: "0", totalCollection: "0",
+          totalPayout: "0", totalCharges: "0", totalRefunds: "0", totalReversals: "0",
+        })
+        .where(inArray(merchantWalletsTable.merchantId, protectedDemoMerchantIds));
+    }
 
-  // Stray reference-pattern rows outside any seeded merchant.
-  const excludeList = seededMerchantIds.length > 0 ? sql.join(seededMerchantIds.map((id) => sql`${id}`), sql`, `) : sql`-1`;
-  await del(
-    "transactions",
-    sql`${REFERENCE_PATTERN_SQL(sql.raw("reference_id"))} AND merchant_id NOT IN (${excludeList})`
-  );
+    // ── Step 3: stray reference-pattern rows outside any seeded merchant ─────
+    const excludeList = seededMerchantIds.length > 0
+      ? sql.join(seededMerchantIds.map((id) => sql`${id}`), sql`, `)
+      : sql`-1`;
+    await del(
+      "transactions",
+      sql`${REFERENCE_PATTERN_SQL(sql.raw("reference_id"))} AND merchant_id NOT IN (${excludeList})`
+    );
 
-  // Deletable dummy merchants: cascades to merchant_wallets/wallet_ledger via FK.
-  if (deletableDummyMerchantIds.length > 0) {
-    await del("merchants", sql`id IN (${sql.join(deletableDummyMerchantIds.map((id) => sql`${id}`), sql`, `)})`);
-  }
+    // ── Step 4: delete user rows for deletable dummy merchants ───────────────
+    // The users table has no FK CASCADE from merchants, so users would otherwise
+    // become orphaned after the merchant row is deleted.  Deleting them here,
+    // inside the same transaction, ensures zero orphan users.
+    // Protected demo merchant users (IDs 1, 2, 3) are NOT touched.
+    if (deletableDummyMerchantIds.length > 0) {
+      const deletableIdList = sql.join(deletableDummyMerchantIds.map((id) => sql`${id}`), sql`, `);
+      await del("users", sql`merchant_id IN (${deletableIdList})`);
+    }
+
+    // ── Step 5: delete the dummy merchant rows ────────────────────────────────
+    // DB CASCADE handles: merchant_wallets, merchant_plans, merchant_kyc,
+    // merchant_documents, merchant_trusted_ips, merchant_verifications,
+    // payout_beneficiaries, wallet_charges, wallet_holds.
+    if (deletableDummyMerchantIds.length > 0) {
+      await del("merchants", sql`id IN (${sql.join(deletableDummyMerchantIds.map((id) => sql`${id}`), sql`, `)})`);
+    }
+
+    // If any step above threw, db.transaction() automatically issues ROLLBACK.
+  });
 
   return results;
 }
