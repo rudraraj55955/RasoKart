@@ -125,8 +125,22 @@ cd artifacts/rpay && node --import tsx/esm --test src/lib/gateway-panel-coverage
 # System config coverage (3 tests)
 cd lib/db && node --import tsx/esm --test src/schema/systemConfig.coverage.test.ts
 
-# Schema guard coverage
+
+# Schema guard coverage (static analysis — all Drizzle tables guarded)
 pnpm --filter @workspace/scripts run schema-guard-coverage
+
+# Schema guard fresh-install smoke test (46 checks — real DB, ephemeral transaction)
+# Part A: acquires a pg.PoolClient, BEGINs a transaction, DROPs 12 representative
+#         guarded tables so they are genuinely absent, calls runSchemaGuardWith()
+#         (the exact schemaGuard SQL via the client executor) to recreate them,
+#         asserts all 28 guarded tables exist in information_schema.tables within
+#         the transaction, then ROLLBACKs — no permanent data loss.
+# Part B: starts the Express app, logs in as admin + merchant via POST /api/auth/login,
+#         hits 17 representative routes with real Bearer tokens, asserts HTTP 200
+#         (handler ran its DB query all the way through, not just auth middleware).
+# Wired into CI as a required check in .github/workflows/schema-guard-ci.yml
+# (Job: schema-guard-fresh-install) against a fresh PostgreSQL service container.
+cd artifacts/api-server && node --import tsx/esm --test src/lib/schemaGuard.freshInstall.realdb.test.ts
 
 # Priority conflict guard
 pnpm --filter @workspace/scripts run verify-priority-conflict-tests
@@ -142,6 +156,7 @@ pnpm --filter @workspace/scripts run verify-priority-conflict-tests
 | Gateway panel coverage | 7 | ✅ 7/7 PASS |
 | System config coverage | 3 | ✅ 3/3 PASS |
 | Schema guard coverage | 115 tables, 0 gaps | ✅ PASS |
+| Schema guard fresh-install smoke | 47 checks: 1 pre-guard absence proof + 28 table-creation (isolated tx) + 18 route 200s (post-startup) | ✅ 47/47 PASS |
 | Priority conflict guards | real-DB | ✅ PASS |
 | TypeScript (api-server) | — | ✅ CLEAN |
 | TypeScript (rpay) | — | ✅ CLEAN |
@@ -193,3 +208,11 @@ Rollback SHAs in order of preference:
 
 *This document is maintained by the RasoKart engineering team.  
 Update Section 5.2 after every stable deployment.*
+
+# Verifies every guarded table has a reachable route that survives a fresh DB startup.
+
+# In CI this runs against a truly empty DB; locally it is idempotent.
+cd artifacts/api-server && node --import tsx/esm --test src/lib/schemaGuard.freshInstall.realdb.test.ts
+
+
+# Schema guard fresh-install smoke test (18 routes — real DB, non-500 after guard)

@@ -1,12 +1,22 @@
 name: Schema Guard Coverage
 
 # Runs on every pull request and on direct pushes to main.
-# Blocks merge when a new pgTable() is added to lib/db/src/schema/
-# without a matching CREATE TABLE IF NOT EXISTS guard in either
-# artifacts/api-server/src/lib/schemaGuard.ts or scripts/src/db-migrate.ts.
 #
-# This check is purely static (reads source files only — no database required)
-# so it completes in seconds and runs before any expensive build steps.
+# Job 1 (schema-guard-coverage): Purely static check — no database required.
+#   Blocks merge when a new pgTable() is added to lib/db/src/schema/ without a
+#   matching CREATE TABLE IF NOT EXISTS guard.  Completes in seconds.
+#
+# Job 2 (schema-guard-fresh-install): Real-DB smoke test.  Spins up a fresh
+#   PostgreSQL container, runs db-migrate to create the base tables, then runs
+#   the fresh-install test which:
+#     • Drops a representative set of guarded tables inside a transaction
+#     • Calls runSchemaGuardWith() to prove they are recreated from scratch
+#     • Asserts all 28 guarded tables exist after the guard runs
+#     • Rolls back the transaction (no data loss)
+#     • Starts the Express app, logs in, and hits 17+ representative routes
+#       with real Bearer tokens asserting HTTP 200 (handler ran the DB query)
+#   This is the exact scenario of a fresh-install deploy where drizzle-kit push
+#   has NOT run but db-migrate has.
 
 on:
   pull_request:
@@ -19,8 +29,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # ── Job 1: Static analysis (no DB) ─────────────────────────────────────────
   schema-guard-coverage:
-    name: Schema guard coverage
+    name: Schema guard coverage (static)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -41,3 +52,62 @@ jobs:
 
       - name: Run schema-guard-coverage
         run: pnpm --filter @workspace/scripts run schema-guard-coverage
+
+  # ── Job 2: Real-DB fresh-install smoke test ─────────────────────────────────
+  schema-guard-fresh-install:
+    name: Schema guard fresh-install smoke (real DB)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: rasokart
+          POSTGRES_PASSWORD: rasokart
+          POSTGRES_DB: rasokart_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgres://rasokart:rasokart@localhost:5432/rasokart_test
+      SESSION_SECRET: ci-test-session-secret-32-chars-ok
+      NODE_ENV: test
+      PORT: 4000
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run db-migrate (create base tables — no drizzle-kit push)
+        # db-migrate creates the prerequisite tables (users, merchants, etc.)
+        # that schemaGuard expects to already exist.  This simulates the
+        # pre-startup migration step on a fresh VPS deploy.
+        run: pnpm --filter @workspace/scripts run db-migrate
+
+      - name: Run schema-guard fresh-install smoke test
+        # The test drops guarded tables inside a transaction, runs
+        # runSchemaGuardWith() to prove they are created from scratch, asserts
+        # all 28 guarded tables exist, rolls back (restoring state), then
+        # starts the app and hits authenticated routes asserting HTTP 200.
+        run: >
+          cd artifacts/api-server &&
+          node --import tsx/esm --test
+          src/lib/schemaGuard.freshInstall.realdb.test.ts
