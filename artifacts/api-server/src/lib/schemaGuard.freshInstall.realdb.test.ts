@@ -248,6 +248,19 @@ describe(
     let server: http.Server;
     let adminToken: string;
     let merchantToken: string;
+    /**
+     * True when platform_wallet_ledger and tax_liability_ledger contain no rows
+     * at the time Part B starts (i.e. this is a CI fresh-install run).
+     * Used to gate the "all fields = 0" assertions that are only valid on an
+     * empty database; on a dev DB with existing ledger data the assertions are
+     * relaxed to "all fields are finite numbers".
+     */
+    let ledgerTablesEmptyAtStartup: boolean;
+    /**
+     * True when payin_charge_settings contains no rows at the start of Part B.
+     * On a dev DB the singleton row (id=1) may already exist from a prior run.
+     */
+    let payinChargesEmptyAtStartup: boolean;
 
     before(async () => {
       // ───────────────────────────────────────────────────────────────────────
@@ -316,6 +329,30 @@ describe(
       // seed() is idempotent (upsert) — safe on an already-seeded dev DB and
       // required on a fresh CI DB where demo accounts don't exist yet.
       await seed();
+
+      // Record whether the ledger / charge tables are empty right after seed().
+      // On a CI fresh DB they will always be empty (seed() never writes to them).
+      // On a dev DB they may have existing rows.  This flag gates the strict
+      // "all fields = 0" assertions in Part C so they only run where meaningful.
+      {
+        const probe = (await pool.connect()) as unknown as PoolClient;
+        try {
+          const [ledger, charges] = await Promise.all([
+            probe.query(
+              "SELECT COUNT(*) AS n FROM platform_wallet_ledger",
+            ),
+            probe.query(
+              "SELECT COUNT(*) AS n FROM payin_charge_settings",
+            ),
+          ]);
+          ledgerTablesEmptyAtStartup =
+            parseInt(String(ledger.rows[0]?.["n"] ?? "1"), 10) === 0;
+          payinChargesEmptyAtStartup =
+            parseInt(String(charges.rows[0]?.["n"] ?? "1"), 10) === 0;
+        } finally {
+          probe.release();
+        }
+      }
 
       // Start the Express app (note: app.ts does NOT call ensureSchemaGuard or
       // seed — those run in index.ts / this test's before()).
@@ -419,6 +456,123 @@ describe(
         200,
         `GET /api/healthz returned ${res.status}: ${res.body.slice(0, 200)}`,
       );
+    });
+
+    // ── Part C: payload validation for fresh-deploy initialisation logic ──────
+    //
+    // These two endpoints have "initialise on first GET" logic that can silently
+    // 500 if the table was created without the expected DEFAULT values, or if a
+    // NULL from SUM() over an empty table is not coerced to 0.
+    //
+    // On a CI fresh DB (ledgerTablesEmptyAtStartup / payinChargesEmptyAtStartup
+    // are true) we assert exact zero values — the canonical fresh-deploy state.
+    // On a developer's DB that already has rows we relax to "all fields are
+    // finite numbers" so the test remains meaningful without requiring data
+    // truncation.
+
+    it("GET /api/admin/platform-profit/summary payload has all required numeric fields (no NaN / null)", async () => {
+      const res = await request(server, "GET", "/api/admin/platform-profit/summary", {
+        token: adminToken,
+      });
+      assert.equal(
+        res.status,
+        200,
+        `Expected HTTP 200 from platform-profit/summary.\n` +
+          `• HTTP 500 → SUM() over empty table returned NULL and was not safely coerced.\n` +
+          `• HTTP 401/403 → admin token is not Super Admin.\n` +
+          `Response: ${res.body.slice(0, 400)}`,
+      );
+      const payload = res.json as Record<string, unknown>;
+      const SUMMARY_FIELDS = [
+        "availableBalance",
+        "todayProfit",
+        "last7DaysProfit",
+        "last15DaysProfit",
+        "thisMonthProfit",
+        "gstLiabilityBalance",
+        "totalProviderCost",
+        "netMargin",
+      ] as const;
+      for (const field of SUMMARY_FIELDS) {
+        assert.ok(field in payload, `Summary payload missing field "${field}". Got: ${JSON.stringify(payload)}`);
+        assert.equal(typeof payload[field], "number", `"${field}" should be a number, got ${typeof payload[field]}`);
+        assert.ok(isFinite(payload[field] as number), `"${field}" is not finite (NaN or Infinity): ${payload[field]}`);
+      }
+    });
+
+    it("GET /api/admin/platform-profit/summary all numeric fields are 0 on a fresh-install DB (no ledger rows)", async () => {
+      if (!ledgerTablesEmptyAtStartup) {
+        // Dev DB already has ledger entries — skip the zero-value check.
+        // The previous test already validated structure + finite-number invariants.
+        return;
+      }
+      const res = await request(server, "GET", "/api/admin/platform-profit/summary", {
+        token: adminToken,
+      });
+      assert.equal(res.status, 200, `Unexpected HTTP ${res.status}: ${res.body.slice(0, 200)}`);
+      const payload = res.json as Record<string, number>;
+      for (const field of [
+        "availableBalance", "todayProfit", "last7DaysProfit", "last15DaysProfit",
+        "thisMonthProfit", "gstLiabilityBalance", "totalProviderCost", "netMargin",
+      ]) {
+        assert.equal(
+          payload[field],
+          0,
+          `Expected "${field}" = 0 on empty ledger tables, got ${payload[field]}. ` +
+            `Full payload: ${JSON.stringify(payload)}`,
+        );
+      }
+    });
+
+    it("GET /api/admin/payin-charges/ auto-creates singleton (id=1) with correct schema defaults when table is empty", async () => {
+      const res = await request(server, "GET", "/api/admin/payin-charges/", {
+        token: adminToken,
+      });
+      assert.equal(
+        res.status,
+        200,
+        `Expected HTTP 200 from payin-charges/.\n` +
+          `• HTTP 500 → INSERT singleton row failed — likely a NOT NULL column ` +
+          `missing its DEFAULT value in schema or schemaGuard CREATE TABLE.\n` +
+          `• HTTP 401/403 → admin token invalid.\n` +
+          `Response: ${res.body.slice(0, 400)}`,
+      );
+      const payload = res.json as Record<string, unknown>;
+
+      // id must always be 1 (singleton)
+      assert.equal(payload["id"], 1, `Singleton id should be 1, got ${payload["id"]}`);
+
+      // Boolean fields must be present and boolean-typed
+      for (const field of ["enabled", "gstEnabled", "applyToOwnStaticUpi", "applyToDynamicQr", "applyToPaymentLinks", "applyToApiGateway"]) {
+        assert.ok(field in payload, `Missing boolean field "${field}"`);
+        assert.equal(typeof payload[field], "boolean", `"${field}" should be boolean, got ${typeof payload[field]}`);
+      }
+
+      // Numeric fields must be finite numbers
+      for (const field of ["mdrPct", "fixedFee", "minFee", "gstPct"]) {
+        assert.ok(field in payload, `Missing numeric field "${field}"`);
+        assert.equal(typeof payload[field], "number", `"${field}" should be number`);
+        assert.ok(isFinite(payload[field] as number), `"${field}" is not finite: ${payload[field]}`);
+      }
+
+      // roundingMode must be a string
+      assert.equal(typeof payload["roundingMode"], "string", `"roundingMode" should be string`);
+
+      if (payinChargesEmptyAtStartup) {
+        // Fresh-install: singleton was just auto-created — verify schema defaults
+        assert.equal(payload["enabled"],             false,   `"enabled" default should be false`);
+        assert.equal(payload["gstEnabled"],          false,   `"gstEnabled" default should be false`);
+        assert.equal(payload["mdrPct"],              0,       `"mdrPct" default should be 0`);
+        assert.equal(payload["fixedFee"],            0,       `"fixedFee" default should be 0`);
+        assert.equal(payload["minFee"],              0,       `"minFee" default should be 0`);
+        assert.equal(payload["gstPct"],              18,      `"gstPct" default should be 18`);
+        assert.equal(payload["roundingMode"],        "round", `"roundingMode" default should be "round"`);
+        assert.equal(payload["applyToOwnStaticUpi"], true,    `"applyToOwnStaticUpi" default should be true`);
+        assert.equal(payload["applyToDynamicQr"],    true,    `"applyToDynamicQr" default should be true`);
+        assert.equal(payload["applyToPaymentLinks"], true,    `"applyToPaymentLinks" default should be true`);
+        assert.equal(payload["applyToApiGateway"],   true,    `"applyToApiGateway" default should be true`);
+        assert.equal(payload["maxFee"],              null,    `"maxFee" should be null on fresh singleton`);
+      }
     });
   },
 );

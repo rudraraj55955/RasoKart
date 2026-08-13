@@ -156,7 +156,7 @@ pnpm --filter @workspace/scripts run verify-priority-conflict-tests
 | Gateway panel coverage | 7 | ✅ 7/7 PASS |
 | System config coverage | 3 | ✅ 3/3 PASS |
 | Schema guard coverage | 115 tables, 0 gaps | ✅ PASS |
-| Schema guard fresh-install smoke | 47 checks: 1 pre-guard absence proof + 28 table-creation (isolated tx) + 18 route 200s (post-startup) | ✅ 47/47 PASS |
+| Schema guard fresh-install smoke | 50 checks: 1 pre-guard absence proof + 28 table-creation (isolated tx) + 18 route 200s + 3 payload checks (Part C: platform-profit/summary fields, zero-values on empty DB, payin-charges/ singleton defaults) | ✅ 50/50 PASS |
 | Priority conflict guards | real-DB | ✅ PASS |
 | TypeScript (api-server) | — | ✅ CLEAN |
 | TypeScript (rpay) | — | ✅ CLEAN |
