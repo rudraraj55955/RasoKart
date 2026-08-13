@@ -708,24 +708,30 @@ router.put(
         return;
       }
 
-      // Guard: SA-only and cross-role escalation checks (same rules as per-key endpoint)
-      for (const [key, effect] of entries) {
-        if (effect === "ALLOW" && !targetUser.isSuperAdmin) {
-          if (SUPER_ADMIN_ONLY_PERMISSIONS.has(key)) {
-            res.status(403).json({
-              error: `Cannot grant SA-only permission '${key}' to a non-SA user`,
-              permissionKey: key,
-            });
-            return;
-          }
-          const roleDefault = (ROLE_DEFAULT_PERMISSIONS[targetUser.role] ?? {})[key];
-          if (roleDefault !== true) {
-            res.status(403).json({
-              error: `Cannot ALLOW '${key}' for role '${targetUser.role}': outside role's default access envelope`,
-              permissionKey: key,
-              targetRole: targetUser.role,
-            });
-            return;
+      // Guard: SA-only and cross-role escalation checks (non-SA callers only)
+      // Super Admin callers may ALLOW any key for any subordinate user — all
+      // such privileged delegations are audit-logged in the writeAuditLog call
+      // below.  Non-SA callers retain the original two-rule guard.
+      if (!callerUser.isSuperAdmin) {
+        for (const [key, effect] of entries) {
+          if (effect === "ALLOW" && !targetUser.isSuperAdmin) {
+            if (SUPER_ADMIN_ONLY_PERMISSIONS.has(key)) {
+              res.status(403).json({
+                error: `Cannot grant SA-only permission '${key}' to a non-SA user`,
+                permissionKey: key,
+                hint: "Only Super Admin can delegate protected permissions.",
+              });
+              return;
+            }
+            const roleDefault = (ROLE_DEFAULT_PERMISSIONS[targetUser.role] ?? {})[key];
+            if (roleDefault !== true) {
+              res.status(403).json({
+                error: `Cannot ALLOW '${key}' for role '${targetUser.role}': outside role's default access envelope`,
+                permissionKey: key,
+                targetRole: targetUser.role,
+              });
+              return;
+            }
           }
         }
       }
@@ -834,19 +840,22 @@ router.put(
         return;
       }
 
-      // ── Role max-scope guard ──────────────────────────────────────────────
-      // Block ALLOW grants that escalate beyond the target user's role boundary.
-      // Rule 1: SA-only permissions can never be ALLOWed for non-SA users.
-      // Rule 2: Permissions outside the role's default-true set (i.e., the
-      //         permission key maps to `false` in ROLE_DEFAULT_PERMISSIONS for
-      //         that role) cannot be ALLOWed — that would be cross-role escalation.
-      //         DENY overrides are always permitted (they can only reduce access).
-      if (effect === "ALLOW" && !targetUser.isSuperAdmin) {
+      // ── Role max-scope guard (non-SA callers only) ──────────────────────────
+      // Super Admin is the absolute permission authority: when the CALLER is SA
+      // they may ALLOW any permission key for any subordinate user regardless of
+      // whether the key is SA-only or falls outside the target role's default
+      // envelope. All such privileged delegations are audit-logged below.
+      //
+      // For non-SA callers the original two rules still apply:
+      // Rule 1: SA-only permissions cannot be ALLOWed for non-SA users.
+      // Rule 2: Permissions outside the role's default-true set cannot be ALLOWed
+      //         (cross-role escalation). DENY overrides are always permitted.
+      if (effect === "ALLOW" && !targetUser.isSuperAdmin && !callerUser.isSuperAdmin) {
         if (SUPER_ADMIN_ONLY_PERMISSIONS.has(permissionKey)) {
           res.status(403).json({
             error: "Cannot grant a Super Admin-only permission to a non-Super-Admin user",
             permissionKey,
-            hint: "Super Admin-only permissions are enforced at the system level and cannot be overridden per-user.",
+            hint: "Only Super Admin can delegate protected permissions.",
           });
           return;
         }

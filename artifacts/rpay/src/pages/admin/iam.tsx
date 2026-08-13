@@ -113,6 +113,7 @@ function MigrationPanel() {
 type RolePermMap = { role: string; permissions: Record<string, boolean> };
 
 function RoleTemplatesPanel() {
+  const { user } = useAuth();
   const { data: rolesData, isLoading: rolesLoading } = useGetIamRoles();
   const { data: catalogData, isLoading: catalogLoading } = useGetIamPermissions();
   const { data: migData } = useGetIamMigrationStatus();
@@ -120,6 +121,9 @@ function RoleTemplatesPanel() {
   const [activeRole, setActiveRole] = useState("admin");
   const [optimisticState, setOptimisticState] = useState<Record<string, boolean>>({});
   const [pendingKeys, setPendingKeys] = useState<Set<string>>(new Set());
+  // Super Admin is the absolute permission authority and can toggle any key
+  // for any subordinate role — including keys marked isSuperAdminOnly.
+  const isSuperAdmin = !!user?.isSuperAdmin;
 
   const updateMutation = usePutIamRolesRolePermissionKey();
 
@@ -190,15 +194,22 @@ function RoleTemplatesPanel() {
                             <div key={k.key} className="flex items-center justify-between gap-3 min-h-[48px] py-1 border-b border-white/5 last:border-0">
                               <div className="flex items-center gap-2 min-w-0">
                                 {k.isSuperAdminOnly && (
-                                  <span title={k.lockedReason ?? "Super Admin-only permission"} className="cursor-help">
-                                    <Lock className="w-3 h-3 text-amber-400 shrink-0" />
+                                  <span
+                                    title={
+                                      isSuperAdmin
+                                        ? `Protected permission — controllable by Super Admin only. ${k.lockedReason ?? ""}`
+                                        : (k.lockedReason ?? "Super Admin-only permission — cannot be granted by regular admins")
+                                    }
+                                    className="cursor-help"
+                                  >
+                                    <Lock className={`w-3 h-3 shrink-0 ${isSuperAdmin ? "text-amber-300" : "text-amber-400"}`} />
                                   </span>
                                 )}
                                 <span className="text-xs font-mono truncate text-muted-foreground">{k.key}</span>
                               </div>
                               <Switch
                                 checked={displayVal}
-                                disabled={!migrated || k.isSuperAdminOnly}
+                                disabled={!migrated || (k.isSuperAdminOnly && !isSuperAdmin)}
                                 className={isSaving ? "opacity-60" : ""}
                                 onCheckedChange={(checked) => handleToggle(r, k.key, checked)}
                               />
