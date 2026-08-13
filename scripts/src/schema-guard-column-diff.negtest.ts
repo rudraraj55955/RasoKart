@@ -170,16 +170,35 @@ function buildSchemaGuardOnlyFixtures(opts: SchemaGuardOnlyFixtureOptions): {
   };
 }
 
-/** Spawn the script with the given env overrides and return the exit code. */
-function runScript(env: NodeJS.ProcessEnv): number {
+/** Full result from spawning the script. */
+interface ScriptResult {
+  code: number;
+  stdout: string;
+  stderr: string;
+}
+
+/**
+ * Spawn the script with the given env overrides and return the exit code,
+ * stdout, and stderr.
+ */
+function runScriptFull(env: NodeJS.ProcessEnv): ScriptResult {
   const result = spawnSync(
     "node",
     ["--import", "tsx/esm", SCRIPT],
     { env, encoding: "utf8" },
   );
-  // spawnSync returns null status when the process was killed by a signal;
-  // treat that as a failure (non-zero).
-  return result.status ?? 1;
+  return {
+    // spawnSync returns null status when the process was killed by a signal;
+    // treat that as a failure (non-zero).
+    code: result.status ?? 1,
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? "",
+  };
+}
+
+/** Spawn the script with the given env overrides and return the exit code. */
+function runScript(env: NodeJS.ProcessEnv): number {
+  return runScriptFull(env).code;
 }
 
 // ---------------------------------------------------------------------------
@@ -409,8 +428,8 @@ describe("schema-guard-column-diff negative-case contract", () => {
     );
   });
 
-  // Case 6: Drizzle-tracked table — bare DROP COLUMN for a column no longer in schema → exit 0
-  test("exits 0 when a bare DROP COLUMN (no IF EXISTS) targets a column already removed from the Drizzle schema", () => {
+  // Case 6: Drizzle-tracked table — bare DROP COLUMN for a column no longer in schema → exit 0 + warning
+  test("exits 0 and emits a warning when a bare DROP COLUMN (no IF EXISTS) targets a column already removed from the Drizzle schema", () => {
     const { dir, env } = buildFixtures({
       schemaColumns: ["name"],   // 'old_col' intentionally absent from schema
       guardColumns: ["name"],    // guard covers the live columns
@@ -424,11 +443,15 @@ describe("schema-guard-column-diff negative-case contract", () => {
       `ALTER TABLE fixture_table DROP COLUMN old_col;\n`,
     );
 
-    const code = runScript(env);
+    const { code, stdout } = runScriptFull(env);
     assert.equal(
       code,
       0,
       "script must exit 0 when bare DROP COLUMN targets a column already absent from the Drizzle schema",
+    );
+    assert.ok(
+      stdout.includes("IF EXISTS"),
+      `script must warn about missing IF EXISTS in stdout; got:\n${stdout}`,
     );
   });
 
@@ -454,8 +477,8 @@ describe("schema-guard-column-diff negative-case contract", () => {
     );
   });
 
-  // Case 8: schemaGuard-only table — bare DROP COLUMN for a column absent from CREATE TABLE → exit 0
-  test("exits 0 when a bare DROP COLUMN (no IF EXISTS) targets a column already removed from a schemaGuard-only table", () => {
+  // Case 8: schemaGuard-only table — bare DROP COLUMN for a column absent from CREATE TABLE → exit 0 + warning
+  test("exits 0 and emits a warning when a bare DROP COLUMN (no IF EXISTS) targets a column already removed from a schemaGuard-only table", () => {
     const { dir, env } = buildSchemaGuardOnlyFixtures({
       guardCreateTableColumns: ["tenant_id"], // 'legacy_col' intentionally absent
     });
@@ -468,11 +491,15 @@ describe("schema-guard-column-diff negative-case contract", () => {
       `ALTER TABLE guard_only_table DROP COLUMN legacy_col;\n`,
     );
 
-    const code = runScript(env);
+    const { code, stdout } = runScriptFull(env);
     assert.equal(
       code,
       0,
       "script must exit 0 when bare DROP COLUMN targets a column already absent from the schemaGuard-only CREATE TABLE body",
+    );
+    assert.ok(
+      stdout.includes("IF EXISTS"),
+      `script must warn about missing IF EXISTS in stdout; got:\n${stdout}`,
     );
   });
 

@@ -517,6 +517,18 @@ function main(): void {
     hasIfExists: boolean;
   }> = [];
 
+  // Bare DROP COLUMN (no IF EXISTS) on a column that is already absent from
+  // the schema.  Not a hard failure — the column is gone — but the statement
+  // will throw "column does not exist" on any DB where the column was removed
+  // by a different migration path.  Emit a warning so the developer knows to
+  // add IF EXISTS for idempotency.
+  const bareDropWarnings: Array<{
+    file: string;
+    table: string;
+    col: string;
+    lineNo: number;
+  }> = [];
+
   for (const [filePath, label] of filesToCheck) {
     if (!fs.existsSync(filePath)) continue;
     const source = fs.readFileSync(filePath, "utf8");
@@ -531,12 +543,18 @@ function main(): void {
         const allGuardedForTable = guarded.get(table);
         if (allGuardedForTable?.has(col)) {
           liveDrop.push({ file: label, table, col, lineNo, hasIfExists });
+        } else if (!hasIfExists) {
+          // Column already absent from CREATE TABLE body but no IF EXISTS guard.
+          bareDropWarnings.push({ file: label, table, col, lineNo });
         }
         continue;
       }
       // Drizzle-tracked table — the column must no longer be in the schema.
       if (drizzleCols.has(col)) {
         liveDrop.push({ file: label, table, col, lineNo, hasIfExists });
+      } else if (!hasIfExists) {
+        // Column already absent from Drizzle schema but no IF EXISTS guard.
+        bareDropWarnings.push({ file: label, table, col, lineNo });
       }
     }
   }
@@ -572,6 +590,32 @@ function main(): void {
       );
     }
     console.error();
+  }
+
+  // ── Bare-DROP warning (non-fatal) ─────────────────────────────────────────
+  //
+  // A bare DROP COLUMN without IF EXISTS will throw "column does not exist"
+  // on any DB where the column was already removed by another migration path,
+  // aborting the deploy.  Emit a warning even when the column is already gone
+  // from the schema so the developer knows to add IF EXISTS for idempotency.
+  if (bareDropWarnings.length > 0) {
+    console.log(
+      `\n⚠ Found ${bareDropWarnings.length} bare DROP COLUMN statement(s) without IF EXISTS:\n`
+    );
+    console.log(
+      "  The column is already absent from the schema, so this is not a hard\n" +
+        "  failure — but the bare DROP COLUMN will throw \"column does not exist\"\n" +
+        "  on any database where the column was removed by a different migration\n" +
+        "  path, aborting the deploy.  Add IF EXISTS to make the statement\n" +
+        "  idempotent:\n" +
+        "    ALTER TABLE <table> DROP COLUMN IF EXISTS <col>;\n"
+    );
+    for (const { file, table, col, lineNo } of bareDropWarnings) {
+      console.log(
+        `  ${file}:${lineNo}  ALTER TABLE ${table} DROP COLUMN ${col}  ← add IF EXISTS for idempotency`
+      );
+    }
+    console.log();
   }
 
   if (!forwardOk || !reverseOk || !dropOk) {
