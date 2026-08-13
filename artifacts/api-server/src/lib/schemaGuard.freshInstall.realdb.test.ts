@@ -15,7 +15,7 @@
  * schemaGuard.ts executed on the same connection inside the transaction.
  * information_schema.tables is queried on the same client to confirm:
  *   (a) the 12 dropped tables are absent before the guard runs, and
- *   (b) all 28 guarded tables exist after the guard runs.
+ *   (b) all 84 guarded tables exist after the guard runs.
  * The transaction is then ROLLBACKed so no permanent data is mutated.
  *
  * On a CI runner with a genuinely fresh database the DROP is a no-op (tables
@@ -50,7 +50,7 @@
  *   secure_id_settings, verification_logs, routing_configs (→ routing_rules)
  *
  * Verified to exist after guard runs (Part A information_schema check):
- *   all 28 guarded tables listed in ALL_GUARDED_TABLES
+ *   all 84 guarded tables listed in ALL_GUARDED_TABLES
  *
  * Proven reachable via HTTP 200 with authenticated Bearer tokens (Part B):
  *   payment_links, routing_configs/rules, routing_logs, provider_metrics,
@@ -139,35 +139,144 @@ const TABLES_TO_DROP = [
 ] as const;
 
 // All tables managed by schemaGuard — verified to exist after guard runs.
+// Keep this list in sync with every CREATE TABLE IF NOT EXISTS block in
+// schemaGuard.ts (including the four IAM tables created via up(db)).
 const ALL_GUARDED_TABLES = [
+  // ── Core auth / config ──────────────────────────────────────────────────
   "company_settings",
   "demo_account_removals",
   "merchant_auth_otps",
+  "merchant_auth_locks",
+  "rate_limit_hits",
+  "system_config",
+
+  // ── Providers / routing ─────────────────────────────────────────────────
   "providers",
   "provider_integrations",
   "provider_visibility",
   "routing_configs",
   "routing_rules",
-  "quiet_hours_queue",
-  "withdrawals",
+  "routing_logs",
+  "provider_metrics",
+  "provider_products",
+  "provider_product_visibility",
+
+  // ── Merchant core ───────────────────────────────────────────────────────
   "merchant_connections",
   "merchant_trusted_ips",
-  "transactions",
-  "payin_charge_settings",
+  "merchant_features",
+  "merchant_products",
   "merchant_charge_overrides",
+
+  // ── Transactions / payments ─────────────────────────────────────────────
+  "transactions",
+  "withdrawals",
+  "payment_links",
+  "qr_payment_events",
+
+  // ── Payin charges / ledger ──────────────────────────────────────────────
+  "payin_charge_settings",
   "platform_wallet_ledger",
   "tax_liability_ledger",
+
+  // ── API / webhooks ──────────────────────────────────────────────────────
   "api_keys",
+  "webhooks",
+
+  // ── Plans / billing ─────────────────────────────────────────────────────
   "invoices",
+  "plan_history",
+
+  // ── SMS / OTP ───────────────────────────────────────────────────────────
   "otp_sms_settings",
   "sms_send_logs",
+  "otp_email_settings",
+
+  // ── Try It ──────────────────────────────────────────────────────────────
   "merchant_tryit_presets",
   "admin_tryit_presets",
+
+  // ── KYC / onboarding ────────────────────────────────────────────────────
   "secure_id_settings",
   "merchant_onboarding_sessions",
   "merchant_kyc_data",
-  "verification_logs",
   "merchant_kyc_verifications",
+  "merchant_kyc_settings",
+  "verification_logs",
+  "kyc_verification_logs",
+  "kyc_review_history",
+
+  // ── Quiet hours ─────────────────────────────────────────────────────────
+  "quiet_hours_queue",
+
+  // ── Agents / commissions ────────────────────────────────────────────────
+  "agents",
+  "agent_commission_ledger",
+
+  // ── Payouts ─────────────────────────────────────────────────────────────
+  "payout_beneficiaries",
+  "payout_wallet_load_orders",
+
+  // ── Scheduled reports ───────────────────────────────────────────────────
+  "scheduled_audit_reports",
+
+  // ── Razorpay ────────────────────────────────────────────────────────────
+  "razorpay_payment_orders",
+  "razorpay_webhook_logs",
+  "razorpay_refunds",
+  "razorpayx_verification_log",
+
+  // ── Cashfree ────────────────────────────────────────────────────────────
+  "cashfree_payouts",
+  "cashfree_payout_webhook_logs",
+  "cashfree_payment_logs",
+
+  // ── PayU ────────────────────────────────────────────────────────────────
+  "payu_payment_orders",
+  "payu_webhook_logs",
+
+  // ── EKQR ────────────────────────────────────────────────────────────────
+  "ekqr_webhook_logs",
+  "ekqr_sync_alert_logs",
+
+  // ── Support ─────────────────────────────────────────────────────────────
+  "support_tickets",
+  "ticket_replies",
+
+  // ── CMS / promotions ────────────────────────────────────────────────────
+  "promotional_campaigns",
+  "promotional_analytics",
+
+  // ── Policies ────────────────────────────────────────────────────────────
+  "policy_acceptances",
+  "policy_versions",
+
+  // ── Contact / alert logs ────────────────────────────────────────────────
+  "contact_submissions",
+  "signature_failure_alert_logs",
+  "webhook_failure_alert_logs",
+
+  // ── Provider activation ─────────────────────────────────────────────────
+  "account_visibility_rules",
+  "activation_requests",
+
+  // ── Misc ────────────────────────────────────────────────────────────────
+  "callback_nonces",
+  "saved_filters",
+  "storage_cleanup_runs",
+  "va_balance_history",
+  "uploaded_objects",
+  "cleanup_run_history",
+
+  // ── Auth providers (OAuth) ──────────────────────────────────────────────
+  "auth_providers",
+  "social_provider_settings",
+
+  // ── IAM (created via up(db)) ────────────────────────────────────────────
+  "permissions",
+  "role_permissions",
+  "user_permissions",
+  "iam_migration_log",
 ];
 
 // ── HTTP helper ───────────────────────────────────────────────────────────────
@@ -293,7 +402,7 @@ describe(
         //    from scratch, inside the transaction.
         await runSchemaGuardWith(makeClientExecutor(client));
 
-        // 4. Verify ALL 28 guarded tables now exist in the database (within the
+        // 4. Verify ALL 84 guarded tables now exist in the database (within the
         //    same transaction so we see the CREATE TABLE results).
         const allList = ALL_GUARDED_TABLES.map((t) => `'${t}'`).join(",");
         const afterResult = await client.query(`
