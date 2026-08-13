@@ -499,9 +499,12 @@ function main(): void {
   // for schemaGuard-only tables) will silently delete a live column on the next
   // deploy or fresh-DB startup, producing "column does not exist" runtime errors.
   //
-  // Two cases are covered:
+  // Three cases are covered:
   //   1. Drizzle-tracked tables: the column must NOT exist in the Drizzle schema.
-  //   2. schemaGuard-only tables: the column must NOT appear in the combined
+  //   2. Drizzle-tracked tables (rename footgun): the column is absent from Drizzle
+  //      but still in the guard's own CREATE TABLE body — a self-canceling
+  //      CREATE+DROP pair on a fresh DB indicating an incomplete rename.
+  //   3. schemaGuard-only tables: the column must NOT appear in the combined
   //      guarded set (CREATE TABLE body ∪ ALTER TABLE ADD COLUMN) across
   //      schemaGuard.ts and db-migrate.ts.
 
@@ -544,7 +547,7 @@ function main(): void {
         if (allGuardedForTable?.has(col)) {
           liveDrop.push({ file: label, table, col, lineNo, hasIfExists });
         } else if (!hasIfExists) {
-          // Column already absent from CREATE TABLE body but no IF EXISTS guard.
+          // Column already absent from guard sources but no IF EXISTS — warn.
           bareDropWarnings.push({ file: label, table, col, lineNo });
         }
         continue;
@@ -552,9 +555,20 @@ function main(): void {
       // Drizzle-tracked table — the column must no longer be in the schema.
       if (drizzleCols.has(col)) {
         liveDrop.push({ file: label, table, col, lineNo, hasIfExists });
-      } else if (!hasIfExists) {
-        // Column already absent from Drizzle schema but no IF EXISTS guard.
-        bareDropWarnings.push({ file: label, table, col, lineNo });
+      } else {
+        // Column is absent from the Drizzle schema. Also check the guard's own
+        // CREATE TABLE body: if it is still there, the guard has a self-canceling
+        // pair (CREATE TABLE creates it on a fresh DB, then DROP COLUMN removes it).
+        // This is the classic incomplete-rename footgun where the author added a
+        // DROP guard but forgot to remove the column from the CREATE TABLE body.
+        const ctCols = createTableCols.get(table);
+        if (ctCols && ctCols.has(col)) {
+          liveDrop.push({ file: label, table, col, lineNo, hasIfExists });
+        } else if (!hasIfExists) {
+          // Column already absent from both Drizzle schema and CREATE TABLE body,
+          // but the DROP has no IF EXISTS — warn for idempotency.
+          bareDropWarnings.push({ file: label, table, col, lineNo });
+        }
       }
     }
   }
