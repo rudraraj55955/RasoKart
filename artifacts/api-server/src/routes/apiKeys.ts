@@ -6,6 +6,7 @@ import { requireModule } from "../middlewares/checkModule";
 import crypto from "crypto";
 import { sendApiKeyGeneratedEmail, sendApiKeyRevokedEmail, maskIp } from "../helpers/apiKeyEmail";
 import { makeRateLimiter } from "../helpers/makeRateLimiter";
+import { checkPlanFeatureAccess } from "../helpers/planLimits";
 
 const apiKeyCreateLimiter = makeRateLimiter({
   windowMs: 60 * 60 * 1000,
@@ -110,6 +111,11 @@ router.post("/", apiKeyCreateLimiter, requireModule("api_access"), async (req, r
   const user = (req as any).user;
   if (user.role !== "merchant") {
     res.status(403).json({ error: "Only merchants can generate API keys" });
+    return;
+  }
+  const planCheck = await checkPlanFeatureAccess(user.merchantId!, "api");
+  if (!planCheck.allowed) {
+    res.status(403).json({ error: planCheck.message });
     return;
   }
   const rawLabel = typeof req.body?.label === "string" ? req.body.label.trim().slice(0, 64) : null;

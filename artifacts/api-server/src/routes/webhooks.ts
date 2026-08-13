@@ -6,6 +6,7 @@ import { fireCallback, loadWebhookRetryConfig } from "../helpers/callbackRetry";
 import crypto from "crypto";
 import dns from "dns";
 import net from "net";
+import { checkPlanFeatureAccess } from "../helpers/planLimits";
 
 const router = Router();
 router.use(requireAuth);
@@ -763,6 +764,11 @@ router.put("/", async (req, res) => {
   const merchantId = user.role === "merchant" ? user.merchantId! : undefined;
   if (!merchantId) {
     res.status(403).json({ error: "Merchants only" });
+    return;
+  }
+  const planCheck = await checkPlanFeatureAccess(merchantId, "webhook");
+  if (!planCheck.allowed) {
+    res.status(403).json({ error: planCheck.message });
     return;
   }
   const { url, isActive, events, secret, maxRetries, retryDelay1, retryDelay2, retryDelay3, failureAlertEnabled, failureAlertThreshold } = req.body;
