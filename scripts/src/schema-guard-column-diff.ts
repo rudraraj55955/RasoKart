@@ -247,10 +247,49 @@ function collectAllGuardedColumns(): Map<string, Set<string>> {
   return combined;
 }
 
-// ---------------------------------------------------------------------------
-// Reverse check: parse ALTER TABLE ADD COLUMN claims from a guard file
-// ---------------------------------------------------------------------------
+/**
+ * Returns: Map<tableName, Set<columnName>> of columns defined in CREATE TABLE
+ * bodies only — ALTER TABLE ADD COLUMN lines are intentionally excluded.
+ *
+ * This is used by the reverse check to validate ALTER TABLE ADD COLUMN claims
+ * for tables that are entirely schemaGuard-owned (not tracked by Drizzle):
+ * an ALTER TABLE claim for a column that never appears in the corresponding
+ * CREATE TABLE body is a no-op guard that silently masks drift.
+ */
+export function collectCreateTableColumns(source: string): Map<string, Set<string>> {
+  const result = new Map<string, Set<string>>();
 
+  const ctRe = /CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+"?(\w+)"?\s*\(/gi;
+  let ctm: RegExpExecArray | null;
+
+  while ((ctm = ctRe.exec(source)) !== null) {
+    const tableName = ctm[1].toLowerCase();
+    let depth = 1;
+    let i = ctm.index + ctm[0].length;
+    let body = "";
+    while (i < source.length && depth > 0) {
+      const ch = source[i];
+      if (ch === "(") depth++;
+      else if (ch === ")") { depth--; if (depth === 0) break; }
+      body += ch;
+      i++;
+    }
+
+    const set = result.get(tableName) ?? new Set<string>();
+    for (const line of body.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      if (/^(CONSTRAINT|PRIMARY|UNIQUE|FOREIGN|CHECK)(\s|$)/i.test(trimmed)) continue;
+      const nameMatch = /^"?(\w+)"?\s+/i.exec(trimmed);
+      if (nameMatch) {
+        set.add(nameMatch[1].toLowerCase());
+      }
+    }
+    result.set(tableName, set);
+  }
+
+  return result;
+}
 /**
  * Returns every ALTER TABLE <table> ADD COLUMN IF NOT EXISTS <col> claim found
  * in the source text, preserving the 1-based line number of the match for
@@ -290,6 +329,10 @@ export function collectAlterTableClaims(
 function main(): void {
   const drizzle = collectDrizzleSchema();
   const guarded = collectAllGuardedColumns();
+  // Columns defined in CREATE TABLE bodies across both guard files.
+  // Used by the reverse check to validate ALTER TABLE claims on
+  // schemaGuard-only tables (tables not tracked by Drizzle).
+  const createTableCols = collectAllCreateTableColumns();
 
   // ── Forward check: every Drizzle column must be covered by a guard ──────
   console.log(`schema-guard-column-diff: checking ${drizzle.size} tables...\n`);
@@ -328,15 +371,17 @@ function main(): void {
     }
   }
 
-  // ── Reverse check: every ALTER TABLE ADD COLUMN claim must match Drizzle ─
+  // ── Reverse check: every ALTER TABLE ADD COLUMN claim must be real ────────
   //
   // Catches typo'd or deleted column names in schemaGuard.ts / db-migrate.ts
-  // that silently become no-ops on production (the column name doesn't exist
-  // in the Drizzle schema any more, so the guard column never gets applied).
+  // that silently become no-ops on production.
   //
-  // Scope: only flag claims where the *table* IS known to Drizzle but the
-  // *column* is NOT — tables that Drizzle doesn't track at all are legitimately
-  // owned by schemaGuard and are skipped.
+  // Two cases are covered:
+  //   1. Drizzle-tracked tables: the column must exist in the Drizzle schema.
+  //   2. schemaGuard-only tables (no Drizzle pgTable): the column must appear
+  //      in the corresponding CREATE TABLE body in schemaGuard.ts or
+  //      db-migrate.ts.  An ALTER TABLE claim for a column absent from both is
+  //      a no-op guard that silently masks drift just as badly.
 
   console.log(
     "\nschema-guard-alter-reverse-check: verifying ALTER TABLE ADD COLUMN claims...\n"
@@ -371,7 +416,12 @@ function main(): void {
     for (const { table, col, lineNo } of claims) {
       const drizzleCols = drizzleLower.get(table);
       if (!drizzleCols) {
-        // Table not tracked by Drizzle — schemaGuard owns it entirely; skip.
+        // Table not tracked by Drizzle — schemaGuard owns it entirely.
+        // Validate the column against the CREATE TABLE body in the guard files.
+        const ctCols = createTableCols.get(table);
+        if (!ctCols || !ctCols.has(col)) {
+          stale.push({ file: label, table, col, lineNo });
+        }
         continue;
       }
       if (!drizzleCols.has(col)) {
@@ -383,19 +433,23 @@ function main(): void {
   let reverseOk = true;
   if (stale.length === 0) {
     console.log(
-      "✓ All ALTER TABLE ADD COLUMN IF NOT EXISTS claims reference real Drizzle columns."
+      "✓ All ALTER TABLE ADD COLUMN IF NOT EXISTS claims reference real columns\n" +
+        "  (Drizzle schema for Drizzle-tracked tables; CREATE TABLE body for schemaGuard-only tables)."
     );
   } else {
     reverseOk = false;
     console.error(
-      `✗ Found ${stale.length} ALTER TABLE claim(s) that do not match any Drizzle column:\n`
+      `✗ Found ${stale.length} ALTER TABLE claim(s) referencing a column that does not exist:\n`
     );
     console.error(
       "  These are stale or typo'd guards that execute as no-ops on production,\n" +
-        "  masking column drift. Fix the column name or remove the ALTER TABLE line.\n"
+        "  masking column drift. Fix the column name or remove the ALTER TABLE line.\n" +
+        "  • For Drizzle-tracked tables: the column must appear in the Drizzle schema.\n" +
+        "  • For schemaGuard-only tables: the column must appear in the CREATE TABLE body\n" +
+        "    in schemaGuard.ts or db-migrate.ts.\n"
     );
     for (const { file, table, col, lineNo } of stale) {
-      console.error(`  ${file}:${lineNo}  ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${col}  ← not in Drizzle schema`);
+      console.error(`  ${file}:${lineNo}  ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${col}  ← not found in schema or CREATE TABLE body`);
     }
     console.error();
   }
@@ -412,4 +466,19 @@ const isMain =
   fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
 if (isMain) {
   main();
+}
+
+function collectAllCreateTableColumns(): Map<string, Set<string>> {
+  const combined = new Map<string, Set<string>>();
+
+  for (const file of [SCHEMA_GUARD_FILE, DB_MIGRATE_FILE]) {
+    if (!fs.existsSync(file)) continue;
+    for (const [table, cols] of collectCreateTableColumns(fs.readFileSync(file, "utf8"))) {
+      const existing = combined.get(table) ?? new Set<string>();
+      for (const c of cols) existing.add(c);
+      combined.set(table, existing);
+    }
+  }
+
+  return combined;
 }
