@@ -21,10 +21,18 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "../..");
 
-const SCHEMA_DIR = path.join(ROOT, "lib/db/src/schema");
-const SCHEMA_INDEX = path.join(SCHEMA_DIR, "index.ts");
-const SCHEMA_GUARD_FILE = path.join(ROOT, "artifacts/api-server/src/lib/schemaGuard.ts");
-const DB_MIGRATE_FILE = path.join(ROOT, "scripts/src/db-migrate.ts");
+// Path overrides: set these env vars to point the script at fixture directories
+// during automated negative-case testing. Production runs leave them unset.
+const SCHEMA_DIR =
+  process.env.SGCD_SCHEMA_DIR ?? path.join(ROOT, "lib/db/src/schema");
+const SCHEMA_INDEX =
+  process.env.SGCD_SCHEMA_INDEX ?? path.join(SCHEMA_DIR, "index.ts");
+const SCHEMA_GUARD_FILE =
+  process.env.SGCD_GUARD_FILE ??
+  path.join(ROOT, "artifacts/api-server/src/lib/schemaGuard.ts");
+const DB_MIGRATE_FILE =
+  process.env.SGCD_MIGRATE_FILE ??
+  path.join(ROOT, "scripts/src/db-migrate.ts");
 
 // No tables are skipped. The four IAM tables (permissions, role_permissions,
 // user_permissions, iam_migration_log) are delegated to the canonical

@@ -69,6 +69,11 @@ jobs:
         # they can silently invalidate both the forward and reverse checks.
         run: pnpm --filter @workspace/scripts run test:schema-guard-column-diff
 
+      - name: Run schema-guard-column-diff negative-case test
+        # Verifies the script actually exits 1 when a column is missing from
+        # the guard — so a parser bug can't silently pass a real gap.
+        run: pnpm --filter @workspace/scripts run schema-guard-column-diff:negtest
+
   # ── Job 2: Real-DB fresh-install smoke test ─────────────────────────────────
   schema-guard-fresh-install:
     name: Schema guard fresh-install smoke (real DB)

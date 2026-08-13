@@ -26,6 +26,7 @@
     "schema-guard-column-diff": "tsx ./src/schema-guard-column-diff.ts",
     "schema-guard-alter-reverse-check": "tsx ./src/schema-guard-column-diff.ts",
     "test:schema-guard-column-diff": "node --import tsx/esm --test ./src/schema-guard-column-diff.test.ts",
+    "schema-guard-column-diff:negtest": "node --import tsx/esm --test ./src/schema-guard-column-diff.negtest.ts",
     "test:plan-feature-gates": "playwright test --config=playwright.config.ts e2e/plan-feature-gates.spec.ts"
   },
   "dependencies": {
