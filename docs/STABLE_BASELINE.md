@@ -33,6 +33,7 @@ in Section 5.
 | Merchant isolation | ✅ All queries scoped by `merchantId` |
 | Super Admin bypass | ✅ `isSuperAdmin` flag, `__all__` pass-through in `resolveUserPermissions` |
 | schemaGuard | ✅ 115/115 Drizzle tables guarded; 0 known gaps |
+| Schema-guard CI enforcement | ✅ `schema-guard-coverage` runs in CI on every push and every PR; new unguarded tables block merge |
 | Demo merchant callback secrets | ✅ AES-256-GCM seeded for merchant@demo.com, merchant2@demo.com, merchant3@demo.com |
 
 ---

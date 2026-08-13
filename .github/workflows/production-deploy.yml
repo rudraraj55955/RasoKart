@@ -142,6 +142,9 @@ jobs:
       - name: Typecheck (libs + artifacts + scripts)
         run: pnpm run typecheck
 
+      - name: Schema-guard coverage (every Drizzle table must have a CREATE TABLE IF NOT EXISTS guard)
+        run: pnpm --filter @workspace/scripts run schema-guard-coverage
+
       - name: Build (libs + all artifacts - includes API + frontend build)
         run: pnpm run build
         env:
