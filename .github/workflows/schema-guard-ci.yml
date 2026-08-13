@@ -53,6 +53,9 @@ jobs:
       - name: Run schema-guard-coverage
         run: pnpm --filter @workspace/scripts run schema-guard-coverage
 
+      - name: Run schema-guard-column-diff
+        run: pnpm --filter @workspace/scripts run schema-guard-column-diff
+
   # ── Job 2: Real-DB fresh-install smoke test ─────────────────────────────────
   schema-guard-fresh-install:
     name: Schema guard fresh-install smoke (real DB)
