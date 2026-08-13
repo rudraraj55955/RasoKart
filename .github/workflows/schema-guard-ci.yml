@@ -11,7 +11,7 @@ name: Schema Guard Coverage
 #   the fresh-install test which:
 #     • Drops a representative set of guarded tables inside a transaction
 #     • Calls runSchemaGuardWith() to prove they are recreated from scratch
-#     • Asserts all 28 guarded tables exist after the guard runs
+#     • Asserts all guarded tables exist after the guard runs
 #     • Rolls back the transaction (no data loss)
 #     • Starts the Express app, logs in, and hits 17+ representative routes
 #       with real Bearer tokens asserting HTTP 200 (handler ran the DB query)
@@ -55,6 +55,19 @@ jobs:
 
       - name: Run schema-guard-column-diff
         run: pnpm --filter @workspace/scripts run schema-guard-column-diff
+
+      - name: Run schema-guard-alter-reverse-check
+        # Reverse of the diff: every ALTER TABLE ADD COLUMN IF NOT EXISTS line
+        # in schemaGuard.ts / db-migrate.ts must reference a column that actually
+        # exists in the Drizzle schema.  A stale or typo'd column name silently
+        # becomes a no-op on production, masking drift.
+        run: pnpm --filter @workspace/scripts run schema-guard-alter-reverse-check
+
+      - name: Run schema-guard-column-diff unit tests
+        # Guards the Drizzle-column parser itself: catches regressions to the
+        # balanced-brace extractor and the multiline ALTER TABLE regex before
+        # they can silently invalidate both the forward and reverse checks.
+        run: pnpm --filter @workspace/scripts run test:schema-guard-column-diff
 
   # ── Job 2: Real-DB fresh-install smoke test ─────────────────────────────────
   schema-guard-fresh-install:
@@ -108,7 +121,7 @@ jobs:
       - name: Run schema-guard fresh-install smoke test
         # The test drops guarded tables inside a transaction, runs
         # runSchemaGuardWith() to prove they are created from scratch, asserts
-        # all 28 guarded tables exist, rolls back (restoring state), then
+        # all guarded tables exist, rolls back (restoring state), then
         # starts the app and hits authenticated routes asserting HTTP 200.
         run: >
           cd artifacts/api-server &&

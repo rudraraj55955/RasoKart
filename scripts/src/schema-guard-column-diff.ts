@@ -49,17 +49,49 @@ function camelToSnake(s: string): string {
   return s.replace(/([A-Z])/g, (m) => `_${m.toLowerCase()}`);
 }
 
-function extractDrizzleColumns(tableSource: string): Map<string, string[]> {
+/**
+ * Walk `source` starting at `startIndex` (which must point at an opening `{`)
+ * and return the text of the balanced body — i.e. everything between the
+ * outermost `{` and its matching `}`, exclusive of both braces.
+ *
+ * This correctly handles any depth of nested `{...}` and is not fooled by
+ * `}` characters inside string literals that appear on the same line
+ * (Drizzle column definitions always keep string args on one line).
+ */
+export function extractBalancedBody(source: string, startIndex: number): string {
+  let depth = 1;
+  let i = startIndex + 1; // step past the opening `{`
+  const bodyStart = i;
+  while (i < source.length && depth > 0) {
+    const ch = source[i];
+    if (ch === "{") depth++;
+    else if (ch === "}") {
+      depth--;
+      if (depth === 0) break;
+    }
+    i++;
+  }
+  return source.slice(bodyStart, i);
+}
+
+export function extractDrizzleColumns(tableSource: string): Map<string, string[]> {
   // Map from SQL table name → [sql column names]
   const result = new Map<string, string[]>();
 
-  // Find each pgTable("sql_name", { ... }) block
-  const tableRe = /\bpgTable\s*\(\s*["']([^"']+)["']\s*,\s*\{([^}]*(?:\{[^}]*\}[^}]*)*)\}/gs;
+  // Locate each pgTable("sql_name", { … }) header.
+  // We only need the table name and the position of the opening `{` of the
+  // column-definition object; we then use extractBalancedBody() to get the
+  // full body, which handles arbitrarily-deep nested braces correctly.
+  const headerRe = /\bpgTable\s*\(\s*["']([^"']+)["']\s*,\s*\{/gs;
   let tm: RegExpExecArray | null;
 
-  while ((tm = tableRe.exec(tableSource)) !== null) {
+  while ((tm = headerRe.exec(tableSource)) !== null) {
     const sqlTableName = tm[1];
-    const body = tm[2];
+    // tm.index + tm[0].length - 1  is the position of the `{` that opened
+    // the column object (the last char of tm[0] is `{`).
+    const openBraceIndex = tm.index + tm[0].length - 1;
+    const body = extractBalancedBody(tableSource, openBraceIndex);
+
     const cols: string[] = [];
 
     // Each line in the body is:  propName: someType("sql_col_name", ...)
@@ -208,6 +240,42 @@ function collectAllGuardedColumns(): Map<string, Set<string>> {
 }
 
 // ---------------------------------------------------------------------------
+// Reverse check: parse ALTER TABLE ADD COLUMN claims from a guard file
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns every ALTER TABLE <table> ADD COLUMN IF NOT EXISTS <col> claim found
+ * in the source text, preserving the 1-based line number of the match for
+ * diagnostics.
+ *
+ * The regex is applied over the FULL source (not line-by-line) so that
+ * multiline ALTER TABLE statements — where the table name and ADD COLUMN
+ * clause span two or more lines — are also captured.
+ */
+export function collectAlterTableClaims(
+  source: string
+): Array<{ table: string; col: string; lineNo: number }> {
+  const claims: Array<{ table: string; col: string; lineNo: number }> = [];
+
+  // \s+ between tokens allows the regex to span line breaks.
+  // Flags: g = find all matches, i = case-insensitive.
+  const alterRe =
+    /ALTER\s+TABLE\s+["']?(\w+)["']?\s+ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+"?(\w+)"?/gi;
+
+  let m: RegExpExecArray | null;
+  while ((m = alterRe.exec(source)) !== null) {
+    // Derive the 1-based line number from the byte offset of the match.
+    const lineNo = source.slice(0, m.index).split("\n").length;
+    claims.push({
+      table: m[1].toLowerCase(),
+      col: m[2].toLowerCase(),
+      lineNo,
+    });
+  }
+  return claims;
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -215,6 +283,7 @@ function main(): void {
   const drizzle = collectDrizzleSchema();
   const guarded = collectAllGuardedColumns();
 
+  // ── Forward check: every Drizzle column must be covered by a guard ──────
   console.log(`schema-guard-column-diff: checking ${drizzle.size} tables...\n`);
 
   const gaps: Array<{ table: string; missing: string[] }> = [];
@@ -230,20 +299,109 @@ function main(): void {
     }
   }
 
+  let forwardOk = true;
   if (gaps.length === 0) {
-    console.log("✓ All Drizzle columns are covered by schemaGuard CREATE TABLE or ALTER TABLE guards.");
-    process.exit(0);
+    console.log(
+      "✓ All Drizzle columns are covered by schemaGuard CREATE TABLE or ALTER TABLE guards."
+    );
+  } else {
+    forwardOk = false;
+    console.error(
+      `✗ Found ${gaps.length} table(s) with columns missing from guards:\n`
+    );
+    for (const { table, missing } of gaps.sort((a, b) =>
+      a.table.localeCompare(b.table)
+    )) {
+      console.error(`  ${table}:`);
+      for (const col of missing) {
+        console.error(`    • ${col}`);
+      }
+      console.error();
+    }
   }
 
-  console.error(`✗ Found ${gaps.length} table(s) with columns missing from guards:\n`);
-  for (const { table, missing } of gaps.sort((a, b) => a.table.localeCompare(b.table))) {
-    console.error(`  ${table}:`);
-    for (const col of missing) {
-      console.error(`    • ${col}`);
+  // ── Reverse check: every ALTER TABLE ADD COLUMN claim must match Drizzle ─
+  //
+  // Catches typo'd or deleted column names in schemaGuard.ts / db-migrate.ts
+  // that silently become no-ops on production (the column name doesn't exist
+  // in the Drizzle schema any more, so the guard column never gets applied).
+  //
+  // Scope: only flag claims where the *table* IS known to Drizzle but the
+  // *column* is NOT — tables that Drizzle doesn't track at all are legitimately
+  // owned by schemaGuard and are skipped.
+
+  console.log(
+    "\nschema-guard-alter-reverse-check: verifying ALTER TABLE ADD COLUMN claims...\n"
+  );
+
+  const stale: Array<{
+    file: string;
+    table: string;
+    col: string;
+    lineNo: number;
+  }> = [];
+
+  const filesToCheck: [string, string][] = [
+    [SCHEMA_GUARD_FILE, "schemaGuard.ts"],
+    [DB_MIGRATE_FILE, "db-migrate.ts"],
+  ];
+
+  // Pre-build a lowercase lookup map for fast column membership tests.
+  const drizzleLower = new Map<string, Set<string>>();
+  for (const [table, cols] of drizzle) {
+    drizzleLower.set(
+      table.toLowerCase(),
+      new Set(cols.map((c) => c.toLowerCase()))
+    );
+  }
+
+  for (const [filePath, label] of filesToCheck) {
+    if (!fs.existsSync(filePath)) continue;
+    const source = fs.readFileSync(filePath, "utf8");
+    const claims = collectAlterTableClaims(source);
+
+    for (const { table, col, lineNo } of claims) {
+      const drizzleCols = drizzleLower.get(table);
+      if (!drizzleCols) {
+        // Table not tracked by Drizzle — schemaGuard owns it entirely; skip.
+        continue;
+      }
+      if (!drizzleCols.has(col)) {
+        stale.push({ file: label, table, col, lineNo });
+      }
+    }
+  }
+
+  let reverseOk = true;
+  if (stale.length === 0) {
+    console.log(
+      "✓ All ALTER TABLE ADD COLUMN IF NOT EXISTS claims reference real Drizzle columns."
+    );
+  } else {
+    reverseOk = false;
+    console.error(
+      `✗ Found ${stale.length} ALTER TABLE claim(s) that do not match any Drizzle column:\n`
+    );
+    console.error(
+      "  These are stale or typo'd guards that execute as no-ops on production,\n" +
+        "  masking column drift. Fix the column name or remove the ALTER TABLE line.\n"
+    );
+    for (const { file, table, col, lineNo } of stale) {
+      console.error(`  ${file}:${lineNo}  ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${col}  ← not in Drizzle schema`);
     }
     console.error();
   }
-  process.exit(1);
+
+  if (!forwardOk || !reverseOk) {
+    process.exit(1);
+  }
 }
 
-main();
+// Only run main() when this file is executed directly, not when imported by
+// a test or another module.
+const isMain =
+  process.argv[1] &&
+  fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+if (isMain) {
+  main();
+}
