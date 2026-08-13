@@ -51,38 +51,8 @@ const DB_MIGRATE_FILE = path.join(ROOT, "scripts/src/db-migrate.ts");
 //     adding a new table to the Drizzle schema, add it to schemaGuard.ts
 //     instead.  This list should only ever shrink, never grow.
 const KNOWN_GAPS: Record<string, string> = {
-  account_visibility_rules:
-    "Pre-guard table — created by Drizzle push during initial setup; no route currently does a fresh-DB SELECT that could 500",
-  activation_requests:
-    "Pre-guard table — created by Drizzle push during initial setup; guard addition tracked as follow-up work",
-  callback_nonces:
-    "Pre-guard table — created by Drizzle push during initial setup; guard addition tracked as follow-up work",
-  cashfree_payment_logs:
-    "Pre-guard table — created by Drizzle push during initial setup; guard addition tracked as follow-up work",
-  merchant_features:
-    "Pre-guard table — created by Drizzle push during initial setup; guard addition tracked as follow-up work",
-  merchant_products:
-    "Pre-guard table — created by Drizzle push during initial setup; guard addition tracked as follow-up work",
-  payment_links:
-    "Pre-guard table — created by Drizzle push during initial setup; guard addition tracked as follow-up work",
-  plan_history:
-    "Pre-guard table — created by Drizzle push during initial setup; guard addition tracked as follow-up work",
-  provider_metrics:
-    "Pre-guard table — created by Drizzle push during initial setup; guard addition tracked as follow-up work",
-  provider_product_visibility:
-    "Pre-guard table — created by Drizzle push during initial setup; guard addition tracked as follow-up work",
-  qr_payment_events:
-    "Pre-guard table — created by Drizzle push during initial setup; guard addition tracked as follow-up work",
-  routing_logs:
-    "Pre-guard table — created by Drizzle push during initial setup; guard addition tracked as follow-up work",
-  saved_filters:
-    "Pre-guard table — created by Drizzle push during initial setup; guard addition tracked as follow-up work",
-  signature_failure_alert_logs:
-    "Pre-guard table — has ALTER TABLE guard in schemaGuard.ts for cooldown_hours column but no CREATE TABLE guard; tracked as follow-up work",
-  storage_cleanup_runs:
-    "Pre-guard table — created by Drizzle push during initial setup; guard addition tracked as follow-up work",
-  va_balance_history:
-    "Pre-guard table — created by Drizzle push during initial setup; guard addition tracked as follow-up work",
+  // All 16 pre-guard tables have been given CREATE TABLE IF NOT EXISTS blocks
+  // in schemaGuard.ts (task 2556).  This map is intentionally empty.
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

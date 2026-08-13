@@ -32,7 +32,7 @@ in Section 5.
 | IAM / RBAC enforcement | ✅ Live on VPS (migration 2026-07-19), 71 permissions, 497 role_permissions |
 | Merchant isolation | ✅ All queries scoped by `merchantId` |
 | Super Admin bypass | ✅ `isSuperAdmin` flag, `__all__` pass-through in `resolveUserPermissions` |
-| schemaGuard | ✅ 115/131 Drizzle tables guarded; 16 pre-guard tables documented in known_gaps |
+| schemaGuard | ✅ 115/115 Drizzle tables guarded; 0 known gaps |
 | Demo merchant callback secrets | ✅ AES-256-GCM seeded for merchant@demo.com, merchant2@demo.com, merchant3@demo.com |
 
 ---
@@ -140,7 +140,7 @@ pnpm --filter @workspace/scripts run verify-priority-conflict-tests
 | EKQR webhook reachability | 3 | ✅ 3/3 PASS |
 | Gateway panel coverage | 7 | ✅ 7/7 PASS |
 | System config coverage | 3 | ✅ 3/3 PASS |
-| Schema guard coverage | 115 tables | ✅ PASS |
+| Schema guard coverage | 115 tables, 0 gaps | ✅ PASS |
 | Priority conflict guards | real-DB | ✅ PASS |
 | TypeScript (api-server) | — | ✅ CLEAN |
 | TypeScript (rpay) | — | ✅ CLEAN |
@@ -152,7 +152,7 @@ pnpm --filter @workspace/scripts run verify-priority-conflict-tests
 | Item | Gap | Risk |
 |---|---|---|
 | `payout_test@demo.com` callback secret | NULL (payout-only merchant, no API key) | LOW — warning not triggered |
-| 16 pre-guard DB tables | No CREATE TABLE guard (documented in `schema-guard-coverage`) | LOW — only affects fresh DB |
+| 16 pre-guard DB tables | ✅ All 16 now have CREATE TABLE IF NOT EXISTS guards in schemaGuard.ts | RESOLVED |
 | `checkPlanFeatureAccess` not called on routes | API/webhook plan gate defined but not route-enforced | LOW — frontend enforces; backend gate defined |
 | IAM dev DB | IAM tables absent in Replit dev DB | INFO — VPS prod has full IAM (16/16 verify-iam-migration PASS) |
 | `admins.map is not a function` in CI test | Credit-failure admin alert hits unstubbed DB in test environment | INFO — only in test harness; production alert function is correct |

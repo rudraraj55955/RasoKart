@@ -1608,7 +1608,22 @@ async function runGuard(): Promise<void> {
   `);
   logger.info({ table: "policy_versions" }, "schema_guard_table_created");
 
-  // ── signature_failure_alert_logs: cooldown_hours column ───────────────────
+  // ── signature_failure_alert_logs: CREATE TABLE + cooldown_hours column ─────
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS signature_failure_alert_logs (
+      id                     SERIAL PRIMARY KEY,
+      sent_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      failure_count          INTEGER NOT NULL,
+      affected_merchant_count INTEGER NOT NULL DEFAULT 0,
+      recipient_count        INTEGER NOT NULL DEFAULT 0,
+      recipient_emails       JSONB NOT NULL DEFAULT '[]',
+      affected_merchants     JSONB NOT NULL DEFAULT '[]',
+      window_hours           INTEGER NOT NULL,
+      threshold              INTEGER NOT NULL,
+      cooldown_hours         INTEGER
+    )
+  `);
+  logger.info({ table: "signature_failure_alert_logs" }, "schema_guard_table_created");
   // Add as nullable (no DEFAULT) so rows inserted before this column existed
   // receive NULL rather than a misleading backfill value of 1.
   await db.execute(sql`ALTER TABLE signature_failure_alert_logs ADD COLUMN IF NOT EXISTS cooldown_hours INTEGER`);
@@ -2113,6 +2128,251 @@ async function runGuard(): Promise<void> {
       logger.info({ migration: "encrypt_ekqr_credentials", count: credRowsArr.length }, "schema_guard: plaintext EKQR credential migration complete");
     }
   }
+
+  // ── account_visibility_rules ─────────────────────────────────────────────
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS account_visibility_rules (
+      id                SERIAL PRIMARY KEY,
+      account_detail_id INTEGER NOT NULL,
+      merchant_id       INTEGER NOT NULL,
+      visible           BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  logger.info({ table: "account_visibility_rules" }, "schema_guard_table_created");
+
+  // ── activation_requests ──────────────────────────────────────────────────
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS activation_requests (
+      id          SERIAL PRIMARY KEY,
+      merchant_id INTEGER NOT NULL,
+      product_key VARCHAR(64) NOT NULL,
+      status      VARCHAR(32) NOT NULL DEFAULT 'pending',
+      note        TEXT,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  logger.info({ table: "activation_requests" }, "schema_guard_table_created");
+
+  // ── callback_nonces ──────────────────────────────────────────────────────
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS callback_nonces (
+      key        TEXT PRIMARY KEY,
+      expires_at TIMESTAMPTZ NOT NULL
+    )
+  `);
+  logger.info({ table: "callback_nonces" }, "schema_guard_table_created");
+
+  // ── cashfree_payment_logs ────────────────────────────────────────────────
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS cashfree_payment_logs (
+      id                SERIAL PRIMARY KEY,
+      event_type        TEXT,
+      cashfree_order_id TEXT,
+      merchant_id       INTEGER,
+      amount            TEXT,
+      status            TEXT,
+      raw_payload       TEXT NOT NULL,
+      processing_result TEXT NOT NULL,
+      error_message     TEXT,
+      received_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  logger.info({ table: "cashfree_payment_logs" }, "schema_guard_table_created");
+
+  // ── merchant_features ────────────────────────────────────────────────────
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS merchant_features (
+      id             SERIAL PRIMARY KEY,
+      merchant_id    INTEGER NOT NULL UNIQUE,
+      dynamic_qr     BOOLEAN NOT NULL DEFAULT FALSE,
+      static_qr      BOOLEAN NOT NULL DEFAULT FALSE,
+      virtual_account BOOLEAN NOT NULL DEFAULT FALSE,
+      payment_links  BOOLEAN NOT NULL DEFAULT FALSE,
+      payouts        BOOLEAN NOT NULL DEFAULT FALSE,
+      withdrawals    BOOLEAN NOT NULL DEFAULT TRUE,
+      settlements    BOOLEAN NOT NULL DEFAULT TRUE,
+      webhooks       BOOLEAN NOT NULL DEFAULT TRUE,
+      api_keys       BOOLEAN NOT NULL DEFAULT TRUE,
+      csv_export     BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  logger.info({ table: "merchant_features" }, "schema_guard_table_created");
+
+  // ── merchant_products ────────────────────────────────────────────────────
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS merchant_products (
+      id           SERIAL PRIMARY KEY,
+      merchant_id  INTEGER NOT NULL,
+      product_type TEXT NOT NULL,
+      enabled      BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  logger.info({ table: "merchant_products" }, "schema_guard_table_created");
+
+  // ── payment_links ────────────────────────────────────────────────────────
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS payment_links (
+      id           SERIAL PRIMARY KEY,
+      merchant_id  INTEGER NOT NULL,
+      title        TEXT NOT NULL,
+      description  TEXT,
+      amount       TEXT,
+      currency     TEXT NOT NULL DEFAULT 'INR',
+      slug         TEXT NOT NULL UNIQUE,
+      upi_payload  TEXT,
+      status       TEXT NOT NULL DEFAULT 'active',
+      max_payments INTEGER,
+      expires_at   TIMESTAMPTZ,
+      callback_url TEXT,
+      created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  logger.info({ table: "payment_links" }, "schema_guard_table_created");
+
+  // ── plan_history ─────────────────────────────────────────────────────────
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS plan_history (
+      id           SERIAL PRIMARY KEY,
+      merchant_id  INTEGER NOT NULL,
+      from_plan_id INTEGER,
+      to_plan_id   INTEGER,
+      action       TEXT NOT NULL,
+      assigned_by  INTEGER,
+      admin_email  TEXT,
+      notes        TEXT,
+      expires_at   TIMESTAMPTZ,
+      created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  logger.info({ table: "plan_history" }, "schema_guard_table_created");
+
+  // ── provider_metrics ─────────────────────────────────────────────────────
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS provider_metrics (
+      id               SERIAL PRIMARY KEY,
+      provider_key     VARCHAR(64) NOT NULL,
+      time_window      VARCHAR(8) NOT NULL DEFAULT '24h',
+      total_attempts   INTEGER NOT NULL DEFAULT 0,
+      success_count    INTEGER NOT NULL DEFAULT 0,
+      failed_count     INTEGER NOT NULL DEFAULT 0,
+      timeout_count    INTEGER NOT NULL DEFAULT 0,
+      avg_response_ms  INTEGER,
+      success_rate     NUMERIC(5,2) DEFAULT 0.00,
+      last_computed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS provider_metrics_key_window_uidx ON provider_metrics(provider_key, time_window)`);
+  logger.info({ table: "provider_metrics" }, "schema_guard_table_created");
+
+  // ── provider_product_visibility ──────────────────────────────────────────
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS provider_product_visibility (
+      id                SERIAL PRIMARY KEY,
+      product_key       VARCHAR(64) NOT NULL,
+      merchant_id       INTEGER NOT NULL,
+      visibility_status VARCHAR(32) NOT NULL DEFAULT 'visible',
+      created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS ppv_product_merchant_uidx ON provider_product_visibility(product_key, merchant_id)`);
+  logger.info({ table: "provider_product_visibility" }, "schema_guard_table_created");
+
+  // ── qr_payment_events ────────────────────────────────────────────────────
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS qr_payment_events (
+      id                 SERIAL PRIMARY KEY,
+      qr_code_id         INTEGER NOT NULL,
+      merchant_id        INTEGER NOT NULL,
+      transaction_id     INTEGER,
+      amount             TEXT,
+      order_id           TEXT,
+      merchant_reference TEXT,
+      received_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  logger.info({ table: "qr_payment_events" }, "schema_guard_table_created");
+
+  // ── routing_logs ─────────────────────────────────────────────────────────
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS routing_logs (
+      id                    SERIAL PRIMARY KEY,
+      merchant_id           INTEGER NOT NULL,
+      config_id             INTEGER,
+      config_name           VARCHAR(64),
+      strategy_used         VARCHAR(32),
+      attempt_number        INTEGER NOT NULL DEFAULT 1,
+      provider_key          VARCHAR(64) NOT NULL,
+      result                VARCHAR(32) NOT NULL,
+      response_time_ms      INTEGER,
+      amount                NUMERIC(18,2),
+      payment_mode          VARCHAR(32),
+      public_reference_id   VARCHAR(64),
+      provider_reference_id VARCHAR(128),
+      error_message         TEXT,
+      created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS routing_logs_merchant_idx ON routing_logs(merchant_id)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS routing_logs_created_idx ON routing_logs(created_at)`);
+  logger.info({ table: "routing_logs" }, "schema_guard_table_created");
+
+  // ── saved_filters ────────────────────────────────────────────────────────
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS saved_filters (
+      id          SERIAL PRIMARY KEY,
+      user_id     INTEGER NOT NULL,
+      merchant_id INTEGER,
+      name        TEXT NOT NULL,
+      raw_input   TEXT NOT NULL,
+      filter_data JSONB NOT NULL,
+      context     TEXT NOT NULL DEFAULT '',
+      sort_order  INTEGER NOT NULL DEFAULT 0,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS saved_filters_user_idx ON saved_filters(user_id)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS saved_filters_merchant_context_idx ON saved_filters(merchant_id, context)`);
+  logger.info({ table: "saved_filters" }, "schema_guard_table_created");
+
+  // ── storage_cleanup_runs ─────────────────────────────────────────────────
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS storage_cleanup_runs (
+      id             SERIAL PRIMARY KEY,
+      created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      total_scanned  INTEGER NOT NULL DEFAULT 0,
+      deleted        INTEGER NOT NULL DEFAULT 0,
+      errors         INTEGER NOT NULL DEFAULT 0,
+      triggered_by   TEXT
+    )
+  `);
+  logger.info({ table: "storage_cleanup_runs" }, "schema_guard_table_created");
+
+  // ── va_balance_history ───────────────────────────────────────────────────
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS va_balance_history (
+      id                   SERIAL PRIMARY KEY,
+      virtual_account_id   INTEGER NOT NULL,
+      changed_by           INTEGER NOT NULL,
+      changed_by_role      TEXT NOT NULL,
+      changed_by_name      TEXT NOT NULL,
+      old_balance          TEXT,
+      new_balance          TEXT,
+      old_total_collection TEXT,
+      new_total_collection TEXT,
+      reason               TEXT,
+      created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  logger.info({ table: "va_balance_history" }, "schema_guard_table_created");
 
   // ── uploaded_objects: object storage dedup tracking table ────────────────
   // Used by routes/storage.ts (POST /api/storage/upload) and
