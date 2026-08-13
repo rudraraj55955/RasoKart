@@ -133,7 +133,7 @@ router.get("/config", requirePermission(PERMISSIONS.PAYU_SETTINGS_VIEW), async (
         ]),
       );
     const cfgMap = new Map(liveVerifiedRows.map(r => [r.key, r.value]));
-      const liveVerified = verifiedRows[0]?.value === "true";
+    const liveVerified   = cfgMap.get(SYSTEM_CONFIG_KEYS.PAYU_LIVE_VERIFIED) === "true";
     const liveVerifiedAt = cfgMap.get(SYSTEM_CONFIG_KEYS.PAYU_LIVE_VERIFIED_AT) || null;
 
     const onboardingStatuses = deriveOnboardingStatus(
@@ -316,19 +316,22 @@ router.put("/settings", requirePermission(PERMISSIONS.PAYU_SETTINGS_MANAGE), asy
       }
     }
 
-    const env = (row?.environment ?? "uat") as PayuEnv;
+    const env = String(environment ?? "uat");
+    if (!["uat", "live"].includes(env)) {
+      res.status(400).json({ error: "environment must be 'uat' or 'live'" });
+      return;
+    }
 
     // Live mode requires verification and live credentials
     if (env === "live") {
-    const [row] = await db
-      .select()
-      .from(providerIntegrationsTable)
-      .where(eq(providerIntegrationsTable.providerKey, "payu"))
-      .limit(1);
+      const [row] = await db
+        .select()
+        .from(providerIntegrationsTable)
+        .where(eq(providerIntegrationsTable.providerKey, "payu"))
+        .limit(1);
 
-    // ── Step 1: credentials decrypt cleanly ────────────────────────────────
-    const liveKeyDecrypt  = row?.clientIdEncrypted     ? decryptSecret(row.clientIdEncrypted)     : null;
-    const liveSaltDecrypt = row?.clientSecretEncrypted ? decryptSecret(row.clientSecretEncrypted) : null;
+      const liveKeyDecrypt  = row?.clientIdEncrypted     ? decryptSecret(row.clientIdEncrypted)     : null;
+      const liveSaltDecrypt = row?.clientSecretEncrypted ? decryptSecret(row.clientSecretEncrypted) : null;
       const liveKeyOk  = liveKeyDecrypt?.ok  && (liveKeyDecrypt.value?.length ?? 0) > 0;
       const liveSaltOk = liveSaltDecrypt?.ok && (liveSaltDecrypt.value?.length ?? 0) > 0;
 
@@ -617,16 +620,6 @@ router.get("/orders", requirePermission(PERMISSIONS.PAYU_SETTINGS_VIEW), async (
     const offset = parseInt(String(req.query["offset"] ?? "0"), 10) || 0;
 
     const statusFilter = req.query["status"] ? String(req.query["status"]) : null;
-
-    const baseQuery = db
-      .select()
-      .from(payuPaymentOrdersTable)
-      .orderBy(desc(payuPaymentOrdersTable.createdAt))
-      .limit(limit)
-      .offset(offset);
-
-    const statusFilter = req.query["status"] ? String(req.query["status"]) : null;
-
     const baseQuery = db
       .select()
       .from(payuPaymentOrdersTable)
@@ -671,23 +664,6 @@ router.get("/webhook-logs", requirePermission(PERMISSIONS.PAYU_WEBHOOKS_VIEW), a
     const limit  = Math.min(parseInt(String(req.query["limit"] ?? "50"), 10) || 50, 200);
     const offset = parseInt(String(req.query["offset"] ?? "0"), 10) || 0;
 
-    const statusFilter = req.query["status"] ? String(req.query["status"]) : null;
-
-    const baseQuery = db
-      .select()
-      .from(payuPaymentOrdersTable)
-      .orderBy(desc(payuPaymentOrdersTable.createdAt))
-      .limit(limit)
-      .offset(offset);
-
-    const statusFilter = req.query["status"] ? String(req.query["status"]) : null;
-
-    const baseQuery = db
-      .select()
-      .from(payuPaymentOrdersTable)
-      .orderBy(desc(payuPaymentOrdersTable.createdAt))
-      .limit(limit)
-      .offset(offset);
     const logs = await db
       .select()
       .from(payuWebhookLogsTable)
@@ -767,9 +743,3 @@ router.post("/test-hash", requirePermission(PERMISSIONS.PAYU_SETTINGS_MANAGE), a
 });
 
 export default router;
-    const baseQuery = db
-      .select()
-      .from(payuPaymentOrdersTable)
-      .orderBy(desc(payuPaymentOrdersTable.createdAt))
-      .limit(limit)
-      .offset(offset);
