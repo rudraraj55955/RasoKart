@@ -3,6 +3,7 @@ import { Request, Response, NextFunction } from "express";
 import { db, apiKeysTable, merchantsTable, callbackLogsTable, callbackNoncesTable } from "@workspace/db";
 import { eq, lt, sql } from "drizzle-orm";
 import { logger } from "../lib/logger";
+import { decryptSecret } from "../helpers/cryptoUtils";
 
 /**
  * How far in the past (or future) an X-Timestamp may be, in seconds.
@@ -163,6 +164,17 @@ export async function verifyCallbackSignature(req: Request, res: Response, next:
     return;
   }
 
+  // Decrypt the secret (AES-256-GCM). Values stored before encryption was
+  // added are plain-text and pass through decryptSecret transparently.
+  const decResult = decryptSecret(merchant.callbackSecret);
+  if (!decResult.ok) {
+    logger.warn({ merchantId }, "callback_secret_decrypt_failed — treating as not configured; check SESSION_SECRET");
+    (req as any).signatureVerified = null;
+    next();
+    return;
+  }
+  const callbackSecret = decResult.value;
+
   // Use the per-merchant window when set, otherwise fall back to the global default.
   const windowSeconds = merchant.callbackTimestampWindowSeconds ?? TIMESTAMP_WINDOW_SECONDS;
 
@@ -217,7 +229,7 @@ export async function verifyCallbackSignature(req: Request, res: Response, next:
     return;
   }
 
-  if (!verifyHmacSignature(merchant.callbackSecret, rawBody, signatureHeader)) {
+  if (!verifyHmacSignature(callbackSecret, rawBody, signatureHeader)) {
     logAndReject(res, merchantId, req.originalUrl, "Invalid X-Signature");
     return;
   }

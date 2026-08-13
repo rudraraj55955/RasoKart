@@ -1,4 +1,5 @@
 import bcrypt from "bcryptjs";
+import { randomBytes } from "crypto";
 import { and, count, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { DEMO_CREDENTIALS } from "@workspace/demo-credentials";
 import { logger } from "./lib/logger";
@@ -355,6 +356,31 @@ export async function seed() {
   if (m1) await db.update(usersTable).set({ merchantId: m1.id }).where(eq(usersTable.email, "merchant@demo.com"));
   if (m2) await db.update(usersTable).set({ merchantId: m2.id }).where(eq(usersTable.email, "merchant2@demo.com"));
   if (m3) await db.update(usersTable).set({ merchantId: m3.id }).where(eq(usersTable.email, "merchant3@demo.com"));
+
+  // ── Callback secrets for demo merchants ─────────────────────────────────────
+  // Set a callback signing secret for each demo merchant that doesn't already
+  // have one. This removes the "Callback Secret Not Configured" dashboard banner.
+  // - Only writes when callbackSecret IS NULL — never overwrites an existing key.
+  // - Secret is encrypted at rest (AES-256-GCM, same as provider credentials).
+  // - The generated secret is intentionally NOT logged.
+  try {
+    const { encryptSecret } = await import("./helpers/cryptoUtils");
+    for (const m of [m1, m2, m3]) {
+      if (!m) continue;
+      await db
+        .update(merchantsTable)
+        .set({
+          callbackSecret: encryptSecret(randomBytes(32).toString("hex")),
+          callbackSecretUpdatedAt: new Date(),
+        })
+        .where(and(eq(merchantsTable.id, m.id), isNull(merchantsTable.callbackSecret)));
+    }
+    console.log("Demo callback secrets seeded");
+  } catch (err) {
+    // SESSION_SECRET may not be set in some CI environments — warn and move on.
+    logger.warn({ err }, "Could not seed demo callback secrets (SESSION_SECRET may be unset)");
+  }
+
   console.log("Merchants seeded");
 
   // assign plans

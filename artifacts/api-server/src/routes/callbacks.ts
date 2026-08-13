@@ -6,6 +6,7 @@ import { requireApiKey, verifyCallbackSignature } from "../middlewares/callbackA
 import { logger } from "../lib/logger";
 import { fireCallback, scheduleCallbackRetry } from "../helpers/callbackRetry";
 import { maskIp } from "../helpers/apiKeyEmail";
+import { encryptSecret, decryptSecret } from "../helpers/cryptoUtils";
 
 const router = Router();
 
@@ -302,12 +303,22 @@ router.get("/secret", async (req, res) => {
     return;
   }
 
-  const secret = merchant.callbackSecret;
+  const stored = merchant.callbackSecret;
   const lastRotatedAt = webhook?.secretRotatedAt?.toISOString() ?? null;
 
+  // Decrypt so the prefix is derived from the actual secret value, not the
+  // "enc:v1:…" storage envelope.
+  let secretPrefix: string | null = null;
+  if (stored) {
+    const dec = decryptSecret(stored);
+    secretPrefix = dec.ok
+      ? dec.value.slice(0, 8) + "..."
+      : "????????..."; // decrypt failed (wrong SESSION_SECRET?) — show neutral placeholder
+  }
+
   res.json({
-    isSet: !!secret,
-    secretPrefix: secret ? secret.slice(0, 8) + "..." : null,
+    isSet: !!stored,
+    secretPrefix,
     lastRotatedAt,
   });
 });
@@ -373,6 +384,10 @@ router.post("/secret/rotate", async (req, res) => {
 
   const { randomBytes } = await import("crypto");
   const newSecret = randomBytes(32).toString("hex");
+  // Store encrypted at rest (AES-256-GCM via SESSION_SECRET).
+  // verifyCallbackSignature decrypts before HMAC verification.
+  // The plaintext is returned once to the merchant and never persisted.
+  const encryptedSecret = encryptSecret(newSecret);
 
   const now = new Date();
   const rotateIp = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()
@@ -382,7 +397,7 @@ router.post("/secret/rotate", async (req, res) => {
   await Promise.all([
     db
       .update(merchantsTable)
-      .set({ callbackSecret: newSecret, callbackSecretUpdatedAt: now, updatedAt: now })
+      .set({ callbackSecret: encryptedSecret, callbackSecretUpdatedAt: now, updatedAt: now })
       .where(eq(merchantsTable.id, user.merchantId)),
     db
       .update(webhooksTable)
