@@ -359,17 +359,17 @@ router.put("/settings", requirePermission(PERMISSIONS.PAYU_SETTINGS_MANAGE), asy
       req.log.info({ event: "payu_settings_live_mode_enabled", admin: user.email }, "payu_settings_live_mode_enabled");
     }
 
-    // Update provider_integrations row
-    const integrationUpdate: Record<string, unknown> = {
-      isEnabled:      enabled === true,
-      environment:    env,
-      updatedByEmail: user.email,
-    };
-    if (webhookUrl !== undefined) {
-      integrationUpdate["webhookUrl"] = String(webhookUrl).trim();
-    }
+    // Update provider_integrations row — use explicit typed columns so Drizzle
+    // correctly maps every camelCase alias to its snake_case SQL column.
+    // (A Record<string,unknown> cast-as-any can silently drop unknown keys in
+    //  some Drizzle builds; explicit field references are always safe.)
     await db.update(providerIntegrationsTable)
-      .set(integrationUpdate as any)
+      .set({
+        isEnabled:      Boolean(enabled === true),
+        environment:    env,
+        updatedByEmail: String(user.email),
+        ...(webhookUrl !== undefined ? { webhookUrl: String(webhookUrl).trim() } : {}),
+      })
       .where(eq(providerIntegrationsTable.providerKey, "payu"));
 
     // Upsert system config keys
