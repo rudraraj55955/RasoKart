@@ -124,6 +124,10 @@ router.get("/config", requirePermission(PERMISSIONS.PAYU_SETTINGS_VIEW), async (
     const enabled = row?.isEnabled ?? false;
 
     // Load live verification status from system_config
+    // Read ALL PayU system_config keys in one query — system_config is the
+    // runtime-canonical store (loadPayuConfig reads from here); returning these
+    // values in GET /config lets the UI initialise from the same source the
+    // payment runtime uses, preventing UI↔runtime drift.
     const liveVerifiedRows = await db
       .select()
       .from(systemConfigTable)
@@ -131,11 +135,24 @@ router.get("/config", requirePermission(PERMISSIONS.PAYU_SETTINGS_VIEW), async (
         inArray(systemConfigTable.key, [
           SYSTEM_CONFIG_KEYS.PAYU_LIVE_VERIFIED,
           SYSTEM_CONFIG_KEYS.PAYU_LIVE_VERIFIED_AT,
+          SYSTEM_CONFIG_KEYS.PAYU_ENABLED,
+          SYSTEM_CONFIG_KEYS.PAYU_ENV,
+          SYSTEM_CONFIG_KEYS.PAYU_MIN_AMOUNT,
+          SYSTEM_CONFIG_KEYS.PAYU_MAX_AMOUNT,
+          SYSTEM_CONFIG_KEYS.PAYU_DAILY_LIMIT,
+          SYSTEM_CONFIG_KEYS.PAYU_SUSPENDED,
         ]),
       );
     const cfgMap = new Map(liveVerifiedRows.map(r => [r.key, r.value]));
     const liveVerified   = cfgMap.get(SYSTEM_CONFIG_KEYS.PAYU_LIVE_VERIFIED) === "true";
     const liveVerifiedAt = cfgMap.get(SYSTEM_CONFIG_KEYS.PAYU_LIVE_VERIFIED_AT) || null;
+    // Runtime-canonical settings (what loadPayuConfig / payment runtime actually reads)
+    const scEnabled    = cfgMap.get(SYSTEM_CONFIG_KEYS.PAYU_ENABLED)    === "true";
+    const scEnv        = (cfgMap.get(SYSTEM_CONFIG_KEYS.PAYU_ENV)       ?? "uat") as PayuEnv;
+    const scMinAmount  = parseFloat(cfgMap.get(SYSTEM_CONFIG_KEYS.PAYU_MIN_AMOUNT)  ?? "1");
+    const scMaxAmount  = parseFloat(cfgMap.get(SYSTEM_CONFIG_KEYS.PAYU_MAX_AMOUNT)  ?? "200000");
+    const scDailyLimit = parseFloat(cfgMap.get(SYSTEM_CONFIG_KEYS.PAYU_DAILY_LIMIT) ?? "1000000");
+    const scSuspended  = cfgMap.get(SYSTEM_CONFIG_KEYS.PAYU_SUSPENDED)  === "true";
 
     const onboardingStatuses = deriveOnboardingStatus(
       uatKeySet, uatSaltSet, liveKeySet, liveSaltSet, liveVerified, env, enabled,
@@ -163,6 +180,15 @@ router.get("/config", requirePermission(PERMISSIONS.PAYU_SETTINGS_VIEW), async (
       // Webhook URL (for step 4 of activation flow)
       webhookUrl: row?.webhookUrl ?? "",
       notes:              row?.notes ?? "",
+      // Runtime-canonical settings — initialise the UI from what the payment runtime reads
+      // (system_config). provider_integrations.is_enabled/environment are kept for backward
+      // compat but payuEnabled/payuEnv are the authoritative values.
+      payuEnabled:  scEnabled,
+      payuEnv:      scEnv,
+      minAmount:    scMinAmount,
+      maxAmount:    scMaxAmount,
+      dailyLimit:   scDailyLimit,
+      suspended:    scSuspended,
       onboardingStatuses,
       primaryOnboardingStatus: onboardingStatuses[0] ?? "ONBOARDING_PENDING",
       capabilities: {
@@ -360,20 +386,10 @@ router.put("/settings", requirePermission(PERMISSIONS.PAYU_SETTINGS_MANAGE), asy
       req.log.info({ event: "payu_settings_live_mode_enabled", admin: user.email }, "payu_settings_live_mode_enabled");
     }
 
-    // Update provider_integrations row — use explicit typed columns so Drizzle
-    // correctly maps every camelCase alias to its snake_case SQL column.
-    // (A Record<string,unknown> cast-as-any can silently drop unknown keys in
-    //  some Drizzle builds; explicit field references are always safe.)
-    await db.update(providerIntegrationsTable)
-      .set({
-        isEnabled:      Boolean(enabled === true),
-        environment:    env,
-        updatedByEmail: String(user.email),
-        ...(webhookUrl !== undefined ? { webhookUrl: String(webhookUrl).trim() } : {}),
-      })
-      .where(eq(providerIntegrationsTable.providerKey, "payu"));
-
-    // Upsert system config keys
+    // Wrap provider_integrations + system_config writes in ONE transaction so they
+    // can never diverge (e.g. network error after the first write, before the second).
+    // provider_integrations stores the canonical credential/webhook row;
+    // system_config stores the runtime-readable enabled/env/limit settings.
     const configUpdates: Array<{ key: string; value: string }> = [
       { key: SYSTEM_CONFIG_KEYS.PAYU_ENABLED,    value: enabled === true ? "true" : "false" },
       { key: SYSTEM_CONFIG_KEYS.PAYU_ENV,        value: env },
@@ -383,11 +399,22 @@ router.put("/settings", requirePermission(PERMISSIONS.PAYU_SETTINGS_MANAGE), asy
     if (maxAmount !== undefined)  configUpdates.push({ key: SYSTEM_CONFIG_KEYS.PAYU_MAX_AMOUNT,   value: String(parseFloat(String(maxAmount))  || 200000) });
     if (dailyLimit !== undefined) configUpdates.push({ key: SYSTEM_CONFIG_KEYS.PAYU_DAILY_LIMIT,  value: String(parseFloat(String(dailyLimit)) || 1000000) });
 
-    for (const { key, value } of configUpdates) {
-      await db.insert(systemConfigTable)
-        .values({ key, value, updatedByEmail: user.email })
-        .onConflictDoUpdate({ target: systemConfigTable.key, set: { value, updatedByEmail: user.email } });
-    }
+    await db.transaction(async (tx) => {
+      await tx.update(providerIntegrationsTable)
+        .set({
+          isEnabled:      Boolean(enabled === true),
+          environment:    env,
+          updatedByEmail: String(user.email),
+          ...(webhookUrl !== undefined ? { webhookUrl: String(webhookUrl).trim() } : {}),
+        })
+        .where(eq(providerIntegrationsTable.providerKey, "payu"));
+
+      for (const { key, value } of configUpdates) {
+        await tx.insert(systemConfigTable)
+          .values({ key, value, updatedByEmail: user.email })
+          .onConflictDoUpdate({ target: systemConfigTable.key, set: { value, updatedByEmail: user.email } });
+      }
+    });
 
     req.log.info({ event: "payu_settings_saved", admin: user.email, enabled, env }, "payu_settings_saved");
     res.json({ success: true, message: `PayU settings saved — ${env.toUpperCase()} mode` });
@@ -412,19 +439,28 @@ router.post("/verify-live", requirePermission(PERMISSIONS.PAYU_SETTINGS_MANAGE),
       .where(eq(providerIntegrationsTable.providerKey, "payu"))
       .limit(1);
 
-    // ── Step 1: credentials decrypt cleanly ────────────────────────────────
+    // ── Step 1: credentials — DB first, env var fallback (same priority as runtime) ─
+    // loadPayuCreds() in payuOrders.ts uses: env vars → DB (provider_integrations).
+    // The verifier must use the same priority so Step 1 passes whenever the runtime
+    // would find credentials — otherwise a valid VPS env-var setup shows Step 1 FAIL.
     const liveKeyDecrypt  = row?.clientIdEncrypted     ? decryptSecret(row.clientIdEncrypted)     : null;
     const liveSaltDecrypt = row?.clientSecretEncrypted ? decryptSecret(row.clientSecretEncrypted) : null;
-    const liveKey  = liveKeyDecrypt?.ok  ? liveKeyDecrypt.value  : "";
-    const liveSalt = liveSaltDecrypt?.ok ? liveSaltDecrypt.value : "";
+    const dbLiveKey  = liveKeyDecrypt?.ok  ? (liveKeyDecrypt.value  ?? "") : "";
+    const dbLiveSalt = liveSaltDecrypt?.ok ? (liveSaltDecrypt.value ?? "") : "";
+    const envLiveKey  = (process.env["PAYU_LIVE_KEY"]  ?? "").trim();
+    const envLiveSalt = (process.env["PAYU_LIVE_SALT"] ?? "").trim();
+    // Runtime priority: env vars checked first; fall back to DB
+    const liveKey  = envLiveKey  || dbLiveKey;
+    const liveSalt = envLiveSalt || dbLiveSalt;
+    const credSource = envLiveKey ? "env_var" : (dbLiveKey ? "database" : "none");
     const step1Pass = liveKey.length > 0 && liveSalt.length > 0;
 
     const steps: Record<string, { pass: boolean; message: string }> = {
       credentialsDecrypt: {
         pass:    step1Pass,
         message: step1Pass
-          ? "Live credentials loaded and decrypted successfully"
-          : "Live credentials not saved or failed to decrypt — save Live Key and Salt first",
+          ? `Live credentials loaded successfully (source: ${credSource})`
+          : "Live credentials not found — save Live Key and Salt via Admin → PayU → Live Credentials, or set PAYU_LIVE_KEY/PAYU_LIVE_SALT on the VPS",
       },
       payuApiProbe:   { pass: false, message: "Skipped — credentials required first" },
       hashGeneration: { pass: false, message: "Skipped — credentials required first" },

@@ -248,9 +248,18 @@ function PayuPanel() {
       .then((d: any) => {
         setConfig(d);
         if (!initialized) {
-          setEnabled(d.isEnabled ?? false);
-          setActiveEnv(d.environment ?? "uat");
+          // Prefer the runtime-canonical system_config values (payuEnabled/payuEnv)
+          // so the UI initialises from exactly what the payment runtime reads.
+          // Fall back to provider_integrations fields for backward compat.
+          setEnabled(d.payuEnabled ?? d.isEnabled ?? false);
+          setActiveEnv((d.payuEnv ?? d.environment ?? "uat") as "uat" | "live");
           setWebhookUrlInput(d.webhookUrl ?? "");
+          // minAmount/maxAmount/dailyLimit are written to system_config by PUT /settings
+          // but were never read back — page reload always reset them to hardcoded defaults,
+          // causing every subsequent save to overwrite the configured values with "1/200000/1000000".
+          setMinAmount(String(d.minAmount ?? "1"));
+          setMaxAmount(String(d.maxAmount ?? "200000"));
+          setDailyLimit(String(d.dailyLimit ?? "1000000"));
           setInitialized(true);
         }
       })
