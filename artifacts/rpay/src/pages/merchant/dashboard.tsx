@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useGetDashboardStats, useGetDashboardChart, useGetMe, useGetMyPlan, useGetMyPlanUsage, useListMerchantConnections, useUpdateMerchantConnection, getListMerchantConnectionsQueryKey, listPaymentLinks, ListPaymentLinksStatus, type PaymentLink, useGetCallbackSecret, useGetKycSummary } from "@workspace/api-client-react";
+import { OnboardingProgress } from "@/components/merchant/onboarding-progress";
 import { StatCard } from "@/components/ui/stat-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -282,6 +283,19 @@ export default function MerchantDashboard() {
         </div>
         <p className="text-muted-foreground">Overview of your deposit collection activity.</p>
       </div>
+
+      {/* Onboarding Progress — shown until all required steps are complete */}
+      <OnboardingProgress
+        userId={user?.id}
+        accountCreated={true}
+        contactVerified={!!user?.email}
+        kycSubmitted={(kycSummary?.submittedDocTypes ?? []).length > 0}
+        kycApproved={kycSummary?.isVerified === true}
+        planAssigned={myPlan != null && !myPlan.isExpired && myPlan.status !== "suspended"}
+        hasApiAccess={usage?.apiAccess === true}
+        callbackSecretSet={secretStatus?.isSet === true}
+        paymentServiceLive={activeConnections.length > 0}
+      />
 
       {statsLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

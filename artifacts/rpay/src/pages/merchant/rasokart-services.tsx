@@ -76,7 +76,7 @@ function RequestStatusBadge({ status }: { status: string }) {
   if (status === "pending")
     return (
       <Badge variant="outline" className="text-xs bg-amber-500/10 text-amber-400 border-amber-500/30 gap-1">
-        <Clock className="w-3 h-3" /> Under Review
+        <Clock className="w-3 h-3" /> Pending Approval
       </Badge>
     );
   if (status === "approved")
@@ -88,7 +88,7 @@ function RequestStatusBadge({ status }: { status: string }) {
   if (status === "rejected")
     return (
       <Badge variant="outline" className="text-xs bg-red-500/10 text-red-400 border-red-500/30 gap-1">
-        <XCircle className="w-3 h-3" /> Not Approved
+        <XCircle className="w-3 h-3" /> Not Available
       </Badge>
     );
   return null;
@@ -197,12 +197,12 @@ function ServiceCard({ service, onRequest }: { service: Service; onRequest: (s: 
           <div className="shrink-0">
             {isActive && (
               <Badge variant="outline" className="text-xs bg-emerald-500/10 text-emerald-400 border-emerald-500/30 gap-1">
-                <CheckCircle2 className="w-3 h-3" /> Active
+                <CheckCircle2 className="w-3 h-3" /> Live
               </Badge>
             )}
             {isComingSoon && !service.activationRequest && (
               <Badge variant="outline" className="text-xs bg-sky-500/10 text-sky-400 border-sky-500/30 gap-1">
-                <Sparkles className="w-3 h-3" /> Coming Soon
+                <Sparkles className="w-3 h-3" /> Not Available
               </Badge>
             )}
             {service.activationRequest && (
