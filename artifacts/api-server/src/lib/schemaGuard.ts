@@ -2094,6 +2094,25 @@ async function runGuard(): Promise<void> {
     }
   }
 
+  // ── uploaded_objects: object storage dedup tracking table ────────────────
+  // Used by routes/storage.ts (POST /api/storage/upload) and
+  // routes/systemConfig.ts (cleanup scheduler) to deduplicate uploads by
+  // content hash and to list/delete objects for a merchant.  Missing from
+  // both guards — detected by the schema-guard-coverage check.
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS uploaded_objects (
+      id           SERIAL PRIMARY KEY,
+      merchant_id  INTEGER NOT NULL,
+      content_hash TEXT NOT NULL,
+      object_path  TEXT NOT NULL,
+      content_type TEXT NOT NULL,
+      created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CONSTRAINT uploaded_objects_merchant_hash_unique UNIQUE (merchant_id, content_hash)
+    )
+  `);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS uploaded_objects_merchant_id_idx ON uploaded_objects(merchant_id)`);
+  logger.info({ table: "uploaded_objects" }, "schema_guard_table_created");
+
   logger.info("schema_guard_completed");
 }
 

@@ -40,6 +40,10 @@ args = "gateway-panel-coverage"
 task = "workflow.run"
 args = "system-config-coverage"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "schema-guard-coverage"
+
 [[workflows.workflow]]
 name = "settings-persistence"
 author = "agent"
@@ -102,6 +106,17 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "cd lib/db && node --import tsx/esm --test src/schema/systemConfig.coverage.test.ts"
+
+[[workflows.workflow]]
+name = "schema-guard-coverage"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm --filter @workspace/scripts run schema-guard-coverage"
+
+[workflows.workflow.metadata]
+outputType = "console"
 
 [agent]
 stack = "PNPM_WORKSPACE"
