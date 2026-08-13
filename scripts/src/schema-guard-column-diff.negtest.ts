@@ -475,4 +475,43 @@ describe("schema-guard-column-diff negative-case contract", () => {
       "script must exit 0 when bare DROP COLUMN targets a column already absent from the schemaGuard-only CREATE TABLE body",
     );
   });
+
+  // ── ALTER TABLE ADD COLUMN-only DROP detection ───────────────────────────
+
+  // Case 9: schemaGuard-only table — DROP COLUMN for a column that exists ONLY via
+  // ALTER TABLE ADD COLUMN (not in CREATE TABLE body) → exit 1.
+  //
+  // This is the specific gap this task targets: the old check only looked at the
+  // CREATE TABLE body, so a column introduced exclusively via ALTER TABLE ADD COLUMN
+  // would pass the drop-check undetected.  The fixed check uses the combined
+  // `guarded` map (CREATE TABLE ∪ ALTER TABLE ADD COLUMN), so the DROP is caught.
+  test("exits 1 when a DROP COLUMN guard targets a column that exists only via ALTER TABLE ADD COLUMN in a schemaGuard-only table", () => {
+    const { dir, env } = buildSchemaGuardOnlyFixtures({
+      guardCreateTableColumns: ["tenant_id"], // alter_only_col is NOT in CREATE TABLE
+    });
+    fixtures.push({ dir });
+
+    const guardFile = env.SGCD_GUARD_FILE as string;
+
+    // Add the column via ALTER TABLE ADD COLUMN only (not in CREATE TABLE body)
+    fs.appendFileSync(
+      guardFile,
+      `ALTER TABLE guard_only_table ADD COLUMN IF NOT EXISTS alter_only_col TEXT;\n`,
+    );
+
+    // Now attempt to DROP that same column — should be caught because the column
+    // is still live (covered by the ALTER TABLE ADD COLUMN line above).
+    fs.appendFileSync(
+      guardFile,
+      `ALTER TABLE guard_only_table DROP COLUMN IF EXISTS alter_only_col;\n`,
+    );
+
+    const code = runScript(env);
+    assert.equal(
+      code,
+      1,
+      "script must exit 1 when DROP COLUMN targets 'alter_only_col' which is still live " +
+        "via an ALTER TABLE ADD COLUMN guard (even though it is absent from the CREATE TABLE body)",
+    );
+  });
 });

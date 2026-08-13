@@ -494,15 +494,16 @@ function main(): void {
 
   // ── Drop check: no DROP COLUMN guard may name a column still in the schema ─
   //
-  // An ALTER TABLE … DROP COLUMN IF EXISTS line whose column still exists in
-  // the Drizzle schema (or in the CREATE TABLE body for schemaGuard-only
-  // tables) will silently delete a live column on the next deploy or fresh-DB
-  // startup, producing "column does not exist" runtime errors.
+  // An ALTER TABLE … DROP COLUMN [IF EXISTS] line whose column still exists in
+  // the Drizzle schema (or in the CREATE TABLE body or ALTER TABLE ADD COLUMN
+  // for schemaGuard-only tables) will silently delete a live column on the next
+  // deploy or fresh-DB startup, producing "column does not exist" runtime errors.
   //
   // Two cases are covered:
   //   1. Drizzle-tracked tables: the column must NOT exist in the Drizzle schema.
-  //   2. schemaGuard-only tables: the column must NOT appear in the CREATE TABLE
-  //      body in schemaGuard.ts or db-migrate.ts.
+  //   2. schemaGuard-only tables: the column must NOT appear in the combined
+  //      guarded set (CREATE TABLE body ∪ ALTER TABLE ADD COLUMN) across
+  //      schemaGuard.ts and db-migrate.ts.
 
   console.log(
     "\nschema-guard-drop-column-check: verifying ALTER TABLE DROP COLUMN claims...\n"
@@ -524,9 +525,11 @@ function main(): void {
     for (const { table, col, lineNo, hasIfExists } of drops) {
       const drizzleCols = drizzleLower.get(table);
       if (!drizzleCols) {
-        // schemaGuard-only table — check CREATE TABLE body.
-        const ctCols = createTableCols.get(table);
-        if (ctCols && ctCols.has(col)) {
+        // schemaGuard-only table — check CREATE TABLE body AND ALTER TABLE ADD COLUMN.
+        // A column is "still live" if it appears in either guard source; using the
+        // pre-built `guarded` map (which merges both) covers both cases in one lookup.
+        const allGuardedForTable = guarded.get(table);
+        if (allGuardedForTable?.has(col)) {
           liveDrop.push({ file: label, table, col, lineNo, hasIfExists });
         }
         continue;
