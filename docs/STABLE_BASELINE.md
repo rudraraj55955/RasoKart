@@ -206,13 +206,101 @@ Rollback SHAs in order of preference:
 
 ---
 
+## 9. Schema-Guard CI Gate — Verified Failure Scenarios
+
+The two CI jobs in `.github/workflows/schema-guard-ci.yml` were validated by
+deliberately introducing each class of bug, running the relevant check, and
+confirming exit code 1 with a diagnostic error message.  Both validations were
+run locally against the Replit dev database (same guard SQL that CI uses).
+
+### 9.1 Scenario A — Unguarded table added to the Drizzle schema
+
+**How to reproduce (non-destructive — static check only, no DB required):**
+
+```bash
+# 1. Add a sentinel pgTable() to any schema file without a guard entry:
+echo 'export const _sentinel = pgTable("schema_guard_ci_sentinel", { id: serial("id").primaryKey() });' \
+  >> lib/db/src/schema/companySettings.ts
+
+# 2. Run the static check — must fail:
+pnpm --filter @workspace/scripts run schema-guard-coverage
+# Expected: exit 1
+
+# 3. Restore:
+git checkout lib/db/src/schema/companySettings.ts
+```
+
+**Observed output (exit 1):**
+```
+schema-guard-coverage: scanning Drizzle schema and guard files...
+
+  Drizzle tables found : 116
+  Guarded tables found : 118
+  Known gaps           : 0
+
+✗  NEW UNGUARDED TABLES DETECTED (1):
+
+   • schema_guard_ci_sentinel
+
+These tables are defined in lib/db/src/schema/ and used by route
+handlers, but have NO CREATE TABLE IF NOT EXISTS guard in either:
+   • artifacts/api-server/src/lib/schemaGuard.ts
+   • scripts/src/db-migrate.ts
+
+On a fresh or drifted database this will cause:
+   "relation does not exist" → HTTP 500 on the first request to any
+   route that queries that table.
+```
+
+This is CI **Job 1** (`schema-guard-coverage`).  The check is purely static —
+it greps for `pgTable()` in `lib/db/src/schema/` and for `CREATE TABLE IF NOT
+EXISTS` in `schemaGuard.ts` and `db-migrate.ts`.  A new gap exits 1 and blocks
+the merge.
+
+---
+
+### 9.2 Scenario B — CREATE TABLE block removed from schemaGuard.ts (ALTER before CREATE / ordering bug)
+
+**How to reproduce (requires a real PostgreSQL database):**
+
+```bash
+# 1. Remove the CREATE TABLE IF NOT EXISTS block for company_settings from
+#    schemaGuard.ts (lines ~63-78) but leave the subsequent ALTER TABLE line.
+#    The ALTER TABLE then executes against a non-existent relation.
+
+# 2. Run the fresh-install smoke test — must fail:
+cd artifacts/api-server
+node --import tsx/esm --test src/lib/schemaGuard.freshInstall.realdb.test.ts
+# Expected: exit 1
+
+# 3. Restore:
+git checkout artifacts/api-server/src/lib/schemaGuard.ts
+```
+
+**Observed failure (exit 1):**
+
+The test runner marks all 47 checks as `cancelled` because the `before()` hook
+throws before any individual test runs.  The PostgreSQL driver surfaces the root
+cause clearly:
+
+```
+error: relation "company_settings" does not exist
+  code: '42P01'
+  routine: 'RangeVarGetRelidExtended'
+```
+
+This is CI **Job 2** (`schema-guard-fresh-install`).  On a real CI runner (fresh
+PostgreSQL service container, only `db-migrate` has run), a missing `CREATE
+TABLE` in schemaGuard causes `runSchemaGuardWith()` to throw during `before()`,
+which cancels all 47 test cases and exits 1.  The same error occurs for any
+table whose `CREATE TABLE` is ordered *after* an `ALTER TABLE` that references
+it (ALTER-before-CREATE ordering bug).
+
+**Key observation:** `cancelled` ≠ `passed`.  Node.js test runner v22+ exits 1
+when the suite's `before()` hook throws, even though the individual test
+counters show `pass 0, fail 0, cancelled 47`.  The CI job reliably goes red.
+
+---
+
 *This document is maintained by the RasoKart engineering team.  
 Update Section 5.2 after every stable deployment.*
-
-# Verifies every guarded table has a reachable route that survives a fresh DB startup.
-
-# In CI this runs against a truly empty DB; locally it is idempotent.
-cd artifacts/api-server && node --import tsx/esm --test src/lib/schemaGuard.freshInstall.realdb.test.ts
-
-
-# Schema guard fresh-install smoke test (18 routes — real DB, non-500 after guard)
