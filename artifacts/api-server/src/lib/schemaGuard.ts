@@ -1865,6 +1865,96 @@ async function runGuard(): Promise<void> {
   await db.execute(sql`CREATE INDEX IF NOT EXISTS razorpay_refunds_payment_id_idx ON razorpay_refunds(razorpay_payment_id)`);
   logger.info({ table: "razorpay_refunds" }, "schema_guard_table_created");
 
+  // ── support_tickets + ticket_replies ────────────────────────────────────────
+  // Tables were defined in lib/db/src/schema/supportTickets.ts and used by
+  // routes/support.ts but were never added here, causing a 500 on GET
+  // /api/support/tickets because the SELECT threw "relation does not exist".
+  // Root cause: fresh-DB guard gap (same pattern as razorpay_refunds).
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS support_tickets (
+      id               SERIAL PRIMARY KEY,
+      merchant_id      INTEGER NOT NULL,
+      user_id          INTEGER NOT NULL,
+      category         TEXT    NOT NULL,
+      subject          TEXT    NOT NULL,
+      message          TEXT    NOT NULL,
+      screenshot_url   TEXT,
+      status           TEXT    NOT NULL DEFAULT 'open',
+      priority         TEXT    NOT NULL DEFAULT 'normal',
+      resolved_at      TIMESTAMPTZ,
+      created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS support_tickets_merchant_idx ON support_tickets(merchant_id, status, created_at)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS support_tickets_status_idx ON support_tickets(status, created_at)`);
+  logger.info({ table: "support_tickets" }, "schema_guard_table_created");
+
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS ticket_replies (
+      id          SERIAL PRIMARY KEY,
+      ticket_id   INTEGER NOT NULL,
+      author_id   INTEGER NOT NULL,
+      author_role TEXT    NOT NULL,
+      message     TEXT    NOT NULL,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS ticket_replies_ticket_idx ON ticket_replies(ticket_id, created_at)`);
+  logger.info({ table: "ticket_replies" }, "schema_guard_table_created");
+
+  // ── cashfree_payouts + cashfree_payout_webhook_logs ──────────────────────────
+  // Tables were defined in lib/db/src/schema/cashfreePayouts.ts /
+  // cashfreePayoutWebhookLogs.ts and used by routes/cashfreePayout.ts but were
+  // never added here, causing a 500 on GET /api/cashfree-payout because the
+  // SELECT threw "relation does not exist".  On production the tables existed
+  // because they were created during earlier manual migration; on dev/fresh-DB
+  // they were absent.  Same fresh-DB guard gap pattern.
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS cashfree_payouts (
+      id                  SERIAL PRIMARY KEY,
+      public_transfer_id  VARCHAR(64),
+      provider_key        VARCHAR(64)  DEFAULT 'cashfree',
+      transfer_id         VARCHAR(255) NOT NULL,
+      beneficiary_name    VARCHAR(255) NOT NULL,
+      account_number      VARCHAR(100),
+      ifsc                VARCHAR(20),
+      upi_id              VARCHAR(255),
+      amount              NUMERIC(18,2) NOT NULL,
+      remark              VARCHAR(255),
+      status              TEXT    NOT NULL DEFAULT 'PENDING',
+      cashfree_transfer_id VARCHAR(255),
+      error_message       TEXT,
+      merchant_id         INTEGER,
+      initiated_by_email  VARCHAR(255) NOT NULL,
+      utr                 TEXT,
+      raw_response        TEXT,
+      created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS cashfree_payouts_transfer_id_uniq ON cashfree_payouts(transfer_id)`);
+  logger.info({ table: "cashfree_payouts" }, "schema_guard_table_created");
+
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS cashfree_payout_webhook_logs (
+      id                 SERIAL PRIMARY KEY,
+      received_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      endpoint           TEXT,
+      event_type         TEXT,
+      status             TEXT,
+      signature_verified BOOLEAN,
+      payout_id          INTEGER,
+      transfer_id        TEXT,
+      cf_transfer_id     TEXT,
+      utr                TEXT,
+      safe_error         TEXT,
+      processing_result  TEXT NOT NULL DEFAULT 'received',
+      raw_payload        TEXT
+    )
+  `);
+  logger.info({ table: "cashfree_payout_webhook_logs" }, "schema_guard_table_created");
+
   // ── IAM tables ─────────────────────────────────────────────────────────────
   // Delegated to the canonical migration file (lib/db/src/migrations/add-iam-rbac.ts).
   // That file owns the DDL and its exported rollback() for emergency use.
