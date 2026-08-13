@@ -34,17 +34,17 @@ const DB_MIGRATE_FILE =
   process.env.SGCD_MIGRATE_FILE ??
   path.join(ROOT, "scripts/src/db-migrate.ts");
 
-// No tables are skipped. The four IAM tables (permissions, role_permissions,
-// user_permissions, iam_migration_log) are delegated to the canonical
-// lib/db/src/migrations/add-iam-rbac.ts file via schemaGuard's `await up(db)`
-// call, but their CREATE TABLE bodies are also present in scripts/src/db-migrate.ts,
-// which collectAllGuardedColumns() scans. They will therefore appear in the guarded
-// set and pass the diff without any special-casing here.
-
-// ---------------------------------------------------------------------------
-// Parse Drizzle schema: extract table name → list of SQL column names
-// ---------------------------------------------------------------------------
-
+/**
+ * Path to the schemaGuard-only columns manifest file.
+ * The manifest is a JSON object whose keys are SQL table names and whose values
+ * are arrays of expected column names.  Keys starting with `_` are metadata
+ * (e.g. `_readme`) and are ignored by the script.
+ *
+ * Override via SGCD_MANIFEST_FILE for automated negative-case testing.
+ */
+const MANIFEST_FILE =
+  process.env.SGCD_MANIFEST_FILE ??
+  path.join(__dirname, "schema-guard-only-columns.json");
 /**
  * Drizzle column definitions look like:
  *   columnName: dataType("sql_col_name", ...)
@@ -667,7 +667,82 @@ function main(): void {
     console.log();
   }
 
-  if (!forwardOk || !reverseOk || !dropOk) {
+  // ── Manifest forward check: every manifest column must be in the CREATE TABLE body ─
+  //
+  // For schemaGuard-only tables (tables with a CREATE TABLE guard but no Drizzle
+  // pgTable), the CREATE TABLE body is the sole source of truth for the DB schema.
+  // If a developer adds a column to application code without updating the CREATE
+  // TABLE body, the column is silently absent on a fresh install, producing
+  // "column does not exist" at runtime.
+  //
+  // The manifest (schema-guard-only-columns.json) lists every column a schemaGuard-
+  // only table's application code expects to exist.  This check ensures that the
+  // CREATE TABLE body in schemaGuard.ts / db-migrate.ts actually defines all of them.
+  //
+  // Workflow for developers adding a column to a schemaGuard-only table:
+  //   1. Add the column to the CREATE TABLE body in schemaGuard.ts / db-migrate.ts.
+  //   2. Add the column name to the table's entry in schema-guard-only-columns.json.
+  //   CI fails here if step 1 was done but step 2 was skipped, or vice-versa.
+
+  console.log(
+    "\nschema-guard-manifest-check: verifying schemaGuard-only column manifest...\n"
+  );
+
+  let manifestOk = true;
+  try {
+    const manifest = collectManifestColumns(MANIFEST_FILE);
+
+    if (manifest.size === 0) {
+      console.log(
+        "✓ Manifest is empty — no schemaGuard-only tables declared."
+      );
+    } else {
+      const manifestGaps: Array<{ table: string; missing: string[] }> = [];
+
+      for (const [table, expectedCols] of manifest) {
+        const ctCols = createTableCols.get(table);
+        const missing = expectedCols.filter(
+          (c) => !ctCols || !ctCols.has(c)
+        );
+        if (missing.length > 0) {
+          manifestGaps.push({ table, missing });
+        }
+      }
+
+      if (manifestGaps.length === 0) {
+        console.log(
+          "✓ All manifest columns are present in the CREATE TABLE body for their table."
+        );
+      } else {
+        manifestOk = false;
+        console.error(
+          `✗ Found ${manifestGaps.length} schemaGuard-only table(s) whose CREATE TABLE body is missing manifest column(s):\n`
+        );
+        console.error(
+          "  These columns are declared in schema-guard-only-columns.json as expected by\n" +
+            "  application code, but are absent from the CREATE TABLE IF NOT EXISTS body in\n" +
+            "  schemaGuard.ts / db-migrate.ts.  On a fresh DB the table will be created\n" +
+            "  without them, causing 'column does not exist' at runtime.\n" +
+            "  Fix: add the missing column(s) to the CREATE TABLE body, or remove them from\n" +
+            "  the manifest if they are no longer used by application code.\n"
+        );
+        for (const { table, missing } of manifestGaps.sort((a, b) =>
+          a.table.localeCompare(b.table)
+        )) {
+          console.error(`  ${table}:`);
+          for (const col of missing) {
+            console.error(`    • ${col}  ← present in manifest but absent from CREATE TABLE body`);
+          }
+          console.error();
+        }
+      }
+    }
+  } catch (err) {
+    manifestOk = false;
+    console.error(`✗ Failed to read schema-guard manifest: ${(err as Error).message}`);
+  }
+
+  if (!forwardOk || !reverseOk || !dropOk || !manifestOk) {
     process.exit(1);
   }
 }
@@ -694,4 +769,54 @@ function collectAllCreateTableColumns(): Map<string, Set<string>> {
   }
 
   return combined;
+}
+
+/**
+ * Reads the schemaGuard-only columns manifest from `manifestPath` and returns
+ * a Map<tableName, string[]> of expected columns.
+ *
+ * The manifest is a JSON object:
+ *   { "table_name": ["col1", "col2", ...], "_readme": "..." }
+ *
+ * Keys starting with `_` are metadata and are silently skipped.
+ * Column names are lowercased for case-insensitive comparison.
+ *
+ * Returns an empty Map when the file does not exist (production default when
+ * no schemaGuard-only tables have been declared yet).
+ */
+export function collectManifestColumns(
+  manifestPath: string
+): Map<string, string[]> {
+  if (!fs.existsSync(manifestPath)) return new Map();
+
+  let raw: unknown;
+  try {
+    raw = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  } catch {
+    throw new Error(
+      `schema-guard manifest is not valid JSON: ${manifestPath}`
+    );
+  }
+
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    throw new Error(
+      `schema-guard manifest must be a JSON object at the top level: ${manifestPath}`
+    );
+  }
+
+  const result = new Map<string, string[]>();
+  for (const [key, value] of Object.entries(raw)) {
+    // Skip metadata keys (e.g. _readme)
+    if (key.startsWith("_")) continue;
+
+    if (!Array.isArray(value) || !value.every((v) => typeof v === "string")) {
+      throw new Error(
+        `schema-guard manifest key "${key}" must be an array of strings`
+      );
+    }
+
+    result.set(key.toLowerCase(), value.map((c) => c.toLowerCase()));
+  }
+
+  return result;
 }

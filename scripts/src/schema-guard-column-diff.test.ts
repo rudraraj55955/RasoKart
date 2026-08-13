@@ -24,7 +24,11 @@ import {
   extractBalancedBody,
   extractDrizzleColumns,
   collectAlterTableClaims,
+  collectManifestColumns,
 } from "./schema-guard-column-diff.js";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 // ---------------------------------------------------------------------------
 // extractBalancedBody
@@ -119,6 +123,87 @@ describe("extractDrizzleColumns", () => {
     `;
     const result = extractDrizzleColumns(src);
     assert.ok(result.get("tbl")?.includes("my_column"));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// collectManifestColumns
+// ---------------------------------------------------------------------------
+
+describe("collectManifestColumns", () => {
+  let tmpDir: string;
+
+  // Create a fresh temp dir for each test via a simple helper that tracks the
+  // path so we can clean up after.
+  const tmpDirs: string[] = [];
+  function makeTmp(): string {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), "sgcd-manifest-test-"));
+    tmpDirs.push(d);
+    return d;
+  }
+
+  // Cleanup after all tests in this describe block.
+  // node:test doesn't support afterAll inside describe in older versions;
+  // we rely on the OS to clean up /tmp directories after the process exits.
+
+  it("returns an empty Map when the manifest file does not exist", () => {
+    const result = collectManifestColumns("/nonexistent/path/manifest.json");
+    assert.equal(result.size, 0);
+  });
+
+  it("returns an empty Map when the manifest has only _ keys", () => {
+    const dir = makeTmp();
+    const f = path.join(dir, "manifest.json");
+    fs.writeFileSync(f, JSON.stringify({ _readme: "docs only" }));
+    const result = collectManifestColumns(f);
+    assert.equal(result.size, 0);
+  });
+
+  it("parses a manifest with one table entry and lowercases column names", () => {
+    const dir = makeTmp();
+    const f = path.join(dir, "manifest.json");
+    fs.writeFileSync(
+      f,
+      JSON.stringify({ my_table: ["ID", "Status", "created_at"] }),
+    );
+    const result = collectManifestColumns(f);
+    assert.equal(result.size, 1);
+    assert.ok(result.has("my_table"));
+    const cols = result.get("my_table")!;
+    assert.deepEqual(cols, ["id", "status", "created_at"]);
+  });
+
+  it("parses a manifest with multiple table entries", () => {
+    const dir = makeTmp();
+    const f = path.join(dir, "manifest.json");
+    fs.writeFileSync(
+      f,
+      JSON.stringify({
+        _readme: "ignore me",
+        table_a: ["id", "col1"],
+        table_b: ["id", "col2", "col3"],
+      }),
+    );
+    const result = collectManifestColumns(f);
+    assert.equal(result.size, 2);
+    assert.ok(result.has("table_a"));
+    assert.ok(result.has("table_b"));
+    assert.deepEqual(result.get("table_a"), ["id", "col1"]);
+    assert.deepEqual(result.get("table_b"), ["id", "col2", "col3"]);
+  });
+
+  it("throws on malformed JSON", () => {
+    const dir = makeTmp();
+    const f = path.join(dir, "manifest.json");
+    fs.writeFileSync(f, "{ not valid json");
+    assert.throws(() => collectManifestColumns(f), /not valid JSON/i);
+  });
+
+  it("throws when a table entry is not an array of strings", () => {
+    const dir = makeTmp();
+    const f = path.join(dir, "manifest.json");
+    fs.writeFileSync(f, JSON.stringify({ my_table: "not-an-array" }));
+    assert.throws(() => collectManifestColumns(f), /array of strings/i);
   });
 });
 

@@ -27,6 +27,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
+import { collectManifestColumns } from "./schema-guard-column-diff.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SCRIPT = path.resolve(__dirname, "schema-guard-column-diff.ts");
@@ -504,6 +505,125 @@ describe("schema-guard-column-diff negative-case contract", () => {
     assert.ok(
       output.includes("IF EXISTS"),
       `script must warn about missing IF EXISTS in output; got:\n${output}`,
+    );
+  });
+
+  // ── Manifest forward check ───────────────────────────────────────────────
+  //
+  // The manifest (schema-guard-only-columns.json) lists expected columns for
+  // schemaGuard-only tables.  The script must exit 1 when a manifest column is
+  // absent from the CREATE TABLE body, and exit 0 when all manifest columns are
+  // present in the CREATE TABLE body.
+
+  // Case M1: manifest column present in CREATE TABLE body → exit 0
+  test("exits 0 when every manifest column is present in the CREATE TABLE body", () => {
+    const { dir, env } = buildSchemaGuardOnlyFixtures({
+      guardCreateTableColumns: ["tenant_id", "status", "created_at"],
+    });
+    fixtures.push({ dir });
+
+    // Write a manifest that lists exactly the columns present in the CREATE TABLE
+    const manifestFile = path.join(dir, "manifest.json");
+    fs.writeFileSync(
+      manifestFile,
+      JSON.stringify({
+        "_readme": "test manifest",
+        "guard_only_table": ["id", "tenant_id", "status", "created_at"],
+      }),
+    );
+
+    const code = runScript({ ...env, SGCD_MANIFEST_FILE: manifestFile });
+    assert.equal(
+      code,
+      0,
+      "script must exit 0 when all manifest columns are present in the CREATE TABLE body",
+    );
+  });
+
+  // Case M2: manifest column missing from CREATE TABLE body → exit 1
+  test("exits 1 when a manifest column is absent from the CREATE TABLE body", () => {
+    const { dir, env } = buildSchemaGuardOnlyFixtures({
+      guardCreateTableColumns: ["tenant_id", "status"], // 'missing_col' is NOT here
+    });
+    fixtures.push({ dir });
+
+    const manifestFile = path.join(dir, "manifest.json");
+    fs.writeFileSync(
+      manifestFile,
+      JSON.stringify({
+        "guard_only_table": ["id", "tenant_id", "status", "missing_col"],
+      }),
+    );
+
+    const { code, stdout, stderr } = runScriptFull({ ...env, SGCD_MANIFEST_FILE: manifestFile });
+    assert.equal(
+      code,
+      1,
+      "script must exit 1 when 'missing_col' is in the manifest but absent from the CREATE TABLE body",
+    );
+    const output = stdout + stderr;
+    assert.ok(
+      output.includes("missing_col"),
+      `output must mention the missing column; got:\n${output}`,
+    );
+  });
+
+  // Case M3: manifest references a table with no CREATE TABLE guard at all → exit 1
+  test("exits 1 when a manifest table has no CREATE TABLE guard at all", () => {
+    const { dir, env } = buildSchemaGuardOnlyFixtures({
+      guardCreateTableColumns: ["tenant_id"],
+      // guard only defines 'guard_only_table', not 'phantom_table'
+    });
+    fixtures.push({ dir });
+
+    const manifestFile = path.join(dir, "manifest.json");
+    fs.writeFileSync(
+      manifestFile,
+      JSON.stringify({
+        // phantom_table has no CREATE TABLE in the guard files
+        "phantom_table": ["id", "some_col"],
+      }),
+    );
+
+    const code = runScript({ ...env, SGCD_MANIFEST_FILE: manifestFile });
+    assert.equal(
+      code,
+      1,
+      "script must exit 1 when a manifest table has no CREATE TABLE guard in any guard file",
+    );
+  });
+
+  // Case M4: empty manifest → exit 0 (no schemaGuard-only tables declared)
+  test("exits 0 when the manifest is empty (no schemaGuard-only tables declared)", () => {
+    const { dir, env } = buildSchemaGuardOnlyFixtures({
+      guardCreateTableColumns: ["tenant_id"],
+    });
+    fixtures.push({ dir });
+
+    const manifestFile = path.join(dir, "manifest.json");
+    fs.writeFileSync(manifestFile, JSON.stringify({ "_readme": "empty manifest" }));
+
+    const code = runScript({ ...env, SGCD_MANIFEST_FILE: manifestFile });
+    assert.equal(
+      code,
+      0,
+      "script must exit 0 when the manifest is empty (only _readme key)",
+    );
+  });
+
+  // Case M5: manifest file absent → exit 0 (treated as empty, not an error)
+  test("exits 0 when the manifest file does not exist (treated as no schemaGuard-only tables)", () => {
+    const { dir, env } = buildSchemaGuardOnlyFixtures({
+      guardCreateTableColumns: ["tenant_id"],
+    });
+    fixtures.push({ dir });
+
+    const nonExistentManifest = path.join(dir, "does-not-exist.json");
+    const code = runScript({ ...env, SGCD_MANIFEST_FILE: nonExistentManifest });
+    assert.equal(
+      code,
+      0,
+      "script must exit 0 when the manifest file does not exist",
     );
   });
 
