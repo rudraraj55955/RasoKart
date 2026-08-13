@@ -19,6 +19,7 @@ import {
   merchantWalletsTable,
   walletLedgerTable,
   transactionsTable,
+  auditLogsTable,
   systemConfigTable,
   SYSTEM_CONFIG_KEYS,
   PAYU_ORDER_STATUS,
@@ -485,6 +486,136 @@ export async function creditWalletForPayu(
       // Even the fallback failed — log and propagate the original error shape
       return { outcome: "error", merchantId: null, amount: null };
     }
+  }
+}
+
+// ── Manual re-credit (admin only) ─────────────────────────────────────────────
+// Transitions a CREDIT_FAILED order → SUCCESS and runs the full wallet credit
+// pipeline (wallet upsert → balance update → ledger entry → transaction record).
+// The caller is responsible for audit-logging.
+
+export type ManualCreditResult =
+  | { outcome: "credited"; txnid: string; merchantId: number; amount: string }
+  | { outcome: "not_found" }
+  | { outcome: "wrong_status"; currentStatus: string }
+  | { outcome: "error"; message: string };
+
+export async function manualCreditForPayuOrder(
+  orderId: number,
+  admin: { id: number; email: string },
+): Promise<ManualCreditResult> {
+  try {
+    return await db.transaction(async (tx) => {
+      // Lock the specific order row; must be CREDIT_FAILED to proceed
+      const updated = await tx
+        .update(payuPaymentOrdersTable)
+        .set({
+          status:    PAYU_ORDER_STATUS.SUCCESS,
+          paidAt:    new Date(),
+          hashVerified: true,
+        })
+        .where(and(
+          eq(payuPaymentOrdersTable.id, orderId),
+          eq(payuPaymentOrdersTable.status, PAYU_ORDER_STATUS.CREDIT_FAILED),
+        ))
+        .returning({
+          id:         payuPaymentOrdersTable.id,
+          txnid:      payuPaymentOrdersTable.txnid,
+          merchantId: payuPaymentOrdersTable.merchantId,
+          amount:     payuPaymentOrdersTable.amount,
+          mihpayid:   payuPaymentOrdersTable.mihpayid,
+        });
+
+      if (!updated.length) {
+        // Distinguish "not found" from "wrong status"
+        const [existing] = await tx
+          .select({ status: payuPaymentOrdersTable.status })
+          .from(payuPaymentOrdersTable)
+          .where(eq(payuPaymentOrdersTable.id, orderId))
+          .limit(1);
+
+        if (!existing) return { outcome: "not_found" };
+        return { outcome: "wrong_status", currentStatus: existing.status };
+      }
+
+      const order     = updated[0]!;
+      const amountStr = String(order.amount);
+      const amountNum = parseFloat(amountStr);
+
+      // Upsert wallet row
+      await tx.insert(merchantWalletsTable)
+        .values({ merchantId: order.merchantId })
+        .onConflictDoNothing();
+
+      const [wallet] = await tx
+        .select()
+        .from(merchantWalletsTable)
+        .where(eq(merchantWalletsTable.merchantId, order.merchantId))
+        .for("update");
+
+      if (!wallet) throw new Error("Wallet not found after upsert");
+
+      const pendingBefore   = parseFloat(wallet.pendingBalance   ?? "0");
+      const availableBefore = parseFloat(wallet.availableBalance ?? "0");
+      const pendingAfter    = pendingBefore + amountNum;
+      const totalCollection = parseFloat(wallet.totalCollection  ?? "0") + amountNum;
+
+      await tx
+        .update(merchantWalletsTable)
+        .set({
+          pendingBalance:  String(pendingAfter),
+          totalCollection: String(totalCollection),
+        })
+        .where(eq(merchantWalletsTable.merchantId, order.merchantId));
+
+      // Immutable ledger entry
+      await tx.insert(walletLedgerTable).values({
+        merchantId:      order.merchantId,
+        txnType:         "pending_credit",
+        bucket:          "pending",
+        amount:          amountStr,
+        availableBefore: String(availableBefore),
+        availableAfter:  String(availableBefore),
+        pendingBefore:   String(pendingBefore),
+        pendingAfter:    String(pendingAfter),
+        referenceType:   "transaction",
+        description:     `PayU manual re-credit — txnid ${order.txnid}${order.mihpayid ? `, mihpayid ${order.mihpayid}` : ""}`,
+      });
+
+      // Transaction record (idempotent — skip if a prior credit attempt already inserted one)
+      const utr = order.mihpayid ? `PAYU-${order.mihpayid}` : `PAYU-${order.txnid}`;
+      await tx.insert(transactionsTable).values({
+        merchantId:  order.merchantId,
+        provider:    "payu",
+        type:        "deposit",
+        status:      "success",
+        amount:      amountStr,
+        currency:    "INR",
+        utr,
+        referenceId: order.txnid,
+        description: `PayU payment — txnid ${order.txnid} via admin_manual_credit`,
+      }).onConflictDoNothing();
+
+      // Audit log — inside the same transaction so a failed insert rolls back the
+      // entire credit rather than leaving a credited wallet without an audit trail.
+      await tx.insert(auditLogsTable).values({
+        adminId:    admin.id,
+        adminEmail: admin.email,
+        action:     "payu_manual_credit",
+        targetType: "payu_payment_order",
+        targetId:   orderId,
+        details:    JSON.stringify({
+          txnid:      order.txnid,
+          merchantId: order.merchantId,
+          amount:     amountStr,
+          note:       "Admin manually re-credited merchant wallet for CREDIT_FAILED PayU order",
+        }),
+      });
+
+      return { outcome: "credited", txnid: order.txnid, merchantId: order.merchantId, amount: amountStr };
+    });
+  } catch (err: any) {
+    return { outcome: "error", message: err?.message ?? "Unknown error" };
   }
 }
 

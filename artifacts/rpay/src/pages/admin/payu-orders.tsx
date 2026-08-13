@@ -2,12 +2,16 @@
  * Admin PayU Orders — paginated view of all PayU payment orders.
  * CREDIT_FAILED orders are highlighted and shown in a dedicated tab
  * so admins can spot and reconcile them immediately.
+ *
+ * The "Credit Failed" tab exposes a "Re-credit" button per row that calls
+ * POST /api/admin/payu/orders/:id/manual-credit and transitions the order
+ * to SUCCESS without any manual SQL.
  */
 
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useCallback } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { AlertTriangle, RefreshCw, CheckCircle, XCircle, Clock, Ban, AlertCircle, ChevronLeft, ChevronRight } from "lucide-react";
+import { AlertTriangle, RefreshCw, CheckCircle, XCircle, Clock, Ban, AlertCircle, ChevronLeft, ChevronRight, Loader2, BadgeCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -94,9 +98,46 @@ function usePayuOrders(statusFilter: string | null, page: number) {
   });
 }
 
+// ── Re-credit mutation ────────────────────────────────────────────────────────
+
+interface ReCreditResult {
+  success: boolean;
+  txnid: string;
+  merchantId: number;
+  amount: string;
+  message: string;
+}
+
+function useReCreditMutation(onSuccess: (orderId: number) => void) {
+  return useMutation<ReCreditResult, Error, number>({
+    mutationFn: async (orderId: number) => {
+      const res = await fetch(apiUrl(`/api/admin/payu/orders/${orderId}/manual-credit`), {
+        method: "POST",
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(body.error ?? `Request failed (${res.status})`);
+      }
+      return res.json() as Promise<ReCreditResult>;
+    },
+    onSuccess: (_data, orderId) => {
+      onSuccess(orderId);
+    },
+  });
+}
+
 // ── Orders table ──────────────────────────────────────────────────────────────
 
-function OrdersTable({ orders, isCreditFailedTab }: { orders: PayuOrder[]; isCreditFailedTab: boolean }) {
+interface OrdersTableProps {
+  orders: PayuOrder[];
+  isCreditFailedTab: boolean;
+  creditedIds: Set<number>;
+  onReCredit?: (orderId: number) => void;
+  reCreditingId?: number | null;
+}
+
+function OrdersTable({ orders, isCreditFailedTab, creditedIds, onReCredit, reCreditingId }: OrdersTableProps) {
   if (orders.length === 0) {
     return (
       <div className="py-16 text-center text-zinc-500">
@@ -121,18 +162,24 @@ function OrdersTable({ orders, isCreditFailedTab }: { orders: PayuOrder[]; isCre
             <TableHead className="text-zinc-400">Mode</TableHead>
             <TableHead className="text-zinc-400">{isCreditFailedTab ? "Failed At" : "Paid At"}</TableHead>
             <TableHead className="text-zinc-400">Created</TableHead>
+            {isCreditFailedTab && <TableHead className="text-zinc-400">Action</TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
           {orders.map(order => {
             const isCreditFailed = order.status === "CREDIT_FAILED";
+            const isCredited     = creditedIds.has(order.id);
+            const isCrediting    = reCreditingId === order.id;
+
             return (
               <TableRow
                 key={order.id}
                 className={`border-zinc-800 ${
-                  isCreditFailed
-                    ? "bg-orange-950/20 hover:bg-orange-950/30 border-l-2 border-l-orange-600"
-                    : "hover:bg-zinc-900/50"
+                  isCredited
+                    ? "bg-emerald-950/15 hover:bg-emerald-950/20 border-l-2 border-l-emerald-600"
+                    : isCreditFailed
+                      ? "bg-orange-950/20 hover:bg-orange-950/30 border-l-2 border-l-orange-600"
+                      : "hover:bg-zinc-900/50"
                 }`}
               >
                 <TableCell className="font-mono text-xs text-zinc-300 max-w-[180px]">
@@ -145,7 +192,9 @@ function OrdersTable({ orders, isCreditFailedTab }: { orders: PayuOrder[]; isCre
                 </TableCell>
                 <TableCell className="text-zinc-300">#{order.merchantId}</TableCell>
                 <TableCell className="text-right font-medium text-zinc-200">{formatAmount(order.amount)}</TableCell>
-                <TableCell><StatusBadge status={order.status} /></TableCell>
+                <TableCell>
+                  <StatusBadge status={isCredited ? "SUCCESS" : order.status} />
+                </TableCell>
                 <TableCell>
                   <Badge variant="outline" className={`text-xs ${order.environment === "live" ? "bg-emerald-950 text-emerald-400 border-emerald-800" : "bg-zinc-800 text-zinc-400 border-zinc-700"}`}>
                     {order.environment}
@@ -158,11 +207,35 @@ function OrdersTable({ orders, isCreditFailedTab }: { orders: PayuOrder[]; isCre
                   {order.paymentMode ?? <span className="text-zinc-600">—</span>}
                 </TableCell>
                 <TableCell className="text-zinc-400 text-sm">
-                  {isCreditFailed
+                  {isCreditFailed && !isCredited
                     ? <span className="text-orange-400">{formatDate(order.creditFailedAt)}</span>
                     : formatDate(order.paidAt)}
                 </TableCell>
                 <TableCell className="text-zinc-500 text-sm">{formatDate(order.createdAt)}</TableCell>
+
+                {isCreditFailedTab && (
+                  <TableCell>
+                    {isCredited ? (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-400">
+                        <BadgeCheck className="h-3.5 w-3.5" />
+                        Credited
+                      </span>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={isCrediting || isCredited}
+                        onClick={() => onReCredit?.(order.id)}
+                        className="h-7 px-2.5 text-xs gap-1.5 border-orange-700 text-orange-300 hover:bg-orange-950/40 hover:text-orange-200 disabled:opacity-50"
+                      >
+                        {isCrediting
+                          ? <><Loader2 className="h-3 w-3 animate-spin" />Crediting…</>
+                          : <>Re-credit wallet</>
+                        }
+                      </Button>
+                    )}
+                  </TableCell>
+                )}
               </TableRow>
             );
           })}
@@ -178,16 +251,35 @@ export default function AdminPayuOrders() {
   const [tab, setTab]   = useState<"all" | "credit_failed">("all");
   const [page, setPage] = useState(0);
 
+  // Track which order IDs have been successfully credited in this session.
+  // Optimistic local state — avoids a full refetch while making the action permanent-looking.
+  const [creditedIds, setCreditedIds] = useState<Set<number>>(new Set());
+
+  const queryClient = useQueryClient();
+
   const statusFilter = tab === "credit_failed" ? "CREDIT_FAILED" : null;
   const { data, isLoading, isFetching, refetch, error } = usePayuOrders(statusFilter, page);
 
-  const orders          = data?.orders ?? [];
-  const hasNextPage     = orders.length === PAGE_SIZE;
-  const hasPrevPage     = page > 0;
+  const orders      = data?.orders ?? [];
+  const hasNextPage = orders.length === PAGE_SIZE;
+  const hasPrevPage = page > 0;
+
+  const handleCreditSuccess = useCallback((orderId: number) => {
+    setCreditedIds(prev => new Set([...prev, orderId]));
+    // Invalidate list so the badge count in the tab reflects the resolved order on next refetch
+    void queryClient.invalidateQueries({ queryKey: ["admin", "payu-orders"] });
+  }, [queryClient]);
+
+  const reCreditMutation = useReCreditMutation(handleCreditSuccess);
 
   function handleTabChange(value: string) {
     setTab(value as "all" | "credit_failed");
     setPage(0);
+  }
+
+  function handleReCredit(orderId: number) {
+    if (reCreditMutation.isPending) return;
+    reCreditMutation.mutate(orderId);
   }
 
   return (
@@ -210,6 +302,19 @@ export default function AdminPayuOrders() {
         </Button>
       </div>
 
+      {/* Re-credit error banner */}
+      {reCreditMutation.isError && (
+        <Card className="border-red-700 bg-red-950/20">
+          <CardContent className="py-3 px-4 flex items-center gap-3">
+            <XCircle className="h-5 w-5 text-red-400 shrink-0" />
+            <p className="text-sm text-red-300">
+              <span className="font-semibold">Re-credit failed:</span>{" "}
+              {reCreditMutation.error?.message ?? "Unknown error"}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Credit-failed banner */}
       {tab === "all" && orders.some(o => o.status === "CREDIT_FAILED") && (
         <Card className="border-orange-700 bg-orange-950/20">
@@ -222,7 +327,7 @@ export default function AdminPayuOrders() {
               <button onClick={() => handleTabChange("credit_failed")} className="underline hover:text-orange-200">
                 Credit Failed tab
               </button>{" "}
-              to review them.
+              to review and re-credit them.
             </p>
           </CardContent>
         </Card>
@@ -250,7 +355,11 @@ export default function AdminPayuOrders() {
               ) : isLoading ? (
                 <div className="py-12 text-center text-zinc-500">Loading…</div>
               ) : (
-                <OrdersTable orders={orders} isCreditFailedTab={false} />
+                <OrdersTable
+                  orders={orders}
+                  isCreditFailedTab={false}
+                  creditedIds={creditedIds}
+                />
               )}
             </CardContent>
           </Card>
@@ -265,8 +374,9 @@ export default function AdminPayuOrders() {
               </CardTitle>
               <p className="text-sm text-zinc-500 mt-1">
                 These payments were confirmed by PayU (hash verified) but the RasoKart wallet credit
-                DB transaction failed. The merchant's customer was charged. Manually credit each wallet
-                after verifying with PayU.
+                DB transaction failed. The merchant's customer was charged. Use the{" "}
+                <span className="text-zinc-300 font-medium">Re-credit wallet</span> button on each
+                row to apply the credit — the action is audit-logged.
               </p>
             </CardHeader>
             <CardContent className="p-0">
@@ -275,7 +385,13 @@ export default function AdminPayuOrders() {
               ) : isLoading ? (
                 <div className="py-12 text-center text-zinc-500">Loading…</div>
               ) : (
-                <OrdersTable orders={orders} isCreditFailedTab={true} />
+                <OrdersTable
+                  orders={orders}
+                  isCreditFailedTab={true}
+                  creditedIds={creditedIds}
+                  onReCredit={handleReCredit}
+                  reCreditingId={reCreditMutation.isPending ? (reCreditMutation.variables ?? null) : null}
+                />
               )}
             </CardContent>
           </Card>

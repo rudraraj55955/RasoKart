@@ -36,6 +36,7 @@ import {
 } from "@workspace/db";
 import { requireAuth, requireAdmin, requirePermission } from "../middlewares/auth";
 import { PERMISSIONS } from "../permissions";
+import { manualCreditForPayuOrder } from "./payuOrders";
 import { encryptSecret, decryptSecret } from "../helpers/cryptoUtils";
 import {
   generatePayuHash,
@@ -684,6 +685,56 @@ router.get("/webhook-logs", requirePermission(PERMISSIONS.PAYU_WEBHOOKS_VIEW), a
         errorMessage:     l.errorMessage,
         receivedAt:       l.receivedAt.toISOString(),
       })),
+    });
+  } catch (err) { next(err); }
+});
+
+// ── POST /api/admin/payu/orders/:id/manual-credit ────────────────────────────
+// Manually re-credit a merchant wallet for a CREDIT_FAILED PayU order.
+// Requires PAYU_RECONCILIATION_MANAGE permission; action is audit-logged.
+
+router.post("/orders/:id/manual-credit", requirePermission(PERMISSIONS.PAYU_RECONCILIATION_MANAGE), async (req, res, next) => {
+  try {
+    const user    = (req as any).user;
+    const orderId = parseInt(req.params["id"] as string, 10);
+
+    if (isNaN(orderId) || orderId <= 0) {
+      res.status(400).json({ error: "Invalid order ID" });
+      return;
+    }
+
+    const result = await manualCreditForPayuOrder(orderId, { id: user.id, email: user.email });
+
+    if (result.outcome === "not_found") {
+      res.status(404).json({ error: "Order not found" });
+      return;
+    }
+
+    if (result.outcome === "wrong_status") {
+      res.status(409).json({
+        error: `Order is in ${result.currentStatus} status — only CREDIT_FAILED orders can be manually re-credited`,
+      });
+      return;
+    }
+
+    if (result.outcome === "error") {
+      req.log.error({ event: "payu_manual_credit_failed", orderId, admin: user.email, message: result.message }, "payu_manual_credit_failed");
+      res.status(500).json({ error: "Failed to apply wallet credit — see server logs" });
+      return;
+    }
+
+    // outcome === "credited" — audit log was written atomically inside the transaction
+    req.log.info(
+      { event: "payu_manual_credit_applied", orderId, txnid: result.txnid, merchantId: result.merchantId, amount: result.amount, admin: user.email },
+      "payu_manual_credit_applied",
+    );
+
+    res.json({
+      success:    true,
+      txnid:      result.txnid,
+      merchantId: result.merchantId,
+      amount:     result.amount,
+      message:    `Wallet credited ₹${parseFloat(result.amount).toLocaleString("en-IN", { minimumFractionDigits: 2 })} for merchant #${result.merchantId}`,
     });
   } catch (err) { next(err); }
 });
