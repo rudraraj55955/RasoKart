@@ -112,6 +112,39 @@ export const PERMISSIONS = {
   RAZORPAY_REFUNDS_VIEW:            "razorpay_refunds_view",
   RAZORPAY_REFUNDS_MANAGE:          "razorpay_refunds_manage",
 
+  // ── Granular Cashfree ops (Super Admin only — platform policy) ───────────
+  // Mirrored structure from the Razorpay granular key set.
+  // All strictly SA-only; non-SA users cannot receive these via per-user override.
+  CASHFREE_CAPABILITIES_VIEW:       "cashfree_capabilities_view",
+  CASHFREE_SETTINGS_VIEW:           "cashfree_settings_view",
+  CASHFREE_SETTINGS_MANAGE:         "cashfree_settings_manage",
+  CASHFREE_WEBHOOKS_VIEW:           "cashfree_webhooks_view",
+  CASHFREE_WEBHOOKS_REPROCESS:      "cashfree_webhooks_reprocess",
+  CASHFREE_RECONCILIATION_VIEW:     "cashfree_reconciliation_view",
+  CASHFREE_RECONCILIATION_MANAGE:   "cashfree_reconciliation_manage",
+  CASHFREE_REFUNDS_VIEW:            "cashfree_refunds_view",
+  CASHFREE_REFUNDS_MANAGE:          "cashfree_refunds_manage",
+
+  // ── Granular PayU ops (Super Admin only — platform policy) ───────────────
+  PAYU_SETTINGS_VIEW:               "payu_settings_view",
+  PAYU_SETTINGS_MANAGE:             "payu_settings_manage",
+  PAYU_WEBHOOKS_VIEW:               "payu_webhooks_view",
+  PAYU_WEBHOOKS_REPROCESS:          "payu_webhooks_reprocess",
+  PAYU_RECONCILIATION_VIEW:         "payu_reconciliation_view",
+  PAYU_RECONCILIATION_MANAGE:       "payu_reconciliation_manage",
+  PAYU_REFUNDS_VIEW:                "payu_refunds_view",
+  PAYU_REFUNDS_MANAGE:              "payu_refunds_manage",
+
+  // ── Granular SabPaisa ops (Super Admin only — platform policy) ───────────
+  SABPAISA_SETTINGS_VIEW:           "sabpaisa_settings_view",
+  SABPAISA_SETTINGS_MANAGE:         "sabpaisa_settings_manage",
+  SABPAISA_WEBHOOKS_VIEW:           "sabpaisa_webhooks_view",
+  SABPAISA_WEBHOOKS_REPROCESS:      "sabpaisa_webhooks_reprocess",
+  SABPAISA_RECONCILIATION_VIEW:     "sabpaisa_reconciliation_view",
+  SABPAISA_RECONCILIATION_MANAGE:   "sabpaisa_reconciliation_manage",
+  SABPAISA_REFUNDS_VIEW:            "sabpaisa_refunds_view",
+  SABPAISA_REFUNDS_MANAGE:          "sabpaisa_refunds_manage",
+
   // ── Customer (payment link / checkout consumers) ───────────────────────
   // Customers are not portal users — they interact only through public
   // checkout flows and payment links. They have zero portal permissions by
@@ -139,7 +172,7 @@ export const SUPER_ADMIN_ONLY_PERMISSIONS: Set<string> = new Set([
   PERMISSIONS.ADMIN_PLATFORM_PROFIT,
   PERMISSIONS.IAM_READ,
   PERMISSIONS.IAM_MANAGE,
-  // Granular Razorpay ops — SA-only by default; grant to regular admins via IAM
+  // Granular Razorpay ops — strictly SA-only; non-SA cannot receive via override
   PERMISSIONS.RAZORPAY_CAPABILITIES_VIEW,
   PERMISSIONS.RAZORPAY_CAPABILITIES_TEST,
   PERMISSIONS.RAZORPAY_SETTINGS_VIEW,
@@ -151,6 +184,34 @@ export const SUPER_ADMIN_ONLY_PERMISSIONS: Set<string> = new Set([
   PERMISSIONS.RAZORPAY_RECONCILIATION_MANAGE,
   PERMISSIONS.RAZORPAY_REFUNDS_VIEW,
   PERMISSIONS.RAZORPAY_REFUNDS_MANAGE,
+  // Granular Cashfree ops — strictly SA-only; platform security policy
+  PERMISSIONS.CASHFREE_CAPABILITIES_VIEW,
+  PERMISSIONS.CASHFREE_SETTINGS_VIEW,
+  PERMISSIONS.CASHFREE_SETTINGS_MANAGE,
+  PERMISSIONS.CASHFREE_WEBHOOKS_VIEW,
+  PERMISSIONS.CASHFREE_WEBHOOKS_REPROCESS,
+  PERMISSIONS.CASHFREE_RECONCILIATION_VIEW,
+  PERMISSIONS.CASHFREE_RECONCILIATION_MANAGE,
+  PERMISSIONS.CASHFREE_REFUNDS_VIEW,
+  PERMISSIONS.CASHFREE_REFUNDS_MANAGE,
+  // Granular PayU ops — strictly SA-only; platform security policy
+  PERMISSIONS.PAYU_SETTINGS_VIEW,
+  PERMISSIONS.PAYU_SETTINGS_MANAGE,
+  PERMISSIONS.PAYU_WEBHOOKS_VIEW,
+  PERMISSIONS.PAYU_WEBHOOKS_REPROCESS,
+  PERMISSIONS.PAYU_RECONCILIATION_VIEW,
+  PERMISSIONS.PAYU_RECONCILIATION_MANAGE,
+  PERMISSIONS.PAYU_REFUNDS_VIEW,
+  PERMISSIONS.PAYU_REFUNDS_MANAGE,
+  // Granular SabPaisa ops — strictly SA-only; platform security policy
+  PERMISSIONS.SABPAISA_SETTINGS_VIEW,
+  PERMISSIONS.SABPAISA_SETTINGS_MANAGE,
+  PERMISSIONS.SABPAISA_WEBHOOKS_VIEW,
+  PERMISSIONS.SABPAISA_WEBHOOKS_REPROCESS,
+  PERMISSIONS.SABPAISA_RECONCILIATION_VIEW,
+  PERMISSIONS.SABPAISA_RECONCILIATION_MANAGE,
+  PERMISSIONS.SABPAISA_REFUNDS_VIEW,
+  PERMISSIONS.SABPAISA_REFUNDS_MANAGE,
 ]);
 
 /**
@@ -208,6 +269,61 @@ export const SUPER_ADMIN_ONLY_LOCK_REASONS: Record<string, string> = {
     "Razorpay refund data. SA-only by platform policy.",
   [PERMISSIONS.RAZORPAY_REFUNDS_MANAGE]:
     "Razorpay refund management. SA-only by platform policy.",
+  // ── Cashfree granular ops ─────────────────────────────────────────────────
+  // Not provider-connection gated, not feature/license gated.
+  // Restricted by deliberate platform security policy — same rationale as Razorpay.
+  [PERMISSIONS.CASHFREE_CAPABILITIES_VIEW]:
+    "Cashfree merchant capabilities and product status. SA-only by platform policy.",
+  [PERMISSIONS.CASHFREE_SETTINGS_VIEW]:
+    "Cashfree PG settings (contains provider credentials / config). SA-only by platform policy.",
+  [PERMISSIONS.CASHFREE_SETTINGS_MANAGE]:
+    "Cashfree PG settings modification. SA-only by platform policy.",
+  [PERMISSIONS.CASHFREE_WEBHOOKS_VIEW]:
+    "Cashfree webhook configuration view. SA-only by platform policy.",
+  [PERMISSIONS.CASHFREE_WEBHOOKS_REPROCESS]:
+    "Cashfree webhook reprocessing — triggers live Cashfree API calls. SA-only by platform policy.",
+  [PERMISSIONS.CASHFREE_RECONCILIATION_VIEW]:
+    "Cashfree reconciliation data. SA-only by platform policy.",
+  [PERMISSIONS.CASHFREE_RECONCILIATION_MANAGE]:
+    "Cashfree reconciliation management. SA-only by platform policy.",
+  [PERMISSIONS.CASHFREE_REFUNDS_VIEW]:
+    "Cashfree refund data. SA-only by platform policy.",
+  [PERMISSIONS.CASHFREE_REFUNDS_MANAGE]:
+    "Cashfree refund management — triggers live refund API calls. SA-only by platform policy.",
+  // ── PayU granular ops ─────────────────────────────────────────────────────
+  [PERMISSIONS.PAYU_SETTINGS_VIEW]:
+    "PayU settings (contains provider credentials / config). SA-only by platform policy.",
+  [PERMISSIONS.PAYU_SETTINGS_MANAGE]:
+    "PayU settings modification. SA-only by platform policy.",
+  [PERMISSIONS.PAYU_WEBHOOKS_VIEW]:
+    "PayU webhook configuration view. SA-only by platform policy.",
+  [PERMISSIONS.PAYU_WEBHOOKS_REPROCESS]:
+    "PayU webhook reprocessing — triggers live PayU API calls. SA-only by platform policy.",
+  [PERMISSIONS.PAYU_RECONCILIATION_VIEW]:
+    "PayU reconciliation data. SA-only by platform policy.",
+  [PERMISSIONS.PAYU_RECONCILIATION_MANAGE]:
+    "PayU reconciliation management. SA-only by platform policy.",
+  [PERMISSIONS.PAYU_REFUNDS_VIEW]:
+    "PayU refund data. SA-only by platform policy.",
+  [PERMISSIONS.PAYU_REFUNDS_MANAGE]:
+    "PayU refund management — triggers live refund API calls. SA-only by platform policy.",
+  // ── SabPaisa granular ops ─────────────────────────────────────────────────
+  [PERMISSIONS.SABPAISA_SETTINGS_VIEW]:
+    "SabPaisa settings (contains provider credentials / config). SA-only by platform policy.",
+  [PERMISSIONS.SABPAISA_SETTINGS_MANAGE]:
+    "SabPaisa settings modification. SA-only by platform policy.",
+  [PERMISSIONS.SABPAISA_WEBHOOKS_VIEW]:
+    "SabPaisa webhook configuration view. SA-only by platform policy.",
+  [PERMISSIONS.SABPAISA_WEBHOOKS_REPROCESS]:
+    "SabPaisa webhook reprocessing — triggers live SabPaisa API calls. SA-only by platform policy.",
+  [PERMISSIONS.SABPAISA_RECONCILIATION_VIEW]:
+    "SabPaisa reconciliation data. SA-only by platform policy.",
+  [PERMISSIONS.SABPAISA_RECONCILIATION_MANAGE]:
+    "SabPaisa reconciliation management. SA-only by platform policy.",
+  [PERMISSIONS.SABPAISA_REFUNDS_VIEW]:
+    "SabPaisa refund data. SA-only by platform policy.",
+  [PERMISSIONS.SABPAISA_REFUNDS_MANAGE]:
+    "SabPaisa refund management — triggers live refund API calls. SA-only by platform policy.",
 };
 
 /**
@@ -349,10 +465,20 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<string, Record<string, boolean>> =
     ALL_PERMISSION_KEYS.map((k) => [k, k.startsWith("payout_merchant_")]),
   ),
 
+  // payout_admin: operational access only.
+  // payout_admin_settings is intentionally excluded — configuration authority
+  // belongs to payout_super_admin only, establishing a clear hierarchy:
+  //   payout_super_admin (full payout ops + config) > payout_admin (ops only)
   payout_admin: Object.fromEntries(
-    ALL_PERMISSION_KEYS.map((k) => [k, k.startsWith("payout_admin_")]),
+    ALL_PERMISSION_KEYS.map((k) => [
+      k,
+      k.startsWith("payout_admin_") && k !== PERMISSIONS.PAYOUT_ADMIN_SETTINGS,
+    ]),
   ),
 
+  // payout_super_admin: full payout administration scope.
+  // Has all payout_admin_* keys including settings — the distinguishing key
+  // that grants configuration authority above payout_admin.
   payout_super_admin: Object.fromEntries(
     ALL_PERMISSION_KEYS.map((k) => [k, k.startsWith("payout_admin_")]),
   ),

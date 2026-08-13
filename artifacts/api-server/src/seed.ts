@@ -1797,6 +1797,39 @@ export async function seed() {
     }
     logger.info({ roles: KNOWN_ROLES.length, keys: ALL_PERMISSION_KEYS.length }, "iam_role_permissions_reconciled_on_start");
 
+    // ── 3b. Apply targeted role permission corrections ────────────────────────
+    // These use onConflictDoUpdate (not DoNothing) to enforce specific security-
+    // policy corrections that override any previous DB state for the named key.
+    // Each entry represents a deliberate, documented policy decision — not an
+    // accidental omission. Add entries here when ROLE_DEFAULT_PERMISSIONS changes
+    // and the existing DB row must also be corrected.
+    //
+    // Governance note: if a Super Admin intentionally grants a corrected key via
+    // the IAM UI, this block will reset it on the next restart. To make such a
+    // grant permanent, remove or adjust the correction entry below and redeploy.
+    const ROLE_PERMISSION_CORRECTIONS: Array<{ role: string; permissionKey: string; isEnabled: boolean; reason: string }> = [
+      {
+        role: "payout_admin",
+        permissionKey: "payout_admin_settings",
+        isEnabled: false,
+        reason: "payout_admin_settings is payout_super_admin territory only; payout_admin is operational-only (dashboard, merchants, audit_logs). This enforces the payout hierarchy: payout_super_admin > payout_admin.",
+      },
+    ];
+    let correctionsApplied = 0;
+    for (const c of ROLE_PERMISSION_CORRECTIONS) {
+      await db
+        .insert(rolePermissionsTable)
+        .values({ role: c.role, permissionKey: c.permissionKey, isEnabled: c.isEnabled, updatedByUserId: null })
+        .onConflictDoUpdate({
+          target: [rolePermissionsTable.role, rolePermissionsTable.permissionKey],
+          set: { isEnabled: c.isEnabled, updatedAt: new Date() },
+        });
+      correctionsApplied++;
+    }
+    if (correctionsApplied > 0) {
+      logger.info({ corrections: correctionsApplied }, "iam_role_permission_corrections_applied");
+    }
+
     // ── 3. Prune stale user_permissions ALLOW overrides that are now identical
     //       to the LIVE role template — they add no value and confuse audits.
     //       We compare against the live role_permissions DB rows (not the static
