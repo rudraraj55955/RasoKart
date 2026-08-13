@@ -6,6 +6,10 @@
  * Verifies that the script:
  *   • Exits 1 when a Drizzle schema column is absent from every guard file.
  *   • Exits 0 when every Drizzle schema column IS covered by a guard.
+ *   • Exits 1 when a DROP COLUMN guard targets a column still live in the
+ *     Drizzle schema (or CREATE TABLE body for schemaGuard-only tables).
+ *   • Exits 0 when a DROP COLUMN guard targets a column that has already been
+ *     removed from the schema.
  *
  * The test never touches the real schema or guard files. It creates temporary
  * fixture directories, points the script at them via the SGCD_* env-var
@@ -36,6 +40,15 @@ interface FixtureOptions {
   schemaColumns: string[];
   /** Column names to include in the guard CREATE TABLE body */
   guardColumns: string[];
+}
+
+interface SchemaGuardOnlyFixtureOptions {
+  /**
+   * Column names to include in the CREATE TABLE body of the guard file.
+   * There is intentionally NO corresponding Drizzle pgTable, so the script
+   * treats this as a schemaGuard-only table.
+   */
+  guardCreateTableColumns: string[];
 }
 
 /**
@@ -91,6 +104,57 @@ function buildFixtures(opts: FixtureOptions): {
   fs.writeFileSync(guardFile, guardContent);
 
   // ── empty migrate file (no additional coverage) ──────────────────────────
+  const migrateFile = path.join(dir, "migrate.ts");
+  fs.writeFileSync(migrateFile, `-- empty\n`);
+
+  return {
+    dir,
+    env: {
+      ...process.env,
+      SGCD_SCHEMA_DIR: schemaDir,
+      SGCD_SCHEMA_INDEX: path.join(schemaDir, "index.ts"),
+      SGCD_GUARD_FILE: guardFile,
+      SGCD_MIGRATE_FILE: migrateFile,
+    },
+  };
+}
+
+/**
+ * Build a fixture set for a schemaGuard-only table — i.e. a table that has a
+ * CREATE TABLE guard but NO corresponding Drizzle pgTable.  This exercises the
+ * branch of the drop-check that validates DROP COLUMN claims against the
+ * CREATE TABLE body rather than the Drizzle schema.
+ */
+function buildSchemaGuardOnlyFixtures(opts: SchemaGuardOnlyFixtureOptions): {
+  dir: string;
+  env: NodeJS.ProcessEnv;
+} {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sgcd-guardonly-"));
+
+  // ── Empty schema dir (no Drizzle pgTable definitions) ────────────────────
+  const schemaDir = path.join(dir, "schema");
+  fs.mkdirSync(schemaDir, { recursive: true });
+
+  // index.ts with no re-exports so drizzle schema is empty
+  fs.writeFileSync(path.join(schemaDir, "index.ts"), `// no tables\n`);
+
+  // ── Guard file: CREATE TABLE for a schemaGuard-only table ────────────────
+  const colDefs = opts.guardCreateTableColumns
+    .map((c) => `  ${c} TEXT,`)
+    .join("\n");
+
+  const guardContent = [
+    `-- schemaGuard-only fixture`,
+    `CREATE TABLE IF NOT EXISTS guard_only_table (`,
+    `  id SERIAL PRIMARY KEY,`,
+    colDefs,
+    `);`,
+  ].join("\n") + "\n";
+
+  const guardFile = path.join(dir, "guard.ts");
+  fs.writeFileSync(guardFile, guardContent);
+
+  // ── Empty migrate file ────────────────────────────────────────────────────
   const migrateFile = path.join(dir, "migrate.ts");
   fs.writeFileSync(migrateFile, `-- empty\n`);
 
@@ -222,6 +286,98 @@ describe("schema-guard-column-diff negative-case contract", () => {
       code,
       0,
       "script must exit 0 when a column is fully covered by an ALTER TABLE guard alone",
+    );
+  });
+
+  // ── DROP COLUMN guard tests ─────────────────────────────────────────────
+
+  // Case 1: Drizzle-tracked table — DROP COLUMN for a column still in schema → exit 1
+  test("exits 1 when a DROP COLUMN guard targets a column still live in the Drizzle schema", () => {
+    const { dir, env } = buildFixtures({
+      schemaColumns: ["name", "status"], // both columns still in Drizzle schema
+      guardColumns: ["name", "status"],  // guard covers them
+    });
+    fixtures.push({ dir });
+
+    // Append a DROP COLUMN for 'status' — which is still in the Drizzle schema
+    const guardFile = env.SGCD_GUARD_FILE as string;
+    fs.appendFileSync(
+      guardFile,
+      `ALTER TABLE fixture_table DROP COLUMN IF EXISTS status;\n`,
+    );
+
+    const code = runScript(env);
+    assert.equal(
+      code,
+      1,
+      "script must exit 1 when DROP COLUMN targets 'status' which is still in the Drizzle schema",
+    );
+  });
+
+  // Case 2: Drizzle-tracked table — DROP COLUMN for a column no longer in schema → exit 0
+  test("exits 0 when a DROP COLUMN guard targets a column already removed from the Drizzle schema", () => {
+    const { dir, env } = buildFixtures({
+      schemaColumns: ["name"],   // 'old_col' intentionally absent from schema
+      guardColumns: ["name"],    // guard covers the live columns
+    });
+    fixtures.push({ dir });
+
+    // DROP COLUMN for 'old_col' — which is NOT in the Drizzle schema (already removed)
+    const guardFile = env.SGCD_GUARD_FILE as string;
+    fs.appendFileSync(
+      guardFile,
+      `ALTER TABLE fixture_table DROP COLUMN IF EXISTS old_col;\n`,
+    );
+
+    const code = runScript(env);
+    assert.equal(
+      code,
+      0,
+      "script must exit 0 when DROP COLUMN targets a column already absent from the Drizzle schema",
+    );
+  });
+
+  // Case 3: schemaGuard-only table — DROP COLUMN for a column still in CREATE TABLE → exit 1
+  test("exits 1 when a DROP COLUMN guard targets a column still live in a schemaGuard-only table", () => {
+    const { dir, env } = buildSchemaGuardOnlyFixtures({
+      guardCreateTableColumns: ["tenant_id", "ref_code"], // both still live
+    });
+    fixtures.push({ dir });
+
+    // DROP COLUMN for 'ref_code' — which is still in the CREATE TABLE body
+    const guardFile = env.SGCD_GUARD_FILE as string;
+    fs.appendFileSync(
+      guardFile,
+      `ALTER TABLE guard_only_table DROP COLUMN IF EXISTS ref_code;\n`,
+    );
+
+    const code = runScript(env);
+    assert.equal(
+      code,
+      1,
+      "script must exit 1 when DROP COLUMN targets 'ref_code' which is still in the guard CREATE TABLE body",
+    );
+  });
+
+  // Case 4: schemaGuard-only table — DROP COLUMN for a column absent from CREATE TABLE → exit 0
+  test("exits 0 when a DROP COLUMN guard targets a column already removed from a schemaGuard-only table", () => {
+    const { dir, env } = buildSchemaGuardOnlyFixtures({
+      guardCreateTableColumns: ["tenant_id"], // 'legacy_col' intentionally absent
+    });
+    fixtures.push({ dir });
+
+    // DROP COLUMN for 'legacy_col' — which is NOT in the CREATE TABLE body (already removed)
+    const guardFile = env.SGCD_GUARD_FILE as string;
+    fs.appendFileSync(
+      guardFile,
+      `ALTER TABLE guard_only_table DROP COLUMN IF EXISTS legacy_col;\n`,
+    );
+
+    const code = runScript(env);
+    assert.equal(
+      code,
+      0,
+      "script must exit 0 when DROP COLUMN targets a column already absent from the schemaGuard-only CREATE TABLE body",
     );
   });
 });
