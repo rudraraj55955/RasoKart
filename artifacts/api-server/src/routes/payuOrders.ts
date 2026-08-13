@@ -11,7 +11,7 @@
  */
 
 import { Router } from "express";
-import { eq, and, inArray, sql, ne } from "drizzle-orm";
+import { eq, and, inArray, sql, ne, sum, gte } from "drizzle-orm";
 import {
   db,
   payuPaymentOrdersTable,
@@ -180,6 +180,30 @@ router.post("/payu/initiate", requireAuth, async (req, res, next) => {
     }
     if (amountNum > cfg.maxAmount) {
       res.status(400).json({ error: `Maximum amount is ₹${cfg.maxAmount}` });
+      return;
+    }
+
+    // Daily deposit cap check — sum all SUCCESS orders confirmed today for this merchant.
+    // Anchor on COALESCE(paid_at, created_at) so orders initiated before midnight but
+    // confirmed after midnight are correctly counted against today's cap.
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const [dailyRow] = await db
+      .select({ total: sum(payuPaymentOrdersTable.amount) })
+      .from(payuPaymentOrdersTable)
+      .where(and(
+        eq(payuPaymentOrdersTable.merchantId, user.merchantId),
+        eq(payuPaymentOrdersTable.environment, cfg.env),
+        eq(payuPaymentOrdersTable.status, PAYU_ORDER_STATUS.SUCCESS),
+        gte(sql`COALESCE(${payuPaymentOrdersTable.paidAt}, ${payuPaymentOrdersTable.createdAt})`, todayStart),
+      ));
+
+    const todayTotal = parseFloat(dailyRow?.total ?? "0");
+    if (todayTotal + amountNum > cfg.dailyLimit) {
+      res.status(400).json({
+        error: `Daily deposit limit of ₹${cfg.dailyLimit.toLocaleString("en-IN")} reached. Please try again tomorrow.`,
+      });
       return;
     }
 
