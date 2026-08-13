@@ -45,7 +45,7 @@ import {
 } from "../helpers/payu";
 
 const router = Router();
-router.use(requireAuth, requireAdmin, requirePermission(PERMISSIONS.ADMIN_SETTINGS));
+router.use(requireAuth, requireAdmin);
 
 function maskValue(raw: string): string {
   if (!raw) return "";
@@ -95,7 +95,7 @@ function deriveOnboardingStatus(
 
 // ── GET /api/admin/payu/config ───────────────────────────────────────────────
 
-router.get("/config", async (req, res, next) => {
+router.get("/config", requirePermission(PERMISSIONS.PAYU_SETTINGS_VIEW), async (req, res, next) => {
   try {
     const [row] = await db
       .select()
@@ -181,7 +181,7 @@ router.get("/config", async (req, res, next) => {
 // Accept env: "uat" (default) or "live" to determine which column pair to write.
 // Saving live credentials resets PAYU_LIVE_VERIFIED to "false" (forces re-verification).
 
-router.put("/config", async (req, res, next) => {
+router.put("/config", requirePermission(PERMISSIONS.PAYU_SETTINGS_MANAGE), async (req, res, next) => {
   try {
     const user = (req as any).user;
     const { key, salt, notes, env } = req.body as {
@@ -290,7 +290,7 @@ router.put("/config", async (req, res, next) => {
 
 // ── PUT /api/admin/payu/settings ──────────────────────────────────────────────
 
-router.put("/settings", async (req, res, next) => {
+router.put("/settings", requirePermission(PERMISSIONS.PAYU_SETTINGS_MANAGE), async (req, res, next) => {
   try {
     const user = (req as any).user;
     const { enabled, environment, minAmount, maxAmount, dailyLimit, suspended } = req.body as {
@@ -386,7 +386,7 @@ router.put("/settings", async (req, res, next) => {
 // Step 4: Webhook URL configured in provider_integrations row.
 // On full pass: writes PAYU_LIVE_VERIFIED = "true" and PAYU_LIVE_VERIFIED_AT to system_config.
 
-router.post("/verify-live", async (req, res, next) => {
+router.post("/verify-live", requirePermission(PERMISSIONS.PAYU_SETTINGS_MANAGE), async (req, res, next) => {
   try {
     const user = (req as any).user;
 
@@ -535,7 +535,7 @@ router.post("/verify-live", async (req, res, next) => {
 
 // ── GET /api/admin/payu/orders ───────────────────────────────────────────────
 
-router.get("/orders", async (req, res, next) => {
+router.get("/orders", requirePermission(PERMISSIONS.PAYU_SETTINGS_VIEW), async (req, res, next) => {
   try {
     const limit  = Math.min(parseInt(String(req.query["limit"] ?? "50"), 10) || 50, 200);
     const offset = parseInt(String(req.query["offset"] ?? "0"), 10) || 0;
@@ -569,7 +569,7 @@ router.get("/orders", async (req, res, next) => {
 
 // ── GET /api/admin/payu/webhook-logs ─────────────────────────────────────────
 
-router.get("/webhook-logs", async (req, res, next) => {
+router.get("/webhook-logs", requirePermission(PERMISSIONS.PAYU_WEBHOOKS_VIEW), async (req, res, next) => {
   try {
     const limit  = Math.min(parseInt(String(req.query["limit"] ?? "50"), 10) || 50, 200);
     const offset = parseInt(String(req.query["offset"] ?? "0"), 10) || 0;
@@ -602,7 +602,7 @@ router.get("/webhook-logs", async (req, res, next) => {
 // UAT sanity check: generates a sample hash using stored UAT credentials.
 // Does NOT create any order or trigger any payment.
 
-router.post("/test-hash", async (req, res, next) => {
+router.post("/test-hash", requirePermission(PERMISSIONS.PAYU_SETTINGS_MANAGE), async (req, res, next) => {
   try {
     const [row] = await db
       .select()
