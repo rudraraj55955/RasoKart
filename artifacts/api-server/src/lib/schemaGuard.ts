@@ -286,9 +286,17 @@ async function runGuard(executor: GuardExecutor = db): Promise<void> {
         user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         subject TEXT NOT NULL,
         html TEXT NOT NULL,
+        "to" TEXT NOT NULL DEFAULT '',
+        deliver_after TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        flushed BOOLEAN NOT NULL DEFAULT FALSE,
+        flushed_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         queued_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
+    // Legacy-compat: existing DBs created with the old skeletal body need these
+    // columns patched in. IF NOT EXISTS makes every statement a no-op on a
+    // fresh DB where CREATE TABLE already included them.
     await exec.execute(sql`ALTER TABLE quiet_hours_queue ADD COLUMN IF NOT EXISTS "to" TEXT NOT NULL DEFAULT ''`);
     await exec.execute(sql`ALTER TABLE quiet_hours_queue ADD COLUMN IF NOT EXISTS deliver_after TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
     await exec.execute(sql`ALTER TABLE quiet_hours_queue ADD COLUMN IF NOT EXISTS flushed BOOLEAN NOT NULL DEFAULT FALSE`);
@@ -296,7 +304,7 @@ async function runGuard(executor: GuardExecutor = db): Promise<void> {
     await exec.execute(sql`ALTER TABLE quiet_hours_queue ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
     await exec.execute(sql`CREATE INDEX IF NOT EXISTS quiet_hours_queue_user_id_idx ON quiet_hours_queue(user_id)`);
     await exec.execute(sql`CREATE INDEX IF NOT EXISTS quiet_hours_queue_flushed_deliver_after_idx ON quiet_hours_queue(flushed, deliver_after)`);
-    logger.info({ table: "quiet_hours_queue" }, "schema_guard_column_added");
+    logger.info({ table: "quiet_hours_queue" }, "schema_guard_table_created");
   });
 
   // ── withdrawals: CREATE TABLE (must precede all ALTER TABLE lines below) ──
@@ -392,7 +400,7 @@ async function runGuard(executor: GuardExecutor = db): Promise<void> {
         labeled_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
-    // labeled_at was added after initial table creation in some envs
+    // Legacy-compat: existing DBs created without labeled_at need it patched in.
     await exec.execute(sql`ALTER TABLE merchant_trusted_ips ADD COLUMN IF NOT EXISTS labeled_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
     logger.info({ table: "merchant_trusted_ips" }, "schema_guard_table_created");
   });
