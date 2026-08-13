@@ -221,7 +221,15 @@ router.post("/payu/initiate", requireAuth, async (req, res, next) => {
 
     req.log.info({ event: "payu_order_initiated", merchantId: user.merchantId, txnid, env: cfg.env, amountStr }, "payu_order_initiated");
 
-    // Return form params — key is masked, hash is included, salt NEVER returned
+    // Callback URLs — generated server-side from APP_BASE_URL so the frontend
+    // never constructs or controls them (same pattern as payoutWalletLoad.ts).
+    // Both surl (success) and furl (failure) point to the same return endpoint
+    // which handles all terminal states via the `status` field in the POST body.
+    const APP_BASE_URL = (process.env["APP_BASE_URL"] ?? "https://rasokart.com").replace(/\/+$/, "");
+    const surl = `${APP_BASE_URL}/api/payment/payu-return`;
+    const furl = `${APP_BASE_URL}/api/payment/payu-return`;
+
+    // Return form params — key is semi-public (visible in form POST), salt NEVER returned
     res.json({
       txnid,
       amount:      amountStr,
@@ -230,8 +238,10 @@ router.post("/payu/initiate", requireAuth, async (req, res, next) => {
       email,
       phone,
       hash,
-      key:         creds.key,       // PayU key is semi-public (visible in form); salt is never returned
+      key:         creds.key,
       paymentUrl:  PAYU_PAYMENT_URL[cfg.env],
+      surl,
+      furl,
       env:         cfg.env,
     });
   } catch (err) { next(err); }

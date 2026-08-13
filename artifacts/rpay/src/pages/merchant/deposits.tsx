@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { getToken } from "@/lib/auth";
 import { checkDailyCapacity } from "@/lib/payin-capacity-guard";
 import { useSearch } from "wouter";
 import { useCrossTabSync } from "@/hooks/use-cross-tab-sync";
@@ -897,6 +898,29 @@ export default function MerchantDeposits() {
   const createRazorpayOrder = useCreateRazorpayOrder();
   const verifyRazorpayPayment = useVerifyRazorpayPayment();
 
+  // PayU deposit dialog state
+  const [showPayu, setShowPayu] = useState(false);
+  const [payuAmount, setPayuAmount] = useState("");
+  const [payuPhone, setPayuPhone] = useState("");
+  const [payuName, setPayuName] = useState("");
+  const [payuEmail, setPayuEmail] = useState("");
+  const [payuCreating, setPayuCreating] = useState(false);
+  const [payuError, setPayuError] = useState("");
+
+  const { data: payuStatusData } = useQuery<{ enabled: boolean; env: string }>({
+    queryKey: ["/api/merchant/payu/status"] as const,
+    queryFn: async () => {
+      const token = getToken();
+      const resp = await fetch("/api/merchant/payu/status", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!resp.ok) return { enabled: false, env: "uat" };
+      return resp.json() as Promise<{ enabled: boolean; env: string }>;
+    },
+    refetchInterval: 30000,
+  });
+  const payuEnabled = payuStatusData?.enabled ?? false;
+
   // RasoKart UPI deposit dialog state
   const [showCashfree, setShowCashfree] = useState(false);
   const [cfAmount, setCfAmount] = useState("");
@@ -978,6 +1002,117 @@ export default function MerchantDeposits() {
     checkoutOpenAttempted.current = false;
     setCfAmount(""); setCfPhone(""); setCfName(""); setCfEmail("");
     setCfCreateError("");
+  };
+
+  const resetPayuDialog = () => {
+    setShowPayu(false);
+    setPayuAmount("");
+    setPayuPhone("");
+    setPayuName("");
+    setPayuEmail("");
+    setPayuError("");
+  };
+
+  /**
+   * Dynamically creates and submits a hidden HTML form POST to the PayU
+   * payment URL. This is required by PayU Hosted Checkout — a plain
+   * window.open() or GET navigation will not work because PayU needs all
+   * payment fields (including hash) in the request body.
+   *
+   * The Salt is never present here — it was consumed server-side during
+   * hash generation and is absent from the initiate response.
+   */
+  const submitPayuForm = (fields: {
+    paymentUrl: string;
+    key: string;
+    txnid: string;
+    amount: string;
+    productinfo: string;
+    firstname: string;
+    email: string;
+    phone: string;
+    hash: string;
+    surl: string;
+    furl: string;
+  }) => {
+    const form = document.createElement("form");
+    form.method = "POST";
+    form.action = fields.paymentUrl;
+    form.style.display = "none";
+    const fieldNames = [
+      "key", "txnid", "amount", "productinfo",
+      "firstname", "email", "phone", "hash", "surl", "furl",
+    ] as const;
+    for (const name of fieldNames) {
+      const input = document.createElement("input");
+      input.type = "hidden";
+      input.name = name;
+      input.value = fields[name];
+      form.appendChild(input);
+    }
+    document.body.appendChild(form);
+    form.submit();
+  };
+
+  const handlePayuPay = async () => {
+    const amount = Number(payuAmount);
+    if (!amount || amount <= 0) {
+      setPayuError("Enter a valid amount");
+      return;
+    }
+    const cleanPhone = payuPhone.replace(/\D/g, "");
+    if (cleanPhone.length < 10) {
+      setPayuError("A valid 10-digit phone number is required");
+      return;
+    }
+    setPayuError("");
+    setPayuCreating(true);
+    try {
+      const token = getToken();
+      const resp = await fetch("/api/merchant/payu/initiate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          amount,
+          customerPhone: payuPhone.trim(),
+          customerName:  payuName.trim()  || undefined,
+          customerEmail: payuEmail.trim() || undefined,
+        }),
+      });
+      const data = await resp.json() as Record<string, string>;
+      if (!resp.ok) {
+        setPayuError((data as any)?.error ?? "Failed to initiate payment");
+        return;
+      }
+      // Guard: server must supply surl/furl/hash/key or the form POST would
+      // be incomplete and PayU would reject the request.
+      if (!data["surl"] || !data["furl"] || !data["hash"] || !data["key"] || !data["paymentUrl"]) {
+        setPayuError("Payment session is incomplete. Please try again or contact support.");
+        return;
+      }
+      // Close the dialog before navigating — PayU takes over the full page.
+      setShowPayu(false);
+      submitPayuForm({
+        paymentUrl:  data["paymentUrl"]!,
+        key:         data["key"]!,
+        txnid:       data["txnid"]!,
+        amount:      data["amount"]!,
+        productinfo: data["productinfo"]!,
+        firstname:   data["firstname"]!,
+        email:       data["email"]!,
+        phone:       data["phone"]!,
+        hash:        data["hash"]!,
+        surl:        data["surl"]!,
+        furl:        data["furl"]!,
+      });
+    } catch (err: any) {
+      setPayuError(err?.message ?? "Failed to initiate payment. Please try again.");
+    } finally {
+      setPayuCreating(false);
+    }
   };
 
   const resetRazorpayDialog = () => {
@@ -1395,6 +1530,17 @@ export default function MerchantDeposits() {
             >
               <CreditCard className="w-4 h-4 mr-2" />
               Deposit via Card / UPI
+            </Button>
+          )}
+          {payuEnabled && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setShowPayu(true)}
+              className="border-orange-500/30 text-orange-400 hover:bg-orange-500/10 hover:text-orange-300 hover:border-orange-500/50"
+            >
+              <CreditCard className="w-4 h-4 mr-2" />
+              Deposit via PayU
             </Button>
           )}
           <Button size="sm" onClick={() => setShowSimulate(true)}>
@@ -2344,6 +2490,75 @@ export default function MerchantDeposits() {
               </DialogFooter>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* PayU Deposit Dialog */}
+      <Dialog open={showPayu} onOpenChange={(open) => { if (!open) resetPayuDialog(); else setShowPayu(true); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CreditCard className="w-4 h-4 text-orange-400" />
+              Deposit via PayU
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            {payuError && (
+              <div className="rounded-md border border-rose-500/30 bg-rose-500/10 p-3 flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-rose-400 mt-0.5 shrink-0" />
+                <p className="text-xs text-rose-300">{payuError}</p>
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label>Amount (₹) <span className="text-destructive">*</span></Label>
+              <Input
+                type="number"
+                placeholder="e.g. 500"
+                min={1}
+                value={payuAmount}
+                onChange={e => setPayuAmount(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") handlePayuPay(); }}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Phone Number <span className="text-destructive">*</span></Label>
+              <Input
+                type="tel"
+                placeholder="10-digit mobile number"
+                value={payuPhone}
+                onChange={e => setPayuPhone(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") handlePayuPay(); }}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Name <span className="text-muted-foreground text-xs">(optional)</span></Label>
+              <Input
+                placeholder="Your name"
+                value={payuName}
+                onChange={e => setPayuName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Email <span className="text-muted-foreground text-xs">(optional)</span></Label>
+              <Input
+                type="email"
+                placeholder="your@email.com"
+                value={payuEmail}
+                onChange={e => setPayuEmail(e.target.value)}
+              />
+            </div>
+            <div className="rounded-md bg-muted/40 border border-border/40 p-3 text-xs text-muted-foreground">
+              You will be redirected to the PayU Secure Checkout to complete your payment. Your wallet will be credited automatically on success.
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={resetPayuDialog} disabled={payuCreating}>Cancel</Button>
+            <Button onClick={handlePayuPay} disabled={payuCreating || !payuAmount || !payuPhone}>
+              {payuCreating
+                ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Redirecting…</>
+                : `Pay ₹${Number(payuAmount) > 0 ? Number(payuAmount).toLocaleString() : "—"}`}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
