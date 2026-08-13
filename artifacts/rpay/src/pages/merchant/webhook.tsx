@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { useSearch, useLocation } from "wouter";
+import { useSearch, useLocation, Link } from "wouter";
 import { EVENT_TYPE_COLORS, EventTypeBadge } from "@/components/ui/event-type-badge";
-import { useGetWebhookConfig, useUpdateWebhookConfig, getGetWebhookConfigQueryKey, useGetCallbackSecret, useRotateCallbackSecret, getGetCallbackSecretQueryKey, useGetWebhookLogs, getGetWebhookLogsQueryKey, useSendWebhookTest, useRetryWebhookLog, useGetWebhookLogStats, getGetWebhookLogStatsQueryKey, useGetWebhookRetryDefaults, useGetWebhookPlatformDefaults, WebhookTestRequestEventType, GetWebhookLogsStatus } from "@workspace/api-client-react";
+import { useGetWebhookConfig, useUpdateWebhookConfig, getGetWebhookConfigQueryKey, useGetCallbackSecret, useRotateCallbackSecret, getGetCallbackSecretQueryKey, useGetWebhookLogs, getGetWebhookLogsQueryKey, useSendWebhookTest, useRetryWebhookLog, useGetWebhookLogStats, getGetWebhookLogStatsQueryKey, useGetWebhookRetryDefaults, useGetWebhookPlatformDefaults, WebhookTestRequestEventType, GetWebhookLogsStatus, useGetMyPlanUsage } from "@workspace/api-client-react";
 import { SECRET_WARN_DAYS, SECRET_ROTATION_OVERDUE_DAYS } from "@/lib/webhook-constants";
 import type { CallbackLog, WebhookLogDayBucket } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -18,7 +18,7 @@ import { toast } from "sonner";
 import { RasoConfirmModal } from "@/components/ui/raso-confirm-modal";
 import { getApiErrorMessage } from "@/lib/utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Save, Webhook, ShieldCheck, RefreshCw, Copy, AlertTriangle, Eye, CheckCircle2, XCircle, Clock, Activity, FlaskConical, Zap, ChevronRight, ChevronDown, RotateCcw, ShieldOff, Shield, FlaskRound, X, BarChart2, Calendar, Bell, BellOff, TrendingDown, TrendingUp, Minus } from "lucide-react";
+import { Save, Webhook, ShieldCheck, RefreshCw, Copy, AlertTriangle, Eye, CheckCircle2, XCircle, Clock, Activity, FlaskConical, Zap, ChevronRight, ChevronDown, RotateCcw, ShieldOff, Shield, FlaskRound, X, BarChart2, Calendar, Bell, BellOff, TrendingDown, TrendingUp, Minus, Lock, ArrowUpRight } from "lucide-react";
 import { formatDistanceToNow, format, differenceInDays } from "date-fns";
 import { SIG_VERIFIED_KEY } from "./callbacks";
 
@@ -752,8 +752,18 @@ function formatDelaySeconds(secs: number): string {
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
+function is403(err: unknown): boolean {
+  if (err && typeof err === "object") {
+    return (err as Record<string, unknown>)["status"] === 403;
+  }
+  return false;
+}
+
 export default function MerchantWebhook() {
   const qc = useQueryClient();
+  const { data: usage } = useGetMyPlanUsage();
+  const planBlocked = usage !== undefined && !usage.webhookAccess;
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
   const { data: config, isLoading, refetch: refetchWebhookConfig } = useGetWebhookConfig();
   const { data: platformDefaults } = useGetWebhookPlatformDefaults();
   const { data: secretStatus, isLoading: secretLoading } = useGetCallbackSecret();
@@ -884,7 +894,10 @@ export default function MerchantWebhook() {
           setSecretVerifiedDismissed(false);
         }
       },
-      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to save configuration — your previous saved settings are unchanged")),
+      onError: (err: unknown) => {
+        if (is403(err)) { setUpgradeOpen(true); return; }
+        toast.error(getApiErrorMessage(err, "Failed to save configuration — your previous saved settings are unchanged"));
+      },
     });
   };
 
@@ -979,6 +992,47 @@ onError: () => toast.error("Failed to send test event"),
         <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center border border-primary/20"><Webhook className="w-5 h-5 text-primary" /></div>
         <div><h1 className="text-3xl font-bold tracking-tight">Webhook</h1><p className="text-muted-foreground mt-0.5">Configure callback URL for payment events</p></div>
       </div>
+
+      {planBlocked && (
+        <Alert className="border-violet-500/40 bg-violet-950/20">
+          <Lock className="w-4 h-4 text-violet-400" />
+          <AlertDescription className="text-violet-300/90 flex items-center justify-between gap-4 flex-wrap">
+            <span>Webhook access is not included in your current plan. Upgrade to configure and manage your webhook endpoint.</span>
+            <Link href="/merchant/plan">
+              <Button size="sm" variant="outline" className="border-violet-500/40 text-violet-300 hover:bg-violet-500/10 shrink-0">
+                View Plans <ArrowUpRight className="w-3.5 h-3.5 ml-1.5" />
+              </Button>
+            </Link>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Upgrade Required Modal */}
+      <Dialog open={upgradeOpen} onOpenChange={setUpgradeOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Lock className="w-5 h-5 text-violet-400" />
+              Upgrade Required
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-1">
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Webhook access is not included in your current plan. Upgrade to a higher plan to configure your webhook endpoint and receive real-time payment event notifications.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <Button variant="outline" onClick={() => setUpgradeOpen(false)}>
+                Cancel
+              </Button>
+              <Link href="/merchant/plan">
+                <Button className="bg-violet-600 hover:bg-violet-500 text-white" onClick={() => setUpgradeOpen(false)}>
+                  View Plans <ArrowUpRight className="w-4 h-4 ml-1.5" />
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Card>
         <CardHeader><CardTitle>Endpoint Configuration</CardTitle><CardDescription>RasoKart will send POST requests to this URL for the selected events</CardDescription></CardHeader>

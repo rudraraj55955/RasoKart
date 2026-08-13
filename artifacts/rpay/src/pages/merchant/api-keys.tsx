@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { useListApiKeys, useGenerateApiKey, useRevokeApiKey, getListApiKeysQueryKey } from "@workspace/api-client-react";
+import { Link } from "wouter";
+import { useListApiKeys, useGenerateApiKey, useRevokeApiKey, getListApiKeysQueryKey, useGetMyPlanUsage } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,26 +10,38 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Plus, Copy, Trash2, Eye, AlertTriangle, Tag, Loader2 } from "lucide-react";
+import { Plus, Copy, Trash2, Eye, AlertTriangle, Tag, Loader2, Lock, ArrowUpRight } from "lucide-react";
 import { toast } from "sonner";
 import { getApiErrorMessage } from "@/lib/utils";
 import { format } from "date-fns";
 import { RasoConfirmModal } from "@/components/ui/raso-confirm-modal";
 
+function is403(err: unknown): boolean {
+  if (err && typeof err === "object") {
+    return (err as Record<string, unknown>)["status"] === 403;
+  }
+  return false;
+}
+
 export default function MerchantApiKeys() {
   const qc = useQueryClient();
   const [newKey, setNewKey] = useState<{ apiKey: string; secretKey: string; label: string | null } | null>(null);
   const [confirmRevoke, setConfirmRevoke] = useState<number | null>(null);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
 
   // Generate dialog state
   const [generateOpen, setGenerateOpen] = useState(false);
   const [labelInput, setLabelInput] = useState("");
+
+  const { data: usage } = useGetMyPlanUsage();
+  const planBlocked = usage !== undefined && !usage.apiAccess;
 
   const { data: keys, isLoading } = useListApiKeys();
   const generateMutation = useGenerateApiKey();
   const revokeMutation = useRevokeApiKey();
 
   const openGenerate = () => {
+    if (planBlocked) { setUpgradeOpen(true); return; }
     setLabelInput("");
     setGenerateOpen(true);
   };
@@ -41,7 +54,10 @@ export default function MerchantApiKeys() {
         setNewKey({ apiKey: key.apiKey, secretKey: key.secretKey, label: key.label ?? null });
         qc.invalidateQueries({ queryKey: getListApiKeysQueryKey() });
       },
-      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to generate API key")),
+      onError: (err: unknown) => {
+        if (is403(err)) { setGenerateOpen(false); setUpgradeOpen(true); return; }
+        toast.error(getApiErrorMessage(err, "Failed to generate API key"));
+      },
     });
   };
 
@@ -83,6 +99,20 @@ export default function MerchantApiKeys() {
           <Plus className="w-4 h-4 mr-2" />Generate Key
         </Button>
       </div>
+
+      {planBlocked && (
+        <Alert className="border-violet-500/40 bg-violet-950/20">
+          <Lock className="w-4 h-4 text-violet-400" />
+          <AlertDescription className="text-violet-300/90 flex items-center justify-between gap-4 flex-wrap">
+            <span>API key access is not included in your current plan. Upgrade to generate and manage API keys.</span>
+            <Link href="/merchant/plan">
+              <Button size="sm" variant="outline" className="border-violet-500/40 text-violet-300 hover:bg-violet-500/10 shrink-0">
+                View Plans <ArrowUpRight className="w-3.5 h-3.5 ml-1.5" />
+              </Button>
+            </Link>
+          </AlertDescription>
+        </Alert>
+      )}
 
       <Alert className="border-amber-500/30 bg-amber-500/5">
         <AlertTriangle className="w-4 h-4 text-amber-500" />
@@ -210,6 +240,33 @@ export default function MerchantApiKeys() {
         onConfirm={doRevoke}
         loading={revokeMutation.isPending}
       />
+
+      {/* Upgrade Required Modal */}
+      <Dialog open={upgradeOpen} onOpenChange={setUpgradeOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Lock className="w-5 h-5 text-violet-400" />
+              Upgrade Required
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-1">
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              API key access is not included in your current plan. Upgrade to a higher plan to generate and manage API keys for your integrations.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <Button variant="outline" onClick={() => setUpgradeOpen(false)}>
+                Cancel
+              </Button>
+              <Link href="/merchant/plan">
+                <Button className="bg-violet-600 hover:bg-violet-500 text-white" onClick={() => setUpgradeOpen(false)}>
+                  View Plans <ArrowUpRight className="w-4 h-4 ml-1.5" />
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* New Key Reveal Dialog */}
       <Dialog open={!!newKey} onOpenChange={() => setNewKey(null)}>
