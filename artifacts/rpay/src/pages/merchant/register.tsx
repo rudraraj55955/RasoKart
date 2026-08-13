@@ -24,11 +24,6 @@ const emailVerifySchema = z.object({
 });
 type EmailVerifyValues = z.infer<typeof emailVerifySchema>;
 
-const otpVerifySchema = z.object({
-  otp: z.string().length(6, "Enter the 6-digit verification code"),
-});
-type OtpVerifyValues = z.infer<typeof otpVerifySchema>;
-
 // ---------- Step 1: main registration form ----------
 
 const registerSchema = z.object({
@@ -62,23 +57,23 @@ export default function MerchantRegister() {
   const [submitting, setSubmitting] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // OTP stage: plain useState — NOT React Hook Form.
+  // RHF schedules value updates asynchronously; before the commit lands React
+  // resets input.value to the stale field.value, swallowing each keypress on
+  // mobile. Plain useState updates synchronously inside the same event handler.
+  const [otp, setOtp] = useState("");
+  const [otpError, setOtpError] = useState("");
+
   useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
 
   const emailForm = useForm<EmailVerifyValues>({
     resolver: zodResolver(emailVerifySchema),
     defaultValues: { email: "" },
   });
-  const otpForm = useForm<OtpVerifyValues>({
-    resolver: zodResolver(otpVerifySchema),
-    defaultValues: { otp: "" },
-  });
   const registerForm = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
     defaultValues: { businessName: "", contactName: "", phone: "", website: "", password: "" },
   });
-
-  // Watch OTP value so the Verify button stays disabled until 6 digits are entered.
-  const otpValue = otpForm.watch("otp");
 
   const startCooldown = () => {
     setResendIn(RESEND_COOLDOWN_SECONDS);
@@ -105,7 +100,8 @@ export default function MerchantRegister() {
       }
       setVerifiedEmail(data.email.trim().toLowerCase());
       setStage("otp");
-      otpForm.reset();
+      setOtp("");
+      setOtpError("");
       startCooldown();
       toast.success("A verification code has been sent to your email.");
     } catch {
@@ -128,7 +124,8 @@ export default function MerchantRegister() {
         toast.error("Too many requests. Please wait.");
         return;
       }
-      otpForm.setValue("otp", "");
+      setOtp("");
+      setOtpError("");
       startCooldown();
       toast.success("A new code has been sent.");
     } catch {
@@ -138,15 +135,21 @@ export default function MerchantRegister() {
     }
   };
 
-  const verifyOtp = async (data: OtpVerifyValues) => {
+  // verifyOtp uses the local `otp` state directly — no RHF involved.
+  const verifyOtp = async () => {
+    if (otp.length !== 6) {
+      setOtpError("Enter the 6-digit verification code");
+      return;
+    }
     setVerifying(true);
+    setOtpError("");
     try {
       const r = await fetch(`${apiBase()}/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email: verifiedEmail,
-          emailOtp: data.otp,
+          emailOtp: otp,
           password: "__probe__",
           businessName: "__probe__",
           contactName: "__probe__",
@@ -157,7 +160,7 @@ export default function MerchantRegister() {
 
       if (r.status === 400 && (body as any)?.error?.toLowerCase().includes("verification code")) {
         toast.error((body as any).error);
-        otpForm.setValue("otp", "");
+        setOtp("");
         return;
       }
 
@@ -166,7 +169,7 @@ export default function MerchantRegister() {
         return;
       }
 
-      setVerifiedOtp(data.otp);
+      setVerifiedOtp(otp);
       setStage("registration");
     } catch {
       toast.error("Network error. Please try again.");
@@ -254,75 +257,80 @@ export default function MerchantRegister() {
   if (stage === "otp") {
     return (
       <AuthLayout title="Apply for RasoKart" subtitle="Verify your email">
-        <Form {...otpForm}>
-          <form onSubmit={otpForm.handleSubmit(verifyOtp)} className="space-y-5">
-            <p className="text-sm text-muted-foreground">
-              Enter the 6-digit code sent to{" "}
-              <span className="font-medium text-foreground">{verifiedEmail}</span>. It expires in 5 minutes.
-            </p>
-            <FormField
-              control={otpForm.control}
-              name="otp"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Verification code</FormLabel>
-                  <FormControl>
-                    {/*
-                     * Single native <input> — intentionally NOT OtpCodeInput.
-                     * OtpCodeInput splits into 6 DOM nodes and uses programmatic
-                     * focus() to advance between them. iOS Safari does not honour
-                     * focus() calls that fire outside a synchronous user-gesture
-                     * stack, so React's re-render between digits dismisses the
-                     * keyboard. A single input with autoComplete="one-time-code"
-                     * and inputMode="numeric" works natively on all mobile browsers.
-                     */}
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      autoComplete="one-time-code"
-                      pattern="[0-9]*"
-                      maxLength={6}
-                      placeholder="123456"
-                      autoFocus
-                      disabled={verifying}
-                      className="flex h-14 w-full rounded-md border border-input bg-transparent px-4 py-2 text-center text-2xl font-mono tracking-[0.5em] shadow-sm transition-colors placeholder:text-muted-foreground/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                      name={field.name}
-                      ref={field.ref}
-                      value={field.value}
-                      onBlur={field.onBlur}
-                      onChange={(e) => {
-                        // Strip anything that isn't a digit; cap at 6 characters.
-                        const digits = e.target.value.replace(/\D/g, "").slice(0, 6);
-                        field.onChange(digits);
-                      }}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
+        {/*
+         * OTP stage uses plain React state (useState), NOT React Hook Form.
+         *
+         * Root cause of previous failures:
+         *   RHF controlled inputs (value={field.value}) update asynchronously.
+         *   On mobile, before RHF's internal state commit resolves, React sees
+         *   the old field.value and resets input.value — swallowing every digit.
+         *
+         * Fix:
+         *   setOtp() updates synchronously inside the same onChange event,
+         *   so the DOM value and React state are always in agreement.
+         *   type="tel" + inputMode="numeric" is the most reliable combination
+         *   for opening the numeric pad on all mobile browsers (iOS + Android).
+         */}
+        <form
+          className="space-y-5"
+          onSubmit={(e) => {
+            e.preventDefault();
+            verifyOtp();
+          }}
+        >
+          <p className="text-sm text-muted-foreground">
+            Enter the 6-digit code sent to{" "}
+            <span className="font-medium text-foreground">{verifiedEmail}</span>. It expires in 5 minutes.
+          </p>
+
+          <div className="space-y-1.5">
+            <label htmlFor="otp-input" className="text-sm font-medium leading-none">
+              Verification code
+            </label>
+            <input
+              id="otp-input"
+              type="tel"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              placeholder="123456"
+              autoFocus
+              disabled={verifying}
+              value={otp}
+              onChange={(e) => {
+                const val = e.currentTarget.value.replace(/\D/g, "").slice(0, 6);
+                setOtp(val);
+                if (otpError) setOtpError("");
+              }}
+              className="flex h-14 w-full rounded-md border border-input bg-transparent px-4 py-2 text-center text-2xl font-mono tracking-[0.5em] shadow-sm transition-colors placeholder:text-muted-foreground/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
             />
-            <Button type="submit" className="w-full" disabled={verifying || (otpValue?.length ?? 0) < 6}>
-              {verifying ? "Verifying…" : "Verify email"}
-            </Button>
-            <div className="flex items-center justify-between text-sm">
-              <button
-                type="button"
-                className="text-muted-foreground hover:text-foreground transition-colors"
-                onClick={() => setStage("email")}
-              >
-                Change email
-              </button>
-              <button
-                type="button"
-                className="text-primary hover:underline disabled:text-muted-foreground disabled:no-underline disabled:cursor-not-allowed"
-                disabled={resendIn > 0 || resending}
-                onClick={resendOtp}
-              >
-                {resendIn > 0 ? `Resend in ${resendIn}s` : "Resend code"}
-              </button>
-            </div>
-          </form>
-        </Form>
+            {otpError && (
+              <p className="text-sm font-medium text-destructive">{otpError}</p>
+            )}
+          </div>
+
+          <Button type="submit" className="w-full" disabled={verifying || otp.length < 6}>
+            {verifying ? "Verifying…" : "Verify email"}
+          </Button>
+
+          <div className="flex items-center justify-between text-sm">
+            <button
+              type="button"
+              className="text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() => setStage("email")}
+            >
+              Change email
+            </button>
+            <button
+              type="button"
+              className="text-primary hover:underline disabled:text-muted-foreground disabled:no-underline disabled:cursor-not-allowed"
+              disabled={resendIn > 0 || resending}
+              onClick={resendOtp}
+            >
+              {resendIn > 0 ? `Resend in ${resendIn}s` : "Resend code"}
+            </button>
+          </div>
+        </form>
       </AuthLayout>
     );
   }
