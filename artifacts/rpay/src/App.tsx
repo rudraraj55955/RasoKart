@@ -492,6 +492,10 @@ function Router() {
       <Route path="/merchant/get-started"><Redirect to="/merchant/apply" /></Route>
       <Route path="/merchant/onboard"><Redirect to="/merchant/apply" /></Route>
       <Route path="/merchant/open-account"><Redirect to="/merchant/apply" /></Route>
+      <Route path="/signup-now"><Redirect to="/merchant/apply" /></Route>
+      <Route path="/get-started"><Redirect to="/merchant/apply" /></Route>
+      <Route path="/onboard"><Redirect to="/merchant/apply" /></Route>
+      <Route path="/open-account"><Redirect to="/merchant/apply" /></Route>
 
       {/* Admin Routes */}
       <Route path="/admin/dashboard"><AdminRoute component={AdminDashboard} /></Route>
