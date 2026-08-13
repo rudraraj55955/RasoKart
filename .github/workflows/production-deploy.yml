@@ -145,6 +145,20 @@ jobs:
       - name: Schema-guard coverage (every Drizzle table must have a CREATE TABLE IF NOT EXISTS guard)
         run: pnpm --filter @workspace/scripts run schema-guard-coverage
 
+      - name: Schema-guard column diff (every Drizzle column must have a guard; no DROP COLUMN may target a live column)
+        # Runs three checks in one pass:
+        #   1. Forward: every column in the Drizzle schema must be covered by a
+        #      CREATE TABLE or ALTER TABLE ADD COLUMN guard in schemaGuard.ts /
+        #      db-migrate.ts. A missing guard causes "column does not exist" on a
+        #      fresh-DB deploy.
+        #   2. Reverse: every ALTER TABLE ADD COLUMN claim must reference a column
+        #      that actually exists — stale/typo'd guards silently become no-ops.
+        #   3. Drop-check: no ALTER TABLE DROP COLUMN IF EXISTS guard may name a
+        #      column that is still present in the Drizzle schema (or CREATE TABLE
+        #      body for schemaGuard-only tables). A stale DROP COLUMN line will
+        #      silently delete a live column on the next deploy or fresh-DB startup.
+        run: pnpm --filter @workspace/scripts run schema-guard-column-diff
+
       - name: Build (libs + all artifacts - includes API + frontend build)
         run: pnpm run build
         env:
