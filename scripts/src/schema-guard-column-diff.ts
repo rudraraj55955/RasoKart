@@ -291,6 +291,37 @@ export function collectCreateTableColumns(source: string): Map<string, Set<strin
   return result;
 }
 /**
+ * Returns every ALTER TABLE <table> DROP COLUMN IF EXISTS <col> claim found
+ * in the source text, preserving the 1-based line number of the match for
+ * diagnostics.
+ *
+ * The regex is applied over the FULL source (not line-by-line) so that
+ * multiline ALTER TABLE statements are also captured.
+ */
+export function collectAlterTableDropClaims(
+  source: string
+): Array<{ table: string; col: string; lineNo: number }> {
+  const claims: Array<{ table: string; col: string; lineNo: number }> = [];
+
+  // \s+ between tokens allows the regex to span line breaks.
+  // Flags: g = find all matches, i = case-insensitive.
+  const dropRe =
+    /ALTER\s+TABLE\s+["']?(\w+)["']?\s+DROP\s+COLUMN\s+IF\s+EXISTS\s+"?(\w+)"?/gi;
+
+  let m: RegExpExecArray | null;
+  while ((m = dropRe.exec(source)) !== null) {
+    // Derive the 1-based line number from the byte offset of the match.
+    const lineNo = source.slice(0, m.index).split("\n").length;
+    claims.push({
+      table: m[1].toLowerCase(),
+      col: m[2].toLowerCase(),
+      lineNo,
+    });
+  }
+  return claims;
+}
+
+/**
  * Returns every ALTER TABLE <table> ADD COLUMN IF NOT EXISTS <col> claim found
  * in the source text, preserving the 1-based line number of the match for
  * diagnostics.
@@ -454,7 +485,80 @@ function main(): void {
     console.error();
   }
 
-  if (!forwardOk || !reverseOk) {
+  // ── Drop check: no DROP COLUMN guard may name a column still in the schema ─
+  //
+  // An ALTER TABLE … DROP COLUMN IF EXISTS line whose column still exists in
+  // the Drizzle schema (or in the CREATE TABLE body for schemaGuard-only
+  // tables) will silently delete a live column on the next deploy or fresh-DB
+  // startup, producing "column does not exist" runtime errors.
+  //
+  // Two cases are covered:
+  //   1. Drizzle-tracked tables: the column must NOT exist in the Drizzle schema.
+  //   2. schemaGuard-only tables: the column must NOT appear in the CREATE TABLE
+  //      body in schemaGuard.ts or db-migrate.ts.
+
+  console.log(
+    "\nschema-guard-drop-column-check: verifying ALTER TABLE DROP COLUMN claims...\n"
+  );
+
+  const liveDrop: Array<{
+    file: string;
+    table: string;
+    col: string;
+    lineNo: number;
+  }> = [];
+
+  for (const [filePath, label] of filesToCheck) {
+    if (!fs.existsSync(filePath)) continue;
+    const source = fs.readFileSync(filePath, "utf8");
+    const drops = collectAlterTableDropClaims(source);
+
+    for (const { table, col, lineNo } of drops) {
+      const drizzleCols = drizzleLower.get(table);
+      if (!drizzleCols) {
+        // schemaGuard-only table — check CREATE TABLE body.
+        const ctCols = createTableCols.get(table);
+        if (ctCols && ctCols.has(col)) {
+          liveDrop.push({ file: label, table, col, lineNo });
+        }
+        continue;
+      }
+      // Drizzle-tracked table — the column must no longer be in the schema.
+      if (drizzleCols.has(col)) {
+        liveDrop.push({ file: label, table, col, lineNo });
+      }
+    }
+  }
+
+  let dropOk = true;
+  if (liveDrop.length === 0) {
+    console.log(
+      "✓ All ALTER TABLE DROP COLUMN IF EXISTS guards name columns that are no longer\n" +
+        "  in the Drizzle schema (or CREATE TABLE body for schemaGuard-only tables)."
+    );
+  } else {
+    dropOk = false;
+    console.error(
+      `✗ Found ${liveDrop.length} DROP COLUMN guard(s) targeting a column that is still live:\n`
+    );
+    console.error(
+      "  These guards will silently delete a live column on the next deploy or\n" +
+        "  fresh-DB startup, causing runtime 'column does not exist' errors.\n" +
+        "  Remove the DROP COLUMN line, or first remove the column from the Drizzle\n" +
+        "  schema (and the CREATE TABLE body for schemaGuard-only tables).\n" +
+        "  • For Drizzle-tracked tables: the column must be absent from the Drizzle schema.\n" +
+        "  • For schemaGuard-only tables: the column must be absent from the CREATE TABLE body\n" +
+        "    in schemaGuard.ts or db-migrate.ts.\n"
+    );
+    for (const { file, table, col, lineNo } of liveDrop) {
+      console.error(
+        `  ${file}:${lineNo}  ALTER TABLE ${table} DROP COLUMN IF EXISTS ${col}  ← column is still live in the schema`
+      );
+    }
+    console.error();
+  }
+
+  if (!forwardOk || !reverseOk || !dropOk) {
     process.exit(1);
   }
 }
