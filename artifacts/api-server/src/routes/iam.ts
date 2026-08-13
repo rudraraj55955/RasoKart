@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db, usersTable, iamMigrationLogTable, rolePermissionsTable, userPermissionsTable, permissionsTable, auditLogsTable } from "@workspace/db";
 import { eq, and, count, desc, like, ilike, or } from "drizzle-orm";
 import { requireAuth, requireAdmin, requirePermission } from "../middlewares/auth";
-import { ALL_PERMISSION_KEYS, PERMISSIONS, ROLE_DEFAULT_PERMISSIONS, SUPER_ADMIN_ONLY_PERMISSIONS } from "../permissions";
+import { ALL_PERMISSION_KEYS, PERMISSIONS, ROLE_DEFAULT_PERMISSIONS, SUPER_ADMIN_ONLY_PERMISSIONS, SUPER_ADMIN_ONLY_LOCK_REASONS } from "../permissions";
 
 const router = Router();
 
@@ -44,6 +44,9 @@ router.get(
             isSuperAdminOnly: r.isSuperAdminOnly,
             category: r.category,
             description: r.description ?? null,
+            lockedReason: r.isSuperAdminOnly
+              ? (SUPER_ADMIN_ONLY_LOCK_REASONS[r.key] ?? "Super Admin-only: access is enforced at the system level (isSuperAdmin=true).")
+              : null,
           })),
           total: dbRows.length,
           source: "db",
@@ -51,12 +54,18 @@ router.get(
         return;
       }
       // Fallback to code catalog when DB catalog not yet seeded
-      const keys = ALL_PERMISSION_KEYS.map((k) => ({
-        key: k,
-        isSuperAdminOnly: SUPER_ADMIN_ONLY_PERMISSIONS.has(k),
-        category: k.split("_")[0],
-        description: null,
-      }));
+      const keys = ALL_PERMISSION_KEYS.map((k) => {
+        const isSAOnly = SUPER_ADMIN_ONLY_PERMISSIONS.has(k);
+        return {
+          key: k,
+          isSuperAdminOnly: isSAOnly,
+          category: k.split("_")[0],
+          description: null,
+          lockedReason: isSAOnly
+            ? (SUPER_ADMIN_ONLY_LOCK_REASONS[k] ?? "Super Admin-only: access is enforced at the system level (isSuperAdmin=true).")
+            : null,
+        };
+      });
       res.json({ permissions: keys, total: keys.length, source: "code" });
     } catch (err) {
       next(err);
@@ -458,6 +467,14 @@ router.put(
       return;
     }
     try {
+      // Capture current value before update — required for audit old/new trail
+      const [existingTemplate] = await db
+        .select({ isEnabled: rolePermissionsTable.isEnabled })
+        .from(rolePermissionsTable)
+        .where(and(eq(rolePermissionsTable.role, role), eq(rolePermissionsTable.permissionKey, permissionKey)))
+        .limit(1);
+      const oldValue = existingTemplate?.isEnabled ?? null;
+
       await db
         .insert(rolePermissionsTable)
         .values({ role, permissionKey, isEnabled, updatedByUserId: user.id })
@@ -469,11 +486,12 @@ router.put(
       await writeAuditLog(req, "iam_role_template_updated", "iam_role_template", null, {
         role,
         permissionKey,
-        isEnabled,
+        oldValue,
+        newValue: isEnabled,
         updatedBy: user.email,
       });
 
-      req.log.info({ role, permissionKey, isEnabled, updatedBy: user.email }, "iam_role_template_updated");
+      req.log.info({ role, permissionKey, oldValue, newValue: isEnabled, updatedBy: user.email }, "iam_role_template_updated");
       res.json({ ok: true, role, permissionKey, isEnabled });
     } catch (err) {
       next(err);
@@ -681,6 +699,15 @@ router.put(
         return;
       }
 
+      // Guard: Never allow overrides on Super Admin users (same rule as per-key endpoint)
+      if (targetUser.isSuperAdmin) {
+        res.status(403).json({
+          error: "Cannot set permission overrides for a Super Admin user. SA access is absolute and code-level — per-user overrides are never evaluated for SA users.",
+          userId,
+        });
+        return;
+      }
+
       // Guard: SA-only and cross-role escalation checks (same rules as per-key endpoint)
       for (const [key, effect] of entries) {
         if (effect === "ALLOW" && !targetUser.isSuperAdmin) {
@@ -795,6 +822,18 @@ router.put(
         return;
       }
 
+      // ── Super Admin override guard ────────────────────────────────────────
+      // SA access is determined solely by isSuperAdmin=true at the resolver
+      // level — overrides are never evaluated for SA users. Blocking writes
+      // here keeps the DB clean and makes the invariant explicit.
+      if (targetUser.isSuperAdmin) {
+        res.status(403).json({
+          error: "Cannot set permission overrides for a Super Admin user. SA access is absolute and code-level — per-user overrides are never evaluated for SA users and would have no effect.",
+          userId,
+        });
+        return;
+      }
+
       // ── Role max-scope guard ──────────────────────────────────────────────
       // Block ALLOW grants that escalate beyond the target user's role boundary.
       // Rule 1: SA-only permissions can never be ALLOWed for non-SA users.
@@ -825,6 +864,14 @@ router.put(
         }
       }
 
+      // Capture existing override for audit old/new trail
+      const [existingOverride] = await db
+        .select({ effect: userPermissionsTable.effect })
+        .from(userPermissionsTable)
+        .where(and(eq(userPermissionsTable.userId, userId), eq(userPermissionsTable.permissionKey, permissionKey)))
+        .limit(1);
+      const oldEffect = existingOverride?.effect ?? null;
+
       await db
         .insert(userPermissionsTable)
         .values({ userId, permissionKey, effect, updatedByUserId: callerUser.id })
@@ -836,7 +883,8 @@ router.put(
       await writeAuditLog(req, "iam_user_override_set", "user", userId, {
         targetEmail: targetUser.email,
         permissionKey,
-        effect,
+        oldEffect,
+        newEffect: effect,
         callerEmail: callerUser.email,
       });
 
@@ -873,6 +921,26 @@ router.delete(
     }
 
     try {
+      // Guard: Never allow override removal on SA users — they have no overrides
+      const [targetUser] = await db
+        .select({ id: usersTable.id, email: usersTable.email, isSuperAdmin: usersTable.isSuperAdmin })
+        .from(usersTable)
+        .where(eq(usersTable.id, userId))
+        .limit(1);
+
+      if (!targetUser) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
+
+      if (targetUser.isSuperAdmin) {
+        res.status(403).json({
+          error: "Cannot remove permission overrides for a Super Admin user. SA users have no overrides — their access is code-level.",
+          userId,
+        });
+        return;
+      }
+
       await db
         .delete(userPermissionsTable)
         .where(
@@ -884,6 +952,7 @@ router.delete(
 
       await writeAuditLog(req, "iam_user_override_removed", "user", userId, {
         permissionKey,
+        targetEmail: targetUser.email,
         callerEmail: callerUser.email,
       });
 
@@ -937,6 +1006,38 @@ router.get(
     } catch (err) {
       next(err);
     }
+  },
+);
+
+// ── GET /api/iam/super-admin/status ────────────────────────────────────────
+// Verifies that the Super Admin bypass is active for the calling SA user.
+// Provides machine-readable confirmation that SA authority is code-level
+// and unaffected by any IAM migration, rollback, or permission override.
+// Super Admin only. Use this endpoint to verify SA safety after any IAM change.
+router.get(
+  "/super-admin/status",
+  requireAuth,
+  requireAdmin,
+  async (req, res) => {
+    const user = (req as any).user;
+    if (!user.isSuperAdmin) {
+      res.status(403).json({ error: "Only Super Admin can access the SA safety status endpoint" });
+      return;
+    }
+    res.json({
+      superAdminActive: true,
+      userId: user.id,
+      email: user.email,
+      bypassMechanism: "isSuperAdmin=true → resolveUserPermissions returns {__all__:true}",
+      overridesEvaluated: false,
+      rolePermissionsEvaluated: false,
+      migrationRollbackImpact: "none — SA bypass is code-level, not DB-dependent",
+      totalCatalogPermissions: ALL_PERMISSION_KEYS.length,
+      saOnlyPermissions: SUPER_ADMIN_ONLY_PERMISSIONS.size,
+      enforcement: "code-level in permissionResolver.ts — cannot be modified via IAM UI",
+      selfLockoutPossible: false,
+      emergencyRecovery: "If isSuperAdmin is accidentally unset in DB, restore via: UPDATE users SET is_super_admin = true WHERE email = '<your_admin_email>';",
+    });
   },
 );
 

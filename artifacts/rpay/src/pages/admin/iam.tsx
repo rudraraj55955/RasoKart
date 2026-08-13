@@ -130,7 +130,7 @@ function RoleTemplatesPanel() {
   for (const r of ((rolesData as any)?.roles ?? []) as RolePermMap[]) {
     roleMap[r.role] = r.permissions;
   }
-  const catalogKeys: { key: string; isSuperAdminOnly: boolean; category: string }[] = (catalogData as any)?.permissions ?? [];
+  const catalogKeys: { key: string; isSuperAdminOnly: boolean; category: string; lockedReason?: string | null }[] = (catalogData as any)?.permissions ?? [];
   const categories = Array.from(new Set(catalogKeys.map((k) => k.category)));
 
   const activePerms = roleMap[activeRole] ?? {};
@@ -189,7 +189,11 @@ function RoleTemplatesPanel() {
                           return (
                             <div key={k.key} className="flex items-center justify-between gap-3 min-h-[48px] py-1 border-b border-white/5 last:border-0">
                               <div className="flex items-center gap-2 min-w-0">
-                                {k.isSuperAdminOnly && <Lock className="w-3 h-3 text-amber-400 shrink-0" />}
+                                {k.isSuperAdminOnly && (
+                                  <span title={k.lockedReason ?? "Super Admin-only permission"} className="cursor-help">
+                                    <Lock className="w-3 h-3 text-amber-400 shrink-0" />
+                                  </span>
+                                )}
                                 <span className="text-xs font-mono truncate text-muted-foreground">{k.key}</span>
                               </div>
                               <Switch

@@ -95,9 +95,11 @@ export const PERMISSIONS = {
   AGENT_COMMISSION: "agent_commission",
   AGENT_PROFILE:    "agent_profile",
 
-  // ── Granular Razorpay ops (Super Admin only by default) ──────────────────
-  // These allow non-SA admins to be granted targeted Razorpay access via IAM.
-  // The umbrella ADMIN_RAZORPAY key (above) also grants all of these for SA.
+  // ── Granular Razorpay ops (Super Admin only — platform policy) ───────────
+  // Intentionally SA-only via SUPER_ADMIN_ONLY_PERMISSIONS (see below).
+  // Non-SA users CANNOT be granted these keys via per-user IAM override —
+  // the ALLOW guard in routes/iam.ts explicitly blocks it.
+  // The umbrella ADMIN_RAZORPAY key (above) is also strictly SA-only.
   RAZORPAY_CAPABILITIES_VIEW:       "razorpay_capabilities_view",
   RAZORPAY_CAPABILITIES_TEST:       "razorpay_capabilities_test",
   RAZORPAY_SETTINGS_VIEW:           "razorpay_settings_view",
@@ -150,6 +152,63 @@ export const SUPER_ADMIN_ONLY_PERMISSIONS: Set<string> = new Set([
   PERMISSIONS.RAZORPAY_REFUNDS_VIEW,
   PERMISSIONS.RAZORPAY_REFUNDS_MANAGE,
 ]);
+
+/**
+ * Human-readable explanation for why each SA-only permission is locked.
+ * Exposed via GET /api/iam/permissions as `lockedReason` so the IAM UI
+ * can display a tooltip explaining the restriction. Keys absent from this
+ * map fall back to the generic SA-only message.
+ *
+ * Razorpay granular keys: locked by platform policy (NOT provider-connection
+ * gated, NOT feature/license gated). Non-SA users cannot be granted these
+ * via per-user ALLOW override — the route-level guard explicitly blocks it.
+ */
+export const SUPER_ADMIN_ONLY_LOCK_REASONS: Record<string, string> = {
+  [PERMISSIONS.ADMIN_COMPANY_BRANDING]:
+    "Platform-wide white-label branding affects all merchant-facing surfaces. Restricted to Super Admin.",
+  [PERMISSIONS.ADMIN_DATA_HYGIENE]:
+    "Irreversible bulk data deletion. Restricted to Super Admin.",
+  [PERMISSIONS.ADMIN_RAZORPAY]:
+    "Razorpay account-level configuration. Restricted to Super Admin.",
+  [PERMISSIONS.ADMIN_SOCIAL_PROVIDERS]:
+    "OAuth provider (Google/GitHub) configuration for the auth system. Restricted to Super Admin.",
+  [PERMISSIONS.ADMIN_SECURE_ID]:
+    "Secure ID / DigiLocker KYC provider settings. Restricted to Super Admin.",
+  [PERMISSIONS.ADMIN_OTP_SETTINGS]:
+    "Authentication OTP & SMS factor settings. Restricted to Super Admin.",
+  [PERMISSIONS.ADMIN_PLATFORM_PROFIT]:
+    "Platform profit margin configuration. Restricted to Super Admin.",
+  [PERMISSIONS.IAM_READ]:
+    "IAM control panel visibility. Strictly SA-only — cannot be delegated via per-user override.",
+  [PERMISSIONS.IAM_MANAGE]:
+    "IAM write access — modifies role templates and user overrides. Strictly SA-only; cannot be delegated.",
+  // ── Granular Razorpay ops ────────────────────────────────────────────────
+  // NOT provider-connection gated, NOT feature/license gated.
+  // Restricted by deliberate platform security policy. Non-SA cannot receive
+  // these via IAM override — the ALLOW guard in routes/iam.ts blocks it.
+  [PERMISSIONS.RAZORPAY_CAPABILITIES_VIEW]:
+    "Razorpay merchant capabilities list. SA-only by platform policy (not provider-gated).",
+  [PERMISSIONS.RAZORPAY_CAPABILITIES_TEST]:
+    "Razorpay capability activation test — triggers live Razorpay API calls. SA-only by platform policy.",
+  [PERMISSIONS.RAZORPAY_SETTINGS_VIEW]:
+    "Razorpay account settings contain sensitive provider config. SA-only by platform policy.",
+  [PERMISSIONS.RAZORPAY_SETTINGS_MANAGE]:
+    "Razorpay account settings modification. SA-only by platform policy.",
+  [PERMISSIONS.RAZORPAY_ANALYTICS_VIEW]:
+    "Razorpay analytics data. SA-only by platform policy.",
+  [PERMISSIONS.RAZORPAY_WEBHOOKS_VIEW]:
+    "Razorpay webhook configuration view. SA-only by platform policy.",
+  [PERMISSIONS.RAZORPAY_WEBHOOKS_REPROCESS]:
+    "Razorpay webhook reprocessing — triggers live API calls. SA-only by platform policy.",
+  [PERMISSIONS.RAZORPAY_RECONCILIATION_VIEW]:
+    "Razorpay reconciliation data. SA-only by platform policy.",
+  [PERMISSIONS.RAZORPAY_RECONCILIATION_MANAGE]:
+    "Razorpay reconciliation management. SA-only by platform policy.",
+  [PERMISSIONS.RAZORPAY_REFUNDS_VIEW]:
+    "Razorpay refund data. SA-only by platform policy.",
+  [PERMISSIONS.RAZORPAY_REFUNDS_MANAGE]:
+    "Razorpay refund management. SA-only by platform policy.",
+};
 
 /**
  * Canonical roles in the RasoKart IAM system — the 6-entity model:

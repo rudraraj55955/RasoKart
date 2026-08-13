@@ -49,7 +49,13 @@ export async function resolveUserPermissions(
   user: { id: number; role: string; isSuperAdmin: boolean },
   res?: Response,
 ): Promise<ResolvedPermissions> {
-  // Super Admin bypasses all permission checks entirely
+  // ── Super Admin absolute bypass ─────────────────────────────────────────
+  // INVARIANT: This must always be the FIRST check and must NEVER be removed,
+  // conditioned, or moved below any DB query. Super Admin authority is the
+  // highest in the system. SA access is code-level only — it does NOT depend
+  // on role_permissions rows, user_permissions overrides, or any DB state.
+  // No IAM UI action, no migration rollback, and no permission override can
+  // affect SA access. See permissions.ts for the full role hierarchy comment.
   if (user.isSuperAdmin) return { __all__: true };
 
   // --- Request-local cache check ---
