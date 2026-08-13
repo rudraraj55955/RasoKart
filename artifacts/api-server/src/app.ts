@@ -58,24 +58,53 @@ app.use(
   }),
 );
 
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      // Same-origin / server-to-server requests have no Origin header — allow
-      if (!origin) return callback(null, true);
-      for (const allowed of corsOriginList) {
-        if (typeof allowed === "string" ? allowed === origin : allowed.test(origin)) {
-          return callback(null, true);
-        }
+// ── CORS ─────────────────────────────────────────────────────────────────────
+// Payment gateway callback endpoints (PayU browser-return, S2S webhook) receive
+// cross-origin requests from third-party domains (e.g. secure.payu.in).  A browser
+// form POST from the payment gateway carries Origin: https://secure.payu.in, which
+// the allowlist would reject → next(err) → INTERNAL_ERROR JSON shown to the customer
+// BEFORE the route handler ever runs.  These endpoints secure themselves via
+// SHA-512 hash/signature verification — CORS origin restriction must not block them.
+//
+// Strategy: mount a path-specific bypass middleware BEFORE the global CORS handler.
+// It sets permissive CORS headers and calls next() directly, skipping the allowlist
+// check for the payment callback paths.  All other paths still go through full CORS.
+
+const PAYMENT_CALLBACK_PATHS = new Set([
+  "/api/payment/payu-return",
+  "/api/payment/payu-s2s",
+]);
+
+const apiCors = cors({
+  origin: (origin, callback) => {
+    // Same-origin / server-to-server requests have no Origin header — allow
+    if (!origin) return callback(null, true);
+    for (const allowed of corsOriginList) {
+      if (typeof allowed === "string" ? allowed === origin : allowed.test(origin)) {
+        return callback(null, true);
       }
-      logger.warn({ origin }, "cors_blocked_origin");
-      return callback(new Error("Not allowed by CORS"));
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
-  }),
-);
+    }
+    logger.warn({ origin }, "cors_blocked_origin");
+    return callback(new Error("Not allowed by CORS"));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+});
+
+app.use((req: Request, res: Response, next: NextFunction) => {
+  if (PAYMENT_CALLBACK_PATHS.has(req.path)) {
+    // Payment gateway callback — allow any origin; security is hash-based in the route handler
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
+    if (req.method === "OPTIONS") {
+      res.status(204).end();
+      return;
+    }
+    return next();
+  }
+  apiCors(req, res, next);
+});
 
 // ── Security headers ─────────────────────────────────────────────────────────
 // Applied to every API response. Nginx adds X-Frame-Options / HSTS / Referrer

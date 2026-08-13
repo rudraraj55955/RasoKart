@@ -296,17 +296,27 @@ router.post("/payu-s2s", async (req, res) => {
   });
 });
 
+// ── GET /api/payment/payu-return ──────────────────────────────────────────────
+// Direct GET (browser refresh, manual URL open) — redirect safely rather than 404.
+router.get("/payu-return", (_req, res) => {
+  res.redirect("/merchant/deposits");
+});
+
 // ── POST /api/payment/payu-return ─────────────────────────────────────────────
 // Browser redirect from PayU (surl / furl). PayU POSTs form data here.
 // After processing, ALWAYS redirect to the merchant portal result page.
 //
-// Critical: this handler MUST never return JSON (including INTERNAL_ERROR) to the
-// customer's browser after a real payment. Express 5 auto-catches unhandled async
-// rejections and sends the global error handler's JSON — so the entire handler body
-// is wrapped in try/catch to guarantee a redirect in all cases.
+// Why try/catch wraps the ENTIRE body: Express 5 auto-catches unhandled async
+// rejections from async route handlers and passes them to the global error handler,
+// which returns INTERNAL_ERROR JSON to the browser — even after a valid payment.
+//
+// Additional safety: req.body is defaulted to {} so that missing/mismatched
+// Content-Type (body parser no-op) cannot throw before the try/catch runs.
 
 router.post("/payu-return", async (req, res) => {
-  const body       = req.body as Record<string, string>;
+  // Default to empty object when body parser didn't run (wrong Content-Type, etc.)
+  const body      = (typeof req.body === "object" && req.body !== null
+    ? req.body : {}) as Record<string, string>;
   const rawPayload = JSON.stringify(body);
   const txnid      = body["txnid"] ?? "";
   const statusRaw  = (body["status"] ?? "").toUpperCase();
