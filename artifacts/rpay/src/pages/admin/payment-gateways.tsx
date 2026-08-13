@@ -231,6 +231,7 @@ function PayuPanel() {
   const [minAmount, setMinAmount]         = useState("1");
   const [maxAmount, setMaxAmount]         = useState("200000");
   const [dailyLimit, setDailyLimit]       = useState("1000000");
+  const [webhookUrlInput, setWebhookUrlInput] = useState("");
   // Loading states
   const [saving, setSaving]               = useState(false);
   const [savingUatCreds, setSavingUatCreds]   = useState(false);
@@ -249,6 +250,7 @@ function PayuPanel() {
         if (!initialized) {
           setEnabled(d.isEnabled ?? false);
           setActiveEnv(d.environment ?? "uat");
+          setWebhookUrlInput(d.webhookUrl ?? "");
           setInitialized(true);
         }
       })
@@ -306,6 +308,7 @@ function PayuPanel() {
           minAmount: parseFloat(minAmount) || 1,
           maxAmount: parseFloat(maxAmount) || 200000,
           dailyLimit: parseFloat(dailyLimit) || 1000000,
+          webhookUrl: webhookUrlInput.trim(),
         }),
       });
       const d = await r.json();
@@ -746,6 +749,20 @@ function PayuPanel() {
             <Label className="text-xs">Daily Limit (₹)</Label>
             <Input type="number" value={dailyLimit} onChange={e => setDailyLimit(e.target.value)} className="h-8 text-xs" />
           </div>
+        </div>
+
+        {/* Webhook URL — required for Step 4 of live activation */}
+        <div className="space-y-1.5">
+          <Label className="text-xs">S2S Webhook URL</Label>
+          <Input
+            className="h-8 text-xs font-mono"
+            value={webhookUrlInput}
+            onChange={e => setWebhookUrlInput(e.target.value)}
+            placeholder="https://rasokart.com/api/payment/payu-s2s"
+          />
+          <p className="text-[10px] text-muted-foreground">
+            PayU server-to-server callback — required for live activation Step 4. Configure the same URL in your PayU merchant dashboard.
+          </p>
         </div>
 
         <Button onClick={() => saveSettings()} disabled={saving} size="sm">

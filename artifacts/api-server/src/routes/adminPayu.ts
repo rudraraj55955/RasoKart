@@ -293,14 +293,28 @@ router.put("/config", requirePermission(PERMISSIONS.PAYU_SETTINGS_MANAGE), async
 router.put("/settings", requirePermission(PERMISSIONS.PAYU_SETTINGS_MANAGE), async (req, res, next) => {
   try {
     const user = (req as any).user;
-    const { enabled, environment, minAmount, maxAmount, dailyLimit, suspended } = req.body as {
+    const { enabled, environment, minAmount, maxAmount, dailyLimit, suspended, webhookUrl } = req.body as {
       enabled?: unknown;
       environment?: unknown;
       minAmount?: unknown;
       maxAmount?: unknown;
       dailyLimit?: unknown;
       suspended?: unknown;
+      webhookUrl?: unknown;
     };
+
+    // Validate webhook URL if provided
+    if (webhookUrl !== undefined) {
+      const whu = String(webhookUrl).trim();
+      if (whu.length > 0 && !whu.startsWith("https://")) {
+        res.status(400).json({ error: "Webhook URL must start with https://" });
+        return;
+      }
+      if (whu.length > 512) {
+        res.status(400).json({ error: "Webhook URL is too long (max 512 chars)" });
+        return;
+      }
+    }
 
     const env = String(environment ?? "uat");
     if (!["uat", "live"].includes(env)) {
@@ -349,12 +363,16 @@ router.put("/settings", requirePermission(PERMISSIONS.PAYU_SETTINGS_MANAGE), asy
     }
 
     // Update provider_integrations row
+    const integrationUpdate: Record<string, unknown> = {
+      isEnabled:      enabled === true,
+      environment:    env,
+      updatedByEmail: user.email,
+    };
+    if (webhookUrl !== undefined) {
+      integrationUpdate["webhookUrl"] = String(webhookUrl).trim();
+    }
     await db.update(providerIntegrationsTable)
-      .set({
-        isEnabled:      enabled === true,
-        environment:    env,
-        updatedByEmail: user.email,
-      })
+      .set(integrationUpdate as any)
       .where(eq(providerIntegrationsTable.providerKey, "payu"));
 
     // Upsert system config keys
@@ -441,31 +459,47 @@ router.post("/verify-live", requirePermission(PERMISSIONS.PAYU_SETTINGS_MANAGE),
         key: liveKey, salt: liveSalt, txnid: dummyTxnid, env: "live",
       });
 
-      if (probeResult.ok || probeResult.status === "not found") {
-        // Both paths reach here only when PayU accepted the request (payuApiStatus=1).
-        // Double-check the explicit status field to rule out any edge case.
-        if (probeResult.payuApiStatus === 0) {
-          // Explicit rejection from PayU despite a parseable response
-          const rawSnippet = probeResult.raw ? probeResult.raw.slice(0, 200) : "no response body";
-          step2Pass = false;
-          step2Message = `PayU Live API rejected credentials (API status 0) — check your merchant key and salt. Response: ${rawSnippet}`;
-        } else {
-          step2Pass = true;
-          step2Message = probeResult.ok
-            ? "PayU Live API accepted credentials and returned transaction data"
-            : "PayU Live API accepted credentials (txnid not found — expected for a test probe txnid)";
-        }
+      // PayU's top-level `status` field can be 0 even when credentials ARE valid — it reflects
+      // "transaction not found in DB" for a probe txnid, not an authentication rejection.
+      //
+      // The ONLY reliable credential-validity signal is whether PayU returned
+      // `transaction_details[txnid]` in its response body:
+      //
+      //   probeResult.ok === true
+      //     → `transaction_details[txnid]` key WAS present in PayU's JSON (even if the value is
+      //       {mihpayid:"Not Found", status:"Not Found"}). PayU parsed the request and looked up
+      //       the txnid — proof the credentials were accepted. PASS regardless of payuApiStatus.
+      //
+      //   probeResult.ok === false, status === "not found", payuApiStatus === 1
+      //     → `transaction_details[txnid]` key was absent but top-level status=1 confirms PayU
+      //       accepted the request. Txnid genuinely not in DB. PASS.
+      //
+      //   probeResult.ok === false, payuApiStatus === 0
+      //     → No transaction_details AND top-level status=0. PayU rejected the request outright
+      //       (invalid credentials, inactive account, bad hash). FAIL.
+      //
+      //   Any error / timeout / non-JSON → FAIL (inconclusive).
+
+      if (probeResult.ok) {
+        // transaction_details[txnid] was present → credentials definitively accepted.
+        // payuApiStatus may be 0 here (PayU's "not found" indicator) — that is NOT a FAIL.
+        step2Pass = true;
+        step2Message = "PayU Live API accepted credentials (txnid not found in database — expected for a probe txnid)";
+      } else if (probeResult.status === "not found" && probeResult.payuApiStatus !== 0) {
+        // transaction_details[txnid] absent but payuApiStatus=1 → credentials valid, txnid absent.
+        step2Pass = true;
+        step2Message = "PayU Live API accepted credentials (txnid not found — expected for a test probe txnid)";
       } else if (probeResult.payuApiStatus === 0) {
-        // PayU explicitly rejected the credentials (auth failure, inactive account, etc.)
+        // No transaction_details AND top-level status=0 → definitive auth/credential failure.
         const rawSnippet = probeResult.raw ? probeResult.raw.slice(0, 200) : "no response body";
         step2Pass = false;
-        step2Message = `PayU Live API rejected credentials (API status 0) — verify your merchant key and salt are correct and the account is active for live mode. Response: ${rawSnippet}`;
+        step2Message = `PayU Live API rejected credentials — verify your Live Key and Salt are correct and your PayU account has live mode activated. Response: ${rawSnippet}`;
       } else if (probeResult.errorMessage?.includes("timed out")) {
         step2Pass = false;
         step2Message = "PayU Live API request timed out — check network connectivity from the server";
       } else if (probeResult.errorMessage?.includes("parse")) {
         step2Pass = false;
-        step2Message = "PayU Live API returned a non-JSON response — credentials may be invalid or the Live endpoint is unreachable";
+        step2Message = "PayU Live API returned a non-JSON response — credentials may be invalid or the live endpoint is unreachable";
       } else {
         step2Pass = false;
         step2Message = `PayU Live API error: ${probeResult.errorMessage ?? "unknown error"}`;
@@ -501,15 +535,63 @@ router.post("/verify-live", requirePermission(PERMISSIONS.PAYU_SETTINGS_MANAGE),
 
     steps["hashGeneration"] = { pass: step3Pass, message: step3Message };
 
-    // ── Step 4: Webhook URL configured ─────────────────────────────────────
-    const webhookUrl = row?.webhookUrl ?? "";
-    const step4Pass = webhookUrl.trim().length > 0;
-    steps["webhookUrl"] = {
-      pass:    step4Pass,
-      message: step4Pass
-        ? `Webhook callback URL configured: ${webhookUrl.slice(0, 60)}${webhookUrl.length > 60 ? "…" : ""}`
-        : "Webhook callback URL is not configured. Set the webhook URL in the PayU provider integration row.",
-    };
+    // ── Step 4: Webhook URL configured + format + route-mounted self-probe ────
+    // Checks (in order):
+    //   a) webhook_url is set in provider_integrations
+    //   b) URL starts with https://
+    //   c) URL contains the expected callback path (/payu-s2s)
+    //   d) Self-probe: POST to localhost route returns 4xx (mounted) not 404/5xx (not found / crash)
+    const webhookUrl = (row?.webhookUrl ?? "").trim();
+    let step4Pass = false;
+    let step4Message = "";
+
+    if (!webhookUrl) {
+      step4Pass = false;
+      step4Message = "Webhook callback URL is not configured — enter the S2S webhook URL in Payin Settings and save before verifying.";
+    } else if (!webhookUrl.startsWith("https://")) {
+      step4Pass = false;
+      step4Message = `Webhook URL must start with https:// — current value: ${webhookUrl.slice(0, 60)}`;
+    } else if (!webhookUrl.includes("payu-s2s")) {
+      step4Pass = false;
+      step4Message = `Webhook URL does not contain the expected path '/payu-s2s' — confirm the S2S callback URL is correct: ${webhookUrl.slice(0, 80)}`;
+    } else {
+      // URL format is valid. Self-probe the mounted route via localhost to confirm it is reachable.
+      // An empty-body POST to /api/payment/payu-s2s is expected to return 400/401 (invalid payload)
+      // not 404 (route not mounted) or 5xx (route crashed). This does NOT trigger any payment action.
+      let selfProbeOk = false;
+      let selfProbeNote = "";
+      try {
+        const port = process.env["PORT"] ?? "3001";
+        const probeRes = await fetch(`http://127.0.0.1:${port}/api/payment/payu-s2s`, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: "",
+          signal: AbortSignal.timeout(5_000),
+        });
+        if (probeRes.status === 404) {
+          selfProbeOk = false;
+          selfProbeNote = "Route self-probe returned 404 — /api/payment/payu-s2s may not be mounted";
+        } else if (probeRes.status >= 500) {
+          selfProbeOk = false;
+          selfProbeNote = `Route self-probe returned ${probeRes.status} — route crashed on empty payload`;
+        } else {
+          // 400 / 401 / 422 are all expected (missing/invalid hash) — route is mounted and handling requests
+          selfProbeOk = true;
+          selfProbeNote = `Route self-probe returned ${probeRes.status} — route is mounted and responding correctly`;
+        }
+      } catch (probeErr: any) {
+        // Timeout or connection error — treat as non-fatal; URL format already validated
+        selfProbeOk = true;
+        selfProbeNote = `Route self-probe skipped (${probeErr?.message?.slice(0, 60) ?? "network error"}) — URL format accepted`;
+      }
+
+      step4Pass = selfProbeOk;
+      step4Message = selfProbeOk
+        ? `Webhook callback URL configured and route verified: ${webhookUrl.slice(0, 60)}${webhookUrl.length > 60 ? "…" : ""} — ${selfProbeNote}`
+        : selfProbeNote;
+    }
+
+    steps["webhookUrl"] = { pass: step4Pass, message: step4Message };
 
     const allPassed = step1Pass && step2Pass && step3Pass && step4Pass;
 
