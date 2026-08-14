@@ -67,7 +67,7 @@ router.post("/cashfree-webhook", async (req, res) => {
     // Load both candidate secrets in one round-trip. Both keys are stored
     // encrypted (enc:v1:…) when saved via Admin UI. resolveSecret() decrypts
     // with a plaintext fallback so both paths work regardless of how the
-    // value was stored. This mirrors the pattern in payinWebhook.ts:74-79.
+    // value was stored.
     const secretRows = await db
       .select({ key: systemConfigTable.key, value: systemConfigTable.value })
       .from(systemConfigTable)

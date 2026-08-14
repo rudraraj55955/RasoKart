@@ -403,14 +403,16 @@ export default function AdminPaymentGateway() {
                     ? "Webhook secret will be removed when you save."
                     : config?.webhookSecretSet
                       ? "Webhook secret is set. Used to verify HMAC-SHA256 signatures on incoming webhooks."
-                      : "No webhook secret configured. Incoming webhooks will not be signature-verified."}
+                      : config?.clientSecretSet
+                        ? "No webhook secret configured. Webhooks will be verified using the Client Secret as a fallback — set a dedicated webhook secret for stronger isolation."
+                        : "No signing credential configured. Webhooks will be rejected (401) — configure a webhook secret or client secret to enable payment collection."}
                 </p>
               </div>
 
               <div className="rounded-md bg-muted/40 border border-border/40 p-3 text-xs text-muted-foreground space-y-1">
                 <p className="font-medium text-foreground">Webhook URL to configure in your gateway dashboard:</p>
                 <code className="block bg-background/60 rounded px-2 py-1 font-mono select-all">
-                  {window.location.origin}/api/webhooks/payin/cashfree
+                  {window.location.origin}/api/payment/cashfree-webhook
                 </code>
                 <p>The gateway sends <code>x-webhook-signature</code> (base64 HMAC-SHA256) and <code>x-webhook-timestamp</code> headers.</p>
               </div>
