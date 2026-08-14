@@ -51,7 +51,9 @@ export interface StuckOrderScanResult {
   alertSent: boolean;
 }
 
-export async function runStuckCashfreeOrderScan(): Promise<StuckOrderScanResult> {
+export async function runStuckCashfreeOrderScan(
+  _notifyFn: typeof notifyAdminsOfStuckCashfreeOrders = notifyAdminsOfStuckCashfreeOrders,
+): Promise<StuckOrderScanResult> {
   const [staleMinutes, threshold, cooldownHours] = await Promise.all([
     getConfigInt(SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_STALE_MINUTES, 15),
     getConfigInt(SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_ALERT_THRESHOLD, 5),
@@ -93,7 +95,7 @@ export async function runStuckCashfreeOrderScan(): Promise<StuckOrderScanResult>
 
   let alertSent = false;
   if (stuckCount >= threshold) {
-    await notifyAdminsOfStuckCashfreeOrders({ stuck: stuckCount, threshold, staleMinutes, cooldownHours });
+    await _notifyFn({ stuck: stuckCount, threshold, staleMinutes, cooldownHours });
     alertSent = true;
   }
 
