@@ -38,7 +38,7 @@ import {
   auditLogsTable,
   PAYIN_ORDER_STATUS,
 } from "@workspace/db";
-import { ne, and, gte, lte, inArray, eq } from "drizzle-orm";
+import { ne, and, gte, lte, inArray, eq, sql } from "drizzle-orm";
 import { requireAuth, requireAdmin, requirePermission } from "../middlewares/auth";
 import { PERMISSIONS } from "../permissions";
 import { logger } from "../lib/logger";
@@ -47,6 +47,69 @@ const router = Router();
 router.use(requireAuth);
 router.use(requireAdmin);
 router.use(requirePermission(PERMISSIONS.CASHFREE_RECONCILIATION_MANAGE));
+
+// ── DB-backed dedup lock ─────────────────────────────────────────────────────
+// Uses the `system_config` table as an atomic cross-instance lock store so
+// that autoscaled deployments (multiple API pods) all share the same lock.
+//
+// Lock key: "backfill_lock_admin_<adminId>"  (transient; not in SYSTEM_CONFIG_KEYS,
+//   so the systemConfig coverage test is unaffected).
+// Lock value: JSON { token, expiresAt (ms) }
+//
+// Acquire — atomic INSERT … ON CONFLICT DO UPDATE … WHERE expired:
+//   Returns the inserted/updated row only when we actually own the slot.
+//   Returns 0 rows (lock contention) when a valid unexpired lock exists.
+//
+// Release — token-conditional DELETE:
+//   Only deletes if our token still matches, so expiry + re-acquisition by a
+//   second request is never accidentally wiped by the first request's finally.
+//
+// TTL: 500 orders × ~600 ms worst-case ≈ 5 min.  10 min gives headroom.
+//   The `finally` block always releases on a clean exit; the TTL is a
+//   dead-man's switch for hard crashes.
+const BACKFILL_LOCK_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+function backfillLockKey(adminId: number): string {
+  return `backfill_lock_admin_${adminId}`;
+}
+
+/** Attempt to acquire the backfill lock for adminId.
+ *  Returns the lock token on success, or null if already locked. */
+async function acquireBackfillLock(adminId: number): Promise<string | null> {
+  const lockKey   = backfillLockKey(adminId);
+  const token     = Math.random().toString(36).slice(2) + Date.now().toString(36);
+  const expiresAt = Date.now() + BACKFILL_LOCK_TTL_MS;
+  const lockValue = JSON.stringify({ token, expiresAt });
+  const nowMs     = Date.now();
+
+  // Atomic upsert: insert or overwrite only when existing lock is expired.
+  // The WHERE clause on DO UPDATE means the row is NOT updated (and thus NOT
+  // returned) when the existing lock is still valid.
+  const rows = await db.execute<{ key: string }>(sql`
+    INSERT INTO system_config (key, value, updated_at)
+    VALUES (${lockKey}, ${lockValue}, NOW())
+    ON CONFLICT (key) DO UPDATE
+      SET value      = EXCLUDED.value,
+          updated_at = NOW()
+      WHERE (system_config.value::jsonb->>'expiresAt')::bigint < ${nowMs}
+    RETURNING key
+  `);
+
+  // rows.rows (pg driver) or rows (drizzle execute result array)
+  const acquired = Array.isArray(rows) ? rows.length > 0
+                 : (rows as any).rows?.length > 0;
+  return acquired ? token : null;
+}
+
+/** Release the backfill lock, but only if we still own it (token match). */
+async function releaseBackfillLock(adminId: number, token: string): Promise<void> {
+  const lockKey = backfillLockKey(adminId);
+  await db.execute(sql`
+    DELETE FROM system_config
+    WHERE key   = ${lockKey}
+      AND value::jsonb->>'token' = ${token}
+  `);
+}
 
 // ── GET /api/admin/cashfree-payin-recon/stuck-orders ────────────────────────
 
@@ -398,8 +461,18 @@ async function backfillOrder(cashfreeOrderId: string): Promise<BackfillOrderResu
 }
 
 router.post("/backfill", async (req, res, next) => {
+  const user = (req as any).user as { id: number; email: string };
+
+  // ── DB-backed dedup lock (cross-instance) ────────────────────────────────
+  const lockToken = await acquireBackfillLock(user.id);
+  if (lockToken === null) {
+    res.status(409).json({
+      error: "A backfill from this account is already in progress. Please wait for it to complete before retrying.",
+    });
+    return;
+  }
+
   try {
-    const user = (req as any).user as { id: number; email: string };
     const body = req.body as { cashfreeOrderIds?: unknown };
 
     if (!Array.isArray(body.cashfreeOrderIds) || body.cashfreeOrderIds.length === 0) {
@@ -469,6 +542,13 @@ router.post("/backfill", async (req, res, next) => {
     });
   } catch (err) {
     next(err);
+  } finally {
+    // Token-conditional release: only deletes the system_config row if our
+    // token still matches.  Safe even if the TTL expired and a second request
+    // already acquired the lock — we won't delete their lock row.
+    await releaseBackfillLock(user.id, lockToken).catch(releaseErr =>
+      logger.warn({ releaseErr, adminId: user.id }, "admin_cashfree_payin_recon: lock release failed")
+    );
   }
 });
 

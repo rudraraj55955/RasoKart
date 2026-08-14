@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { getToken } from "@/lib/auth";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -121,6 +121,10 @@ export default function AdminCashfreePayinRecon() {
   const [backfilling, setBackfilling]   = useState(false);
   const [backfillResult, setBackfillResult] = useState<BackfillResponse | null>(null);
   const [backfillError, setBackfillError] = useState<string | null>(null);
+  // Synchronous guard against double-click: React state updates are async so
+  // two rapid clicks can both pass the `backfilling` check before it flips.
+  // The ref is set/cleared synchronously so the second click is a guaranteed no-op.
+  const submittingRef = useRef(false);
 
   // ── Load report ──────────────────────────────────────────────────────────
   // `clearResults` — when true (default) this is a fresh user-initiated load
@@ -218,6 +222,11 @@ export default function AdminCashfreePayinRecon() {
 
   // ── Run backfill ─────────────────────────────────────────────────────────
   async function runBackfill() {
+    // Synchronous guard — prevents a second click from racing past the
+    // `backfilling` state check before React has had a chance to re-render.
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+
     setConfirmOpen(false);
     setBackfilling(true);
     setBackfillResult(null);
@@ -242,6 +251,7 @@ export default function AdminCashfreePayinRecon() {
       setBackfillError(e instanceof Error ? e.message : "Backfill failed");
     } finally {
       setBackfilling(false);
+      submittingRef.current = false;
     }
   }
 
