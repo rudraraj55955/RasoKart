@@ -1204,6 +1204,194 @@ describe("schema-guard-column-diff negative-case contract", () => {
     );
   });
 
+  // ── Cross-file type-consistency check ───────────────────────────────────
+  //
+  // Verifies that the script exits 1 when the same column is defined with
+  // different SQL data types in schemaGuard.ts vs db-migrate.ts CREATE TABLE
+  // bodies for the same table.  This is the scenario where a developer changes
+  // TEXT → NUMERIC (or any other type change) in one guard file but leaves the
+  // old type in the other.
+
+  /**
+   * Like buildCrossFileFixtures but allows each column to carry an explicit
+   * SQL type.  Pass arrays of `{ name, type }` objects for guardCols and
+   * migrateCols; schemaColumns is still a plain string array (TEXT in Drizzle).
+   */
+  function buildCrossFileTypeFixtures(opts: {
+    schemaColumns: string[];
+    guardCols: Array<{ name: string; type: string }>;
+    migrateCols: Array<{ name: string; type: string }>;
+  }): { dir: string; env: NodeJS.ProcessEnv } {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sgcd-cftypes-"));
+
+    // ── schema dir ──────────────────────────────────────────────────────────
+    const schemaDir = path.join(dir, "schema");
+    fs.mkdirSync(schemaDir, { recursive: true });
+
+    fs.writeFileSync(
+      path.join(schemaDir, "index.ts"),
+      `export * from "./fixture_table";\n`,
+    );
+
+    const drizzleColDefs = opts.schemaColumns
+      .map((c) => `  ${c}: text("${c}"),`)
+      .join("\n");
+    fs.writeFileSync(
+      path.join(schemaDir, "fixture_table.ts"),
+      [
+        `import { pgTable, text, serial } from "drizzle-orm/pg-core";`,
+        ``,
+        `export const fixtureTable = pgTable("fixture_table", {`,
+        `  id: serial("id").primaryKey(),`,
+        drizzleColDefs,
+        `});`,
+      ].join("\n") + "\n",
+    );
+
+    // ── schemaGuard file ─────────────────────────────────────────────────────
+    const guardColDefs = opts.guardCols
+      .map((c) => `  ${c.name} ${c.type},`)
+      .join("\n");
+    const guardFile = path.join(dir, "guard.ts");
+    fs.writeFileSync(
+      guardFile,
+      [
+        `-- schemaGuard fixture`,
+        `CREATE TABLE IF NOT EXISTS fixture_table (`,
+        `  id SERIAL PRIMARY KEY,`,
+        guardColDefs,
+        `);`,
+      ].join("\n") + "\n",
+    );
+
+    // ── db-migrate file ──────────────────────────────────────────────────────
+    const migrateColDefs = opts.migrateCols
+      .map((c) => `  ${c.name} ${c.type},`)
+      .join("\n");
+    const migrateFile = path.join(dir, "migrate.ts");
+    fs.writeFileSync(
+      migrateFile,
+      [
+        `-- db-migrate fixture`,
+        `CREATE TABLE IF NOT EXISTS fixture_table (`,
+        `  id SERIAL PRIMARY KEY,`,
+        migrateColDefs,
+        `);`,
+      ].join("\n") + "\n",
+    );
+
+    return {
+      dir,
+      env: {
+        ...process.env,
+        SGCD_SCHEMA_DIR: schemaDir,
+        SGCD_SCHEMA_INDEX: path.join(schemaDir, "index.ts"),
+        SGCD_GUARD_FILE: guardFile,
+        SGCD_MIGRATE_FILE: migrateFile,
+      },
+    };
+  }
+
+  // Case CT-1: same column, different types (TEXT vs NUMERIC) → exit 1
+  test("exits 1 when the same column has different SQL types in schemaGuard.ts vs db-migrate.ts", () => {
+    // Simulates: developer changed `amount TEXT` → `amount NUMERIC` in
+    // schemaGuard.ts but left db-migrate.ts with the old TEXT type.
+    // On an existing DB the column retains TEXT; Drizzle queries expect NUMERIC
+    // → silent cast errors at runtime.
+    const { dir, env } = buildCrossFileTypeFixtures({
+      schemaColumns: ["amount"],
+      guardCols:    [{ name: "amount", type: "NUMERIC" }], // new type
+      migrateCols:  [{ name: "amount", type: "TEXT" }],    // old type — drift
+    });
+    fixtures.push({ dir });
+
+    const { code, stdout, stderr } = runScriptFull(env);
+    assert.equal(
+      code,
+      1,
+      "script must exit 1 when 'amount' has type NUMERIC in schemaGuard.ts but TEXT in db-migrate.ts",
+    );
+    const output = stdout + stderr;
+    assert.ok(
+      output.includes("amount"),
+      `output must mention the mismatched column name; got:\n${output}`,
+    );
+    // The error message should include both type tokens so the developer knows
+    // what to change in which file.
+    assert.ok(
+      output.includes("NUMERIC") || output.includes("TEXT"),
+      `output must mention at least one of the mismatched type names; got:\n${output}`,
+    );
+  });
+
+  // Case CT-2: same column, same types in both files → exit 0
+  test("exits 0 when matching columns have the same SQL type in both schemaGuard.ts and db-migrate.ts", () => {
+    const { dir, env } = buildCrossFileTypeFixtures({
+      schemaColumns: ["amount"],
+      guardCols:   [{ name: "amount", type: "NUMERIC" }],
+      migrateCols: [{ name: "amount", type: "NUMERIC" }], // in sync
+    });
+    fixtures.push({ dir });
+
+    const code = runScript(env);
+    assert.equal(
+      code,
+      0,
+      "script must exit 0 when both guard files define the same column with the same type",
+    );
+  });
+
+  // Case CT-3: multiple columns, only one has a type mismatch → exit 1
+  test("exits 1 when one of several shared columns has a type mismatch between the two guard files", () => {
+    // 'status' matches in both; 'score' differs (INTEGER vs TEXT) → only score is flagged.
+    const { dir, env } = buildCrossFileTypeFixtures({
+      schemaColumns: ["status", "score"],
+      guardCols:   [{ name: "status", type: "TEXT" }, { name: "score", type: "INTEGER" }],
+      migrateCols: [{ name: "status", type: "TEXT" }, { name: "score", type: "TEXT" }],
+    });
+    fixtures.push({ dir });
+
+    const { code, stdout, stderr } = runScriptFull(env);
+    assert.equal(
+      code,
+      1,
+      "script must exit 1 when 'score' has a type mismatch even though 'status' matches",
+    );
+    const output = stdout + stderr;
+    assert.ok(
+      output.includes("score"),
+      `output must name the mismatched column 'score'; got:\n${output}`,
+    );
+  });
+
+  // Case CT-4: table has a CREATE TABLE in only one guard file → exit 0 (type check not applicable)
+  test("exits 0 for a type check when a table only has a CREATE TABLE in one guard file", () => {
+    // Only schemaGuard.ts has the CREATE TABLE — db-migrate.ts only has ALTER TABLE.
+    // The cross-file type check must not fire for this table.
+    const { dir, env } = buildCrossFileFixtures({
+      schemaColumns: ["name"],
+      guardColumns:  ["name"], // schemaGuard has CREATE TABLE
+      migrateColumns: [],      // db-migrate has no CREATE TABLE (empty list → empty body → not a shared table)
+    });
+    fixtures.push({ dir });
+
+    // Replace the migrate file to use only ALTER TABLE, not CREATE TABLE.
+    const migrateFile = env.SGCD_MIGRATE_FILE as string;
+    fs.writeFileSync(
+      migrateFile,
+      `-- only ALTER TABLE, no CREATE TABLE\n` +
+        `ALTER TABLE fixture_table ADD COLUMN IF NOT EXISTS name TEXT;\n`,
+    );
+
+    const code = runScript(env);
+    assert.equal(
+      code,
+      0,
+      "script must exit 0 when the table only has a CREATE TABLE in one guard file (type check not applicable)",
+    );
+  });
+
+
   // Case 9: schemaGuard-only table — DROP COLUMN for a column that exists ONLY via
   // ALTER TABLE ADD COLUMN (not in CREATE TABLE body) → exit 1.
   //

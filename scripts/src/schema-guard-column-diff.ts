@@ -329,6 +329,61 @@ export function collectAlterTableDropClaims(
 }
 
 /**
+ * Returns: Map<tableName, Map<columnName, dataType>> where dataType is the
+ * first SQL keyword token that follows the column name in each CREATE TABLE
+ * column definition line.
+ *
+ * For example, `amount NUMERIC NOT NULL` yields dataType = "NUMERIC".
+ * `status TEXT DEFAULT 'pending'` yields dataType = "TEXT".
+ *
+ * This is used by the cross-file type-consistency check to detect cases where
+ * a developer changed TEXT → NUMERIC (or any other type change) in one guard
+ * file but left the old type in the other, which causes Drizzle to cast the
+ * column incorrectly on existing DBs — producing silent data corruption or
+ * cast errors at runtime.
+ */
+export function collectCreateTableColumnTypes(
+  source: string
+): Map<string, Map<string, string>> {
+  const result = new Map<string, Map<string, string>>();
+
+  const ctRe = /CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+"?(\w+)"?\s*\(/gi;
+  let ctm: RegExpExecArray | null;
+
+  while ((ctm = ctRe.exec(source)) !== null) {
+    const tableName = ctm[1].toLowerCase();
+    let depth = 1;
+    let i = ctm.index + ctm[0].length;
+    let body = "";
+    while (i < source.length && depth > 0) {
+      const ch = source[i];
+      if (ch === "(") depth++;
+      else if (ch === ")") { depth--; if (depth === 0) break; }
+      body += ch;
+      i++;
+    }
+
+    const typeMap = result.get(tableName) ?? new Map<string, string>();
+    for (const line of body.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      // Skip CONSTRAINT, PRIMARY KEY, UNIQUE, FOREIGN KEY, CHECK lines.
+      if (/^(CONSTRAINT|PRIMARY|UNIQUE|FOREIGN|CHECK)(\s|$)/i.test(trimmed)) continue;
+      // Match: col_name TYPE ... or "col_name" TYPE ...
+      // The first token is the column name, the second is the data type.
+      const nameTypeMatch = /^"?(\w+)"?\s+(\w+)/i.exec(trimmed);
+      if (nameTypeMatch) {
+        const colName = nameTypeMatch[1].toLowerCase();
+        const dataType = nameTypeMatch[2].toUpperCase();
+        typeMap.set(colName, dataType);
+      }
+    }
+    result.set(tableName, typeMap);
+  }
+
+  return result;
+}
+/**
  * Returns every ALTER TABLE <table> ADD COLUMN IF NOT EXISTS <col> claim found
  * in the source text, preserving the 1-based line number of the match for
  * diagnostics.
@@ -966,7 +1021,22 @@ function main(): void {
     );
   }
 
-  if (!forwardOk || !reverseOk || !dropOk || !manifestOk || !manifestReverseOk || !unregisteredOk || !crossFileOk || !deployWindowOk) {
+  // ── Cross-file type-consistency check ────────────────────────────────────
+  //
+  // Detects columns shared by schemaGuard.ts and db-migrate.ts CREATE TABLE
+  // bodies that have different SQL data types.  A developer who changes
+  // TEXT → NUMERIC in schemaGuard.ts but leaves db-migrate.ts with TEXT will
+  // produce a type mismatch on existing DBs: Drizzle queries cast the column
+  // as NUMERIC but the DB column was created as TEXT, causing silent data
+  // corruption or cast errors at runtime.
+
+  console.log(
+    "\nschema-guard-cross-file-type-check: comparing CREATE TABLE column types across guard files...\n"
+  );
+
+  const crossFileTypeOk = checkCrossFileTypeConsistency();
+
+  if (!forwardOk || !reverseOk || !dropOk || !manifestOk || !manifestReverseOk || !unregisteredOk || !crossFileOk || !deployWindowOk || !crossFileTypeOk) {
     process.exit(1);
   }
 }
@@ -1085,6 +1155,102 @@ function checkCrossFileConsistency(): boolean {
   return false;
 }
 
+/**
+ * Cross-file type-consistency check.
+ *
+ * Parses schemaGuard.ts and db-migrate.ts independently and compares the
+ * data type of every column that appears in the CREATE TABLE body of BOTH
+ * files for the same table.  A column whose type differs between the two
+ * files is flagged as a hard error.
+ *
+ * Only CREATE TABLE bodies are examined (ALTER TABLE ADD COLUMN lines are
+ * excluded) because the CREATE TABLE body is the authoritative definition
+ * for the table's initial schema — the place where a silent type change is
+ * most likely to occur.
+ *
+ * Returns true (check passed) or false (type mismatch found).
+ */
+function checkCrossFileTypeConsistency(): boolean {
+  const guardExists = fs.existsSync(SCHEMA_GUARD_FILE);
+  const migrateExists = fs.existsSync(DB_MIGRATE_FILE);
+
+  if (!guardExists || !migrateExists) {
+    console.log(
+      "✓ Cross-file type check skipped — one or both guard files are absent."
+    );
+    return true;
+  }
+
+  const guardSrc = fs.readFileSync(SCHEMA_GUARD_FILE, "utf8");
+  const migrateSrc = fs.readFileSync(DB_MIGRATE_FILE, "utf8");
+
+  // Only check tables that have a CREATE TABLE body in BOTH files.
+  const guardCreateTables = collectCreateTableColumns(guardSrc);
+  const migrateCreateTables = collectCreateTableColumns(migrateSrc);
+  const commonTables = [...guardCreateTables.keys()].filter((t) =>
+    migrateCreateTables.has(t)
+  );
+
+  if (commonTables.length === 0) {
+    console.log(
+      "✓ No tables share a CREATE TABLE block in both guard files — cross-file type check not applicable."
+    );
+    return true;
+  }
+
+  const guardTypes = collectCreateTableColumnTypes(guardSrc);
+  const migrateTypes = collectCreateTableColumnTypes(migrateSrc);
+
+  const mismatches: Array<{
+    table: string;
+    col: string;
+    guardType: string;
+    migrateType: string;
+  }> = [];
+
+  for (const table of commonTables) {
+    const gt = guardTypes.get(table);
+    const mt = migrateTypes.get(table);
+    if (!gt || !mt) continue;
+
+    // Compare types only for columns present in BOTH files' CREATE TABLE bodies.
+    for (const [col, gType] of gt) {
+      const mType = mt.get(col);
+      if (mType !== undefined && gType !== mType) {
+        mismatches.push({ table, col, guardType: gType, migrateType: mType });
+      }
+    }
+  }
+
+  if (mismatches.length === 0) {
+    console.log(
+      `✓ Column data types match between schemaGuard.ts and db-migrate.ts` +
+        ` for all ${commonTables.length} shared table(s).`
+    );
+    return true;
+  }
+
+  console.error(
+    `✗ Found ${mismatches.length} column(s) with mismatched data types between schemaGuard.ts and db-migrate.ts:\n`
+  );
+  console.error(
+    "  A column type mismatch means both guard files define the same column with\n" +
+      "  different SQL types.  On an existing DB the column retains the type from\n" +
+      "  db-migrate.ts, while Drizzle queries expect the type from schemaGuard.ts —\n" +
+      "  causing silent data corruption or cast errors at runtime.\n" +
+      "  Fix: update the CREATE TABLE body in both schemaGuard.ts and db-migrate.ts\n" +
+      "  so the column type is identical in both files.\n"
+  );
+  for (const { table, col, guardType, migrateType } of mismatches.sort((a, b) =>
+    a.table.localeCompare(b.table) || a.col.localeCompare(b.col)
+  )) {
+    console.error(
+      `  ${table}.${col}: schemaGuard.ts=${guardType}  db-migrate.ts=${migrateType}  ← type mismatch`
+    );
+  }
+  console.error();
+  return false;
+}
 function collectAllCreateTableColumns(): Map<string, Set<string>> {
   const combined = new Map<string, Set<string>>();
 
