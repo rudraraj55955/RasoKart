@@ -1,3 +1,4 @@
+- [Cashfree Payout V2 webhook signing](cashfree-payout-webhook-signing.md) — Client Secret is the only signing key; webhook_secret field MUST be empty; UI cannot clear it via blank save (pending defect #2630).
 - [Replit deploy migration pre-startup](replit-deploy-migration-pre-startup.md) — Replit diffs Drizzle schema vs production DB BEFORE container starts; schemaGuard can't rescue a blocked migration; schema must match prod exactly.
 - [Razorpay IAM access-envelope guard](razorpay-iam-access-envelope.md) — SA-only Razorpay perms cannot be ALLOW-overridden for non-SA users (→ 403); IAM single-key PUT endpoint requires body { effect: "ALLOW"|"DENY" }, NOT { allow: bool }.
 - [Razorpay capability status taxonomy](razorpay-capability-taxonomy.md) — CAPABILITY_STATUS enum uses user-specified 8-value audit taxonomy; seed.ts onConflictDoUpdate writes capabilityStatus on every restart so taxonomy corrections survive DB resets.
