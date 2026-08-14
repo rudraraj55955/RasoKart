@@ -21,6 +21,7 @@ import {
   ChevronRight,
   ShieldAlert,
   Receipt,
+  Download,
 } from "lucide-react";
 
 const authHeader = () => ({ Authorization: `Bearer ${getToken()}` });
@@ -178,6 +179,43 @@ export default function AdminCashfreePayinRecon() {
     });
   }
 
+  // ── Download CSV ─────────────────────────────────────────────────────────
+  const [downloadingCsv, setDownloadingCsv] = useState(false);
+
+  const downloadCsv = useCallback(async () => {
+    setDownloadingCsv(true);
+    try {
+      const params = new URLSearchParams({
+        since: since + "T00:00:00Z",
+        until: until + "T23:59:59Z",
+      });
+      const resp = await fetch(`/api/admin/cashfree-payin-recon/stuck-orders/export?${params}`, {
+        headers: authHeader(),
+      });
+      if (!resp.ok) {
+        const json = await resp.json().catch(() => ({}));
+        throw new Error((json as any).error ?? `HTTP ${resp.status}`);
+      }
+      const blob = await resp.blob();
+      const disposition = resp.headers.get("Content-Disposition") ?? "";
+      const nameMatch = disposition.match(/filename="([^"]+)"/);
+      const filename = nameMatch ? nameMatch[1] : "stuck-orders.csv";
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      // Surface error in a simple alert — non-critical path
+      alert(e instanceof Error ? e.message : "CSV download failed");
+    } finally {
+      setDownloadingCsv(false);
+    }
+  }, [since, until]);
+
   // ── Run backfill ─────────────────────────────────────────────────────────
   async function runBackfill() {
     setConfirmOpen(false);
@@ -269,7 +307,7 @@ export default function AdminCashfreePayinRecon() {
                 className="w-full sm:w-44"
               />
             </div>
-            <Button onClick={() => void loadReport(true)} disabled={loadingReport} className="flex-shrink-0">
+            <Button onClick={() => loadReport()} disabled={loadingReport} className="flex-shrink-0">
               {loadingReport
                 ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Loading…</>
                 : <><Search className="h-4 w-4 mr-2" />Load Stuck Orders</>
@@ -332,7 +370,18 @@ export default function AdminCashfreePayinRecon() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => void loadReport()}
+                  onClick={downloadCsv}
+                  disabled={downloadingCsv}
+                >
+                  {downloadingCsv
+                    ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Exporting…</>
+                    : <><Download className="h-3.5 w-3.5 mr-1.5" />Download CSV</>
+                  }
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => loadReport()}
                   disabled={loadingReport}
                 >
                   <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loadingReport ? "animate-spin" : ""}`} />

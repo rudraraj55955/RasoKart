@@ -147,6 +147,124 @@ router.get("/stuck-orders", async (req, res, next) => {
   }
 });
 
+// ── GET /api/admin/cashfree-payin-recon/stuck-orders/export ─────────────────
+
+router.get("/stuck-orders/export", async (req, res, next) => {
+  try {
+    const sinceStr = (req.query["since"] as string | undefined) ?? "2026-01-01T00:00:00Z";
+    const untilStr = (req.query["until"] as string | undefined) ?? new Date().toISOString();
+
+    const since = new Date(sinceStr);
+    const until = new Date(untilStr);
+
+    if (isNaN(since.getTime()) || isNaN(until.getTime()) || since >= until) {
+      res.status(400).json({ error: "Invalid date range: 'since' must be before 'until'" });
+      return;
+    }
+
+    // Fetch all non-PAID orders in the window
+    const stuckOrders = await db
+      .select({
+        id:              cashfreePaymentOrdersTable.id,
+        merchantId:      cashfreePaymentOrdersTable.merchantId,
+        merchantName:    merchantsTable.businessName,
+        cashfreeOrderId: cashfreePaymentOrdersTable.cashfreeOrderId,
+        publicOrderId:   cashfreePaymentOrdersTable.publicOrderId,
+        amount:          cashfreePaymentOrdersTable.amount,
+        currency:        cashfreePaymentOrdersTable.currency,
+        status:          cashfreePaymentOrdersTable.status,
+        utr:             cashfreePaymentOrdersTable.utr,
+        paidAt:          cashfreePaymentOrdersTable.paidAt,
+        createdAt:       cashfreePaymentOrdersTable.createdAt,
+      })
+      .from(cashfreePaymentOrdersTable)
+      .leftJoin(merchantsTable, eq(cashfreePaymentOrdersTable.merchantId, merchantsTable.id))
+      .where(and(
+        ne(cashfreePaymentOrdersTable.status, PAYIN_ORDER_STATUS.PAID),
+        gte(cashfreePaymentOrdersTable.createdAt, since),
+        lte(cashfreePaymentOrdersTable.createdAt, until),
+      ))
+      .orderBy(cashfreePaymentOrdersTable.createdAt);
+
+    const stuckCfOrderIds = stuckOrders
+      .map(o => o.cashfreeOrderId)
+      .filter((id): id is string => id != null);
+
+    const logMatches = stuckCfOrderIds.length
+      ? await db
+          .select({
+            cashfreeOrderId:  cashfreePaymentLogsTable.cashfreeOrderId,
+            processingResult: cashfreePaymentLogsTable.processingResult,
+          })
+          .from(cashfreePaymentLogsTable)
+          .where(inArray(cashfreePaymentLogsTable.cashfreeOrderId, stuckCfOrderIds))
+      : [];
+
+    const logCountMap = new Map<string, number>();
+    for (const log of logMatches) {
+      if (!log.cashfreeOrderId) continue;
+      logCountMap.set(log.cashfreeOrderId, (logCountMap.get(log.cashfreeOrderId) ?? 0) + 1);
+    }
+
+    // Build CSV
+    // Neutralise spreadsheet formula injection: Excel/Sheets treat cells starting
+    // with =, +, -, @ (or any of those preceded by whitespace/control chars) as
+    // formulas.  We prefix an apostrophe so they are treated as plain text.
+    // The apostrophe is the standard mitigation and is invisible after import.
+    const FORMULA_STARTERS = /^[\s\t]*[=+\-@]/;
+    function csvEscape(val: unknown): string {
+      if (val == null) return "";
+      let s = String(val);
+      if (FORMULA_STARTERS.test(s)) {
+        s = `'${s}`;
+      }
+      // Wrap in quotes if contains comma, double-quote, or newline
+      if (s.includes(",") || s.includes('"') || s.includes("\n") || s.includes("\r")) {
+        return `"${s.replace(/"/g, '""')}"`;
+      }
+      return s;
+    }
+
+    const headers = [
+      "CF Order ID",
+      "Public Order ID",
+      "Merchant ID",
+      "Merchant Name",
+      "Amount",
+      "Currency",
+      "Status",
+      "UTR",
+      "Webhook Log Count",
+      "Created At",
+      "Paid At",
+    ];
+
+    const rows = stuckOrders.map(o => [
+      csvEscape(o.cashfreeOrderId),
+      csvEscape(o.publicOrderId),
+      csvEscape(o.merchantId),
+      csvEscape(o.merchantName),
+      csvEscape(Number(o.amount ?? 0).toFixed(2)),
+      csvEscape(o.currency ?? "INR"),
+      csvEscape(o.status),
+      csvEscape(o.utr),
+      csvEscape(o.cashfreeOrderId ? (logCountMap.get(o.cashfreeOrderId) ?? 0) : 0),
+      csvEscape(o.createdAt ? new Date(o.createdAt).toISOString() : ""),
+      csvEscape(o.paidAt ? new Date(o.paidAt).toISOString() : ""),
+    ].join(","));
+
+    const csv = [headers.join(","), ...rows].join("\r\n");
+
+    const filename = `stuck-orders-${since.toISOString().slice(0, 10)}-to-${until.toISOString().slice(0, 10)}.csv`;
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(csv);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ── POST /api/admin/cashfree-payin-recon/backfill ───────────────────────────
 
 type BackfillOutcome = "credited" | "duplicate" | "not_found" | "error";
