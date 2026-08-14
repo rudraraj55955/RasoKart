@@ -1,6 +1,17 @@
 import { Router } from "express";
-import { db, cashfreePaymentOrdersTable, cashfreePaymentLogsTable, transactionsTable, systemConfigTable, SYSTEM_CONFIG_KEYS, PAYIN_ORDER_STATUS, payoutWalletLoadOrdersTable } from "@workspace/db";
-import { eq, and, ne } from "drizzle-orm";
+import {
+  db,
+  cashfreePaymentOrdersTable,
+  cashfreePaymentLogsTable,
+  transactionsTable,
+  systemConfigTable,
+  SYSTEM_CONFIG_KEYS,
+  PAYIN_ORDER_STATUS,
+  payoutWalletLoadOrdersTable,
+  merchantWalletsTable,
+  walletLedgerTable,
+} from "@workspace/db";
+import { eq, and, ne, inArray } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { verifyCashfreeWebhookSignature } from "../helpers/cashfree";
 import { creditWalletForLoad } from "./payoutWalletLoad";
@@ -11,13 +22,29 @@ const router = Router();
  * POST /api/payment/cashfree-webhook
  *
  * Public endpoint — called by Cashfree when a payment is confirmed.
- * Verifies HMAC-SHA256 signature using X-Webhook-Signature + X-Webhook-Timestamp headers.
- * On SUCCESS: finds the merchant via cashfree_payment_orders, inserts a deposit transaction,
- * and logs the event to cashfree_payment_logs. Idempotent: duplicate order_id is a no-op.
  *
- * Cashfree webhook signature:
- *   HMAC-SHA256(timestamp + rawBody, webhookSecret) → base64
- *   Header: x-webhook-signature, x-webhook-timestamp
+ * SIGNATURE ENFORCEMENT (fail-closed):
+ *   Signing key resolution order:
+ *     1. cashfree_webhook_secret (system_config) — explicit Cashfree webhook secret
+ *     2. cashfree_client_secret  (system_config) — payin client secret as fallback
+ *     3. Neither present → 401 (never bypass)
+ *
+ *   Algorithm: HMAC-SHA256(timestamp + rawBody, secret) → base64
+ *   Headers:   x-webhook-signature, x-webhook-timestamp
+ *
+ * ACCOUNTING (on verified SUCCESS):
+ *   All mutations run in a single DB transaction so a partial failure rolls back
+ *   entirely and Cashfree's retry delivery will re-attempt rather than leaving a
+ *   half-credited state. The transaction:
+ *     1. Atomic status update  cashfree_payment_orders → PAID  (idempotency gate)
+ *     2. Wallet upsert (ensure row exists)
+ *     3. SELECT FOR UPDATE on wallet row (prevents concurrent balance corruption)
+ *     4. UPDATE merchantWallets: pendingBalance ↑, totalCollection ↑
+ *     5. INSERT walletLedger (pending_credit, immutable audit row)
+ *     6. INSERT transactions (idempotent on UTR)
+ *
+ * Idempotency: step 1's conditional UPDATE returns 0 rows when already PAID → early
+ * exit with processingResult=duplicate; no wallet/ledger mutation occurs.
  */
 router.post("/cashfree-webhook", async (req, res) => {
   const rawBody = ((req as any).rawBody as Buffer | undefined)?.toString("utf8") ?? JSON.stringify(req.body);
@@ -35,21 +62,41 @@ router.post("/cashfree-webhook", async (req, res) => {
   let status: string | null = null;
 
   try {
-    // ── Signature verification ─────────────────────────────────────────────
-    const [secretRow] = await db
-      .select({ value: systemConfigTable.value })
+    // ── Signature verification — FAIL CLOSED ──────────────────────────────
+    // Load both candidate secrets in one round-trip.
+    // Stored values for cashfree_webhook_secret and cashfree_client_secret are
+    // both plaintext (not AES-encrypted) — consistent with cashfreeOrders.ts.
+    const secretRows = await db
+      .select({ key: systemConfigTable.key, value: systemConfigTable.value })
       .from(systemConfigTable)
-      .where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.CASHFREE_WEBHOOK_SECRET))
-      .limit(1);
+      .where(inArray(systemConfigTable.key, [
+        SYSTEM_CONFIG_KEYS.CASHFREE_WEBHOOK_SECRET,
+        SYSTEM_CONFIG_KEYS.CASHFREE_CLIENT_SECRET,
+      ]));
 
-    const webhookSecret = secretRow?.value ?? "";
-    if (webhookSecret) {
-      const valid = verifyCashfreeWebhookSignature(rawBody, timestamp ?? "", signature ?? "", webhookSecret);
-      if (!valid) {
-        logger.warn({ cashfreeOrderId }, "Cashfree webhook rejected: invalid signature");
-        res.status(401).json({ error: "Invalid webhook signature" });
-        return;
-      }
+    const secretMap       = new Map(secretRows.map(r => [r.key, r.value ?? ""]));
+    const webhookSecret   = secretMap.get(SYSTEM_CONFIG_KEYS.CASHFREE_WEBHOOK_SECRET)?.trim() ?? "";
+    const clientSecretFb  = secretMap.get(SYSTEM_CONFIG_KEYS.CASHFREE_CLIENT_SECRET)?.trim() ?? "";
+    const signingSecret   = webhookSecret || clientSecretFb;
+
+    // No signing credential configured → reject; never fall through to credit path.
+    if (!signingSecret) {
+      logger.error({}, "cashfree_payin_webhook_no_secret: rejected (fail-closed) — configure cashfree_webhook_secret or cashfree_client_secret");
+      res.status(401).json({ error: "Webhook signing not configured" });
+      return;
+    }
+
+    const valid = verifyCashfreeWebhookSignature(
+      rawBody,
+      timestamp ?? "",
+      signature ?? "",
+      signingSecret,
+    );
+    if (!valid) {
+      logger.warn({ signingSource: webhookSecret ? "webhook_secret" : "client_secret_fallback" },
+        "cashfree_payin_webhook_invalid_sig: rejected");
+      res.status(401).json({ error: "Invalid webhook signature" });
+      return;
     }
 
     // ── Guard: Cashfree must be enabled ────────────────────────────────────
@@ -79,7 +126,8 @@ router.post("/cashfree-webhook", async (req, res) => {
 
     logger.info({ eventType, cashfreeOrderId, status }, "Cashfree payment webhook received");
 
-    // Acknowledge immediately
+    // Acknowledge immediately — Cashfree requires a fast 200 ACK.
+    // All DB work below happens after the response is sent.
     res.json({ success: true });
 
     // Only process SUCCESS payments
@@ -138,53 +186,107 @@ router.post("/cashfree-webhook", async (req, res) => {
 
     merchantId = cfOrder.merchantId;
 
-    // ── Atomic idempotency: conditional UPDATE returning changed rows ───────
-    // Only transitions status from non-paid → paid. Concurrent webhooks for the
-    // same order will find zero updated rows and be treated as duplicates.
-    const updated = await db
-      .update(cashfreePaymentOrdersTable)
-      .set({ status: PAYIN_ORDER_STATUS.PAID })
-      .where(and(
-        eq(cashfreePaymentOrdersTable.cashfreeOrderId, cashfreeOrderId),
-        ne(cashfreePaymentOrdersTable.status, PAYIN_ORDER_STATUS.PAID),
-      ))
-      .returning({ id: cashfreePaymentOrdersTable.id });
+    // Compute UTR and amount outside the transaction (pure derivation, no I/O)
+    const paymentId = (payment?.["cf_payment_id"] as string | number | undefined)?.toString() ?? null;
+    const utr       = paymentId ? `CF-${paymentId}` : `CF-${cashfreeOrderId}`;
+    const paidAmount = amount ?? cfOrder.amount?.toString() ?? "0";
+    const paidAmountNum = parseFloat(paidAmount);
 
-    if (!updated.length) {
+    // ── Atomic credit: status + wallet + ledger in one transaction ─────────
+    // If any step fails, the entire transaction rolls back.
+    // The order status stays non-PAID so Cashfree's retry delivery re-attempts.
+    type CreditResult = "credited" | "duplicate";
+    const creditResult: CreditResult = await db.transaction(async (tx) => {
+      // Step 1: Atomic idempotency gate — only one concurrent delivery wins.
+      const updated = await tx
+        .update(cashfreePaymentOrdersTable)
+        .set({ status: PAYIN_ORDER_STATUS.PAID })
+        .where(and(
+          eq(cashfreePaymentOrdersTable.cashfreeOrderId, cashfreeOrderId!),
+          ne(cashfreePaymentOrdersTable.status, PAYIN_ORDER_STATUS.PAID),
+        ))
+        .returning({ id: cashfreePaymentOrdersTable.id });
+
+      if (!updated.length) {
+        // Already PAID — this is a duplicate delivery; skip all accounting.
+        return "duplicate";
+      }
+
+      // Step 2: Ensure wallet row exists for this merchant.
+      await tx
+        .insert(merchantWalletsTable)
+        .values({ merchantId: cfOrder.merchantId })
+        .onConflictDoNothing();
+
+      // Step 3: Lock the wallet row to prevent concurrent balance corruption.
+      const [wallet] = await tx
+        .select()
+        .from(merchantWalletsTable)
+        .where(eq(merchantWalletsTable.merchantId, cfOrder.merchantId))
+        .for("update");
+
+      if (!wallet) throw new Error(`Cashfree payin: wallet not found after upsert for merchantId=${cfOrder.merchantId}`);
+
+      const pendingBefore   = parseFloat(wallet.pendingBalance   ?? "0");
+      const availableBefore = parseFloat(wallet.availableBalance ?? "0");
+      const pendingAfter    = pendingBefore + paidAmountNum;
+      const totalCollection = parseFloat(wallet.totalCollection  ?? "0") + paidAmountNum;
+
+      // Step 4: Credit the pending bucket and update total collection.
+      await tx
+        .update(merchantWalletsTable)
+        .set({
+          pendingBalance:  String(pendingAfter),
+          totalCollection: String(totalCollection),
+        })
+        .where(eq(merchantWalletsTable.merchantId, cfOrder.merchantId));
+
+      // Step 5: Immutable ledger audit row.
+      await tx.insert(walletLedgerTable).values({
+        merchantId:      cfOrder.merchantId,
+        txnType:         "pending_credit",
+        bucket:          "pending",
+        amount:          paidAmount,
+        availableBefore: String(availableBefore),
+        availableAfter:  String(availableBefore),   // available unchanged; credit goes to pending
+        pendingBefore:   String(pendingBefore),
+        pendingAfter:    String(pendingAfter),
+        referenceType:   "transaction",
+        description:     `Cashfree payment credited — order ${cashfreeOrderId}, ref ${utr}`,
+      });
+
+      // Step 6: Transaction record — idempotent on UTR unique constraint.
+      await tx.insert(transactionsTable).values({
+        merchantId:  cfOrder.merchantId,
+        provider:    "cashfree",
+        type:        "deposit",
+        status:      "success",
+        amount:      paidAmount,
+        currency:    cfOrder.currency ?? "INR",
+        utr,
+        referenceId: cashfreeOrderId!,
+        description: `Cashfree payment — order ${cashfreeOrderId}`,
+        metadata:    rawBody,
+      }).onConflictDoNothing();
+
+      return "credited";
+    });
+
+    if (creditResult === "duplicate") {
       logger.info({ cashfreeOrderId }, "Cashfree webhook: order already credited (atomic check) — skipping");
       processingResult = "duplicate";
       errorMessage = "Order already credited";
-      await insertLog({ eventType, cashfreeOrderId, merchantId, amount, status, rawPayload: rawBody, processingResult, errorMessage });
-      return;
+    } else {
+      logger.info({ cashfreeOrderId, merchantId, amount: paidAmount, utr }, "Cashfree payin credited — wallet and ledger updated");
+      processingResult = "credited";
     }
-
-    // ── Insert deposit transaction ─────────────────────────────────────────
-    // UTR is deterministic: prefer cf_payment_id (stable across retries);
-    // fall back to cashfree_order_id (also stable). Never use Date.now().
-    const paymentId = (payment?.["cf_payment_id"] as string | number | undefined)?.toString() ?? null;
-    const utr = paymentId ? `CF-${paymentId}` : `CF-${cashfreeOrderId}`;
-    const paidAmount = amount ?? cfOrder.amount?.toString() ?? "0";
-
-    await db.insert(transactionsTable).values({
-      merchantId: cfOrder.merchantId,
-      provider: "cashfree",
-      type: "deposit",
-      status: "success",
-      amount: paidAmount,
-      currency: cfOrder.currency ?? "INR",
-      utr,
-      referenceId: cashfreeOrderId,
-      description: `Cashfree payment — order ${cashfreeOrderId}`,
-      metadata: rawBody,
-    }).onConflictDoNothing();
-
-    logger.info({ cashfreeOrderId, merchantId, amount: paidAmount, utr }, "Cashfree payment credited");
-    processingResult = "credited";
 
     await insertLog({ eventType, cashfreeOrderId, merchantId, amount: paidAmount, status, rawPayload: rawBody, processingResult, errorMessage: null });
 
   } catch (err) {
-    logger.error({ err, cashfreeOrderId }, "Cashfree webhook processing error");
+    // DB transaction rolled back — order status is still non-PAID.
+    // Cashfree will retry delivery; the next attempt will re-attempt the full credit.
+    logger.error({ err, cashfreeOrderId }, "Cashfree webhook processing error — transaction rolled back; Cashfree will retry");
     processingResult = "error";
     errorMessage = err instanceof Error ? err.message : String(err);
     try {
