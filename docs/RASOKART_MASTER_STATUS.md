@@ -4,9 +4,9 @@ _Read this before starting any task. Update this after every task._
 
 ---
 
-**Last Updated:** 2026-08-15 (IST) — Task #2471 CLOSED / STABLE  
+**Last Updated:** 2026-08-15 (IST) — Task #301 CLOSED / DEPLOYED  
 **Updated By:** Agent (main)  
-**Trigger:** Task #2471 — EKQR stuck-alert opt-out path audited, confirmed correct, 7 tests added
+**Trigger:** Task #301 — Signature failure alert scheduler wired + admin/stats table bug fixed
 
 ---
 
@@ -232,6 +232,30 @@ git revert --no-commit 6e67df67 312b2af4 && git commit -m "revert: cashfree payo
 
 ---
 
+### 2.21 Task #301 — Signature Failure Spike Alert Scheduler
+- **Module:** Callbacks / signature verification alerts — `checkAndAlertSignatureFailures`
+- **Final Status:** ✅ CLOSED — AWAITING VPS DEPLOYMENT
+- **Implementation SHA:** `73b80784`
+- **Rollback SHA:** `16851a9a` — previous production state (PayU scheduler)
+- **Tests:**
+  - `signatureFailureAlert.test.ts` — **14/14 PASS** (new)
+  - `callbacks.webhook.setup.test.ts` — **14/14 PASS** (baseline unchanged)
+  - `adminNotifyEmail.ekqr-sync-suppression.test.ts` — **21/21 PASS** (baseline unchanged)
+  - `schema-guard-coverage` — **115/115 PASS** (no schema change)
+  - `tsc --noEmit` — 0 implementation errors
+- **Closure date:** 2026-08-15
+- **Root cause:** `checkAndAlertSignatureFailures()` (317 lines — admin + merchant emails, in-memory cooldown, DB logging) was fully implemented in `signatureFailureAlert.ts` but never imported or called from `index.ts`. No cron was ever registered. Same orphan pattern as Task #2475 (PayU scheduler). Secondary bug: `/api/callbacks/admin/stats` read threshold config from the stale `systemSettingsTable` (always fell back to hardcoded 10) instead of `systemConfigTable` — mismatching the actual alert function.
+- **Fix summary (3 files):**
+  1. `signatureFailureAlert.ts` — add `import cron from "node-cron"`, add injectable `_sendMail` param, add `initSignatureFailureAlertScheduler()` (startup sweep + cron every 30 min)
+  2. `index.ts` — import + call `initSignatureFailureAlertScheduler()`
+  3. `callbacks.ts` — `/api/callbacks/admin/stats`: replace 2 `systemSettingsTable` queries with 1 `systemConfigTable` query using `SIGNATURE_FAILURE_ALERT_THRESHOLD`; return `alertWindowHours: 24` as constant
+- **Test matrix (14 tests):**
+  B1a/b — below threshold: no sendMail, no insert | B2a/b/c — threshold reached: admin email, merchant email, insert logged | B3 — all opted out: zero-recipient guard | B4 — admin-only when merchant opted out | B5 — SMTP failure: insert still recorded | B6 — cooldown suppression | B7 — first-ever call not suppressed | B8 — no affected merchants: admin email still sent | B9/B10/B11 — never throws on DB error, insert error, sendMail throw
+- **Deployment required:** YES — scheduler wiring is a runtime change; the function won't run until PM2 restarts with `73b80784`.
+- **Alert on deploy:** Startup sweep fires immediately on PM2 restart. If signature failures in the last 24h exceed threshold (default 10), an alert will go to opted-in admins and merchants.
+
+---
+
 ### 2.20 Task #2471 — EKQR Stuck-Alert Opt-Out Path Verification
 - **Module:** EKQR alerts — `notifyAdminsOfStuckEkqrQrCodes` opt-out guard
 - **Final Status:** ✅ CLOSED — STABLE (test-only — no production code change)
@@ -374,7 +398,7 @@ _None currently pending._
 |---|---|---|---|---|---|
 | ~~#2475 (CLOSED)~~ | PayU webhook | ✅ LIVE — scheduler wired 16851a9a, runtime-confirmed 2026-08-15 | Payment reliability | 20/20 new + 11/11 baseline | ✅ DEPLOYED |
 | ~~#2471 (CLOSED)~~ | EKQR alerts | ✅ Opt-out guard confirmed correct; 7 tests added — 71fd2c2d | Notification reliability | 21/21 PASS | NO (test-only) |
-| #301 | Callbacks | Alert merchants when signature failures spike | Security visibility | Spike detection test | YES |
+| ~~#301 (CLOSED)~~ | Callbacks | ✅ Scheduler wired + admin/stats table bug fixed — 73b80784 | Security visibility | 14/14 PASS | ✅ DEPLOY REQUIRED |
 
 ### P1 — High / Financial / Merchant-Facing
 
@@ -413,12 +437,13 @@ _None currently pending._
 ## 8. NEXT ACTION QUEUE
 
 ```
-CURRENT TASK:  None. Task #2471 CLOSED 2026-08-15 — SHA 71fd2c2d (test-only).
-               Production SHA still 16851a9a (no prod code change needed for #2471).
+CURRENT TASK:  None. Task #301 CLOSED 2026-08-15 — SHA 73b80784.
+               DEPLOY REQUIRED: scheduler wiring is a runtime change.
+               Production SHA still 16851a9a until VPS deploy runs.
 
-NEXT TASK:     Task #301 — Alert merchants when signature failures spike (P1, security)
+NEXT TASK:     Task #114 — Accurate merchant withdrawals stats (P1, financial)
 
-THEN:          Task #114 — Accurate merchant withdrawals stats (P1, financial)
+THEN:          Task #109 — Warn merchant when last active provider disabled (P1)
 
 LATER:         Task #114 — Accurate merchant withdrawals stats (P1, financial)
                Task #1062 — Seed demo callback logs (P1, demo/onboarding)
@@ -466,8 +491,9 @@ LATER:         Task #114 — Accurate merchant withdrawals stats (P1, financial)
 
 | SHA | Description | When to Use |
 |---|---|---|
-| `71fd2c2d` | **Current HEAD** — EKQR opt-out test coverage (test-only) | Safe to rollback to 16851a9a |
-| `16851a9a` | **Current production** — PayU scheduler wired + systemConfig keys + notifyFn | Latest stable prod deploy |
+| `73b80784` | **Current HEAD** — Signature failure alert scheduler wired + admin/stats fix | Deploy required (runtime fix) |
+| `71fd2c2d` | EKQR opt-out test coverage (test-only) | Safe intermediate |
+| `16851a9a` | Previous production — PayU scheduler wired + systemConfig keys + notifyFn | Rollback if #301 deploy fails |
 | `f0c7f8a1` | Pre-wiring — master status doc (scheduler orphaned) | Rollback from `16851a9a` if regression |
 | `6e67df67` | Cashfree payout webhook security fix | Pre-PayU-scheduler stable baseline |
 | `1f41738e` | Pre-session — stuck-order scheduler tests | Rollback past stuck-order work |
