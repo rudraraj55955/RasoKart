@@ -4,9 +4,9 @@ _Read this before starting any task. Update this after every task._
 
 ---
 
-**Last Updated:** 2026-08-15 (IST) — Task #2475 CLOSED / LIVE / STABLE  
+**Last Updated:** 2026-08-15 (IST) — Task #2471 CLOSED / STABLE  
 **Updated By:** Agent (main)  
-**Trigger:** Task #2475 — PayU stuck-order recovery scheduler wired, deployed, runtime-confirmed
+**Trigger:** Task #2471 — EKQR stuck-alert opt-out path audited, confirmed correct, 7 tests added
 
 ---
 
@@ -232,6 +232,29 @@ git revert --no-commit 6e67df67 312b2af4 && git commit -m "revert: cashfree payo
 
 ---
 
+### 2.20 Task #2471 — EKQR Stuck-Alert Opt-Out Path Verification
+- **Module:** EKQR alerts — `notifyAdminsOfStuckEkqrQrCodes` opt-out guard
+- **Final Status:** ✅ CLOSED — STABLE (test-only — no production code change)
+- **Commit SHA:** `71fd2c2d`
+- **Rollback SHA:** `aca9a2de` (prior commit — test-only revert is safe)
+- **Tests:**
+  - `adminNotifyEmail.ekqr-sync-suppression.test.ts` — **21/21 PASS** (14 existing + 7 new)
+  - `tsc --noEmit` — 0 implementation errors
+- **Closure date:** 2026-08-15
+- **Root cause confirmed:** The functional code was already correct. `notifyAdminsOfStuckEkqrQrCodes` has a zero-recipient guard at line 802-805 that returns immediately when `getAdminEmails("ekqrSyncAlertEmails")` returns `[]`. When all admins opt out, no email is sent, no cooldown timestamp is updated, no log is inserted. The bug was **zero test coverage** for this path — every existing test seeded `[{ email: "admin@rasokart.com" }]` as the first selectResponse, so the early-return branch was never exercised.
+- **Fix:** Added 7 tests in a new `describe` block (`'all admins opted out'`):
+  1. Does not call sendMail when all admins opt out
+  2. Makes no DB inserts when all admins opt out (no cooldown log, no send log, no systemConfig)
+  3. Does not update systemConfig last-sent key when all opted out
+  4. Skips the cooldown check entirely (`selectCallCount` assertion: only 1 select, not 2)
+  5. Does not fire even when cooldown has fully expired and all admins opted out
+  6. Never throws when all admins opted out
+  7. Never throws when db.select rejects on the opt-out path
+- **Production impact:** None — test-only commit. Production code path unchanged. No deployment required.
+- **Deployment:** Not required (test-only). SHA `71fd2c2d` is on `origin/main` but no VPS deploy triggered.
+
+---
+
 ### 2.19 Task #2475 — PayU Stuck-Order Recovery Scheduler
 - **Module:** PayU payin — webhook reliability / missing-webhook recovery
 - **Final Status:** ✅ CLOSED — LIVE IN PRODUCTION — RUNTIME CONFIRMED 2026-08-15
@@ -350,7 +373,7 @@ _None currently pending._
 | Task | Module | Exact Issue | Impact | Tests Required | Deploy |
 |---|---|---|---|---|---|
 | ~~#2475 (CLOSED)~~ | PayU webhook | ✅ LIVE — scheduler wired 16851a9a, runtime-confirmed 2026-08-15 | Payment reliability | 20/20 new + 11/11 baseline | ✅ DEPLOYED |
-| #2471 | EKQR alerts | Stuck-EKQR alert must stop sending when all admins opt out | Notification spam | Alert opt-out test | YES |
+| ~~#2471 (CLOSED)~~ | EKQR alerts | ✅ Opt-out guard confirmed correct; 7 tests added — 71fd2c2d | Notification reliability | 21/21 PASS | NO (test-only) |
 | #301 | Callbacks | Alert merchants when signature failures spike | Security visibility | Spike detection test | YES |
 
 ### P1 — High / Financial / Merchant-Facing
@@ -390,13 +413,12 @@ _None currently pending._
 ## 8. NEXT ACTION QUEUE
 
 ```
-CURRENT TASK:  None. Task #2475 is CLOSED / LIVE / STABLE as of 2026-08-15.
-               Production SHA: 16851a9a. Scheduler confirmed running (PM2 PID 2221869).
+CURRENT TASK:  None. Task #2471 CLOSED 2026-08-15 — SHA 71fd2c2d (test-only).
+               Production SHA still 16851a9a (no prod code change needed for #2471).
 
-NEXT TASK:     Task #2471 — Confirm stuck-EKQR alert stops sending when all
-               admins have opted out (P0, alert reliability)
+NEXT TASK:     Task #301 — Alert merchants when signature failures spike (P1, security)
 
-THEN:          Task #301 — Alert merchants when signature failures spike (P1, security)
+THEN:          Task #114 — Accurate merchant withdrawals stats (P1, financial)
 
 LATER:         Task #114 — Accurate merchant withdrawals stats (P1, financial)
                Task #1062 — Seed demo callback logs (P1, demo/onboarding)
@@ -444,7 +466,8 @@ LATER:         Task #114 — Accurate merchant withdrawals stats (P1, financial)
 
 | SHA | Description | When to Use |
 |---|---|---|
-| `16851a9a` | **Current production** — PayU scheduler wired + systemConfig keys + notifyFn | Latest stable |
+| `71fd2c2d` | **Current HEAD** — EKQR opt-out test coverage (test-only) | Safe to rollback to 16851a9a |
+| `16851a9a` | **Current production** — PayU scheduler wired + systemConfig keys + notifyFn | Latest stable prod deploy |
 | `f0c7f8a1` | Pre-wiring — master status doc (scheduler orphaned) | Rollback from `16851a9a` if regression |
 | `6e67df67` | Cashfree payout webhook security fix | Pre-PayU-scheduler stable baseline |
 | `1f41738e` | Pre-session — stuck-order scheduler tests | Rollback past stuck-order work |
