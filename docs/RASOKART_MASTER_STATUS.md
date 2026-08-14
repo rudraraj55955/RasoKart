@@ -4,9 +4,9 @@ _Read this before starting any task. Update this after every task._
 
 ---
 
-**Last Updated:** 2026-08-15 (IST) — Task #2475 complete  
+**Last Updated:** 2026-08-15 (IST) — Task #2475 CLOSED / LIVE / STABLE  
 **Updated By:** Agent (main)  
-**Trigger:** Task #2475 — PayU stuck-order recovery scheduler implemented, tested, committed
+**Trigger:** Task #2475 — PayU stuck-order recovery scheduler wired, deployed, runtime-confirmed
 
 ---
 
@@ -37,13 +37,13 @@ DO NOT GUESS. Reconcile: current production SHA + DB/runtime evidence + prior cl
 
 | Field | Value |
 |---|---|
-| **Production SHA** | `6e67df6740f70a729d84710ddade7d81657ccb23` |
-| **Previous SHA (immediate rollback)** | `1f41738e` — Add status-filter real-DB tests and cooldown mock tests |
-| **Safe baseline SHA** | `dec7d3b9` — Add automated tests for cashfree payin credit backfill script |
+| **Production SHA** | `16851a9a829631840ececeec4eb38a9c1bcfdebd` |
+| **Previous SHA (immediate rollback)** | `f0c7f8a1` — Master status doc update (pre-wiring) |
+| **Safe baseline SHA** | `6e67df67` — Cashfree payout webhook security fix |
 | **Production health** | ✅ ALL GREEN — `healthz/deep` status=ok, schema_guard=pass, all checks true |
-| **Last deploy date/time** | 2026-08-14 ~22:16 UTC (2026-08-15 ~03:46 IST) |
+| **Last deploy date/time** | 2026-08-15 ~09:22 UTC (2026-08-15 ~14:52 IST) |
 | **Deploy trigger** | GitHub Actions push-to-main → appleboy SSH → PM2 restart |
-| **PM2 process** | `rasokart-api` (ID 4, PID 2214773) — online, 315 MB RSS |
+| **PM2 process** | `rasokart-api` (ID 4, PID 2221869) — online, 358 MB RSS |
 | **Domain** | `rasokart.com` (nginx → `127.0.0.1:3000`) |
 | **DB** | PostgreSQL on VPS — `localhost:5432/rasokart` |
 | **IAM/RBAC** | Live since 2026-07-19T19:32:27Z — 71 permissions, 497 role_permissions |
@@ -234,29 +234,34 @@ git revert --no-commit 6e67df67 312b2af4 && git commit -m "revert: cashfree payo
 
 ### 2.19 Task #2475 — PayU Stuck-Order Recovery Scheduler
 - **Module:** PayU payin — webhook reliability / missing-webhook recovery
-- **Final Status:** ✅ CLOSED — COMMITTED 2026-08-15, AWAITING DEPLOY APPROVAL
-- **Commit SHA:** `5d587609`
-- **Production SHA:** `d7dc6468` (not yet deployed — deploy approval required)
-- **Rollback SHA:** `d7dc6468` (simply don't deploy)
+- **Final Status:** ✅ CLOSED — LIVE IN PRODUCTION — RUNTIME CONFIRMED 2026-08-15
+- **Implementation SHA:** `5d587609` — scheduler file, system config keys, notify function (partial — index.ts wiring missing)
+- **Wiring fix SHA:** `16851a9a` — index.ts import + call + missing systemConfig keys + notifyAdminsOfStuckPayuOrders (all gaps from 5d587609)
+- **Production SHA:** `16851a9a829631840ececeec4eb38a9c1bcfdebd` — confirmed by healthz/deep
+- **Rollback SHA:** `f0c7f8a1` — revert to this if regression (pre-wiring)
 - **Tests:**
   - `payuStuckOrderRecovery.test.ts` — 20/20 PASS (new)
   - `payuWebhook.test.ts` — 11/11 PASS (baseline unchanged)
   - `webhook.security.audit.test.ts` — 23/23 PASS (unchanged)
   - `systemConfig.coverage.test.ts` — 3/3 PASS (new keys covered)
   - `schema-guard-coverage` — 115/115 PASS (no new table)
+  - `tsc --noEmit` — 0 implementation errors (2 pre-existing `.vals` in audit test, unrelated)
 - **Closure date:** 2026-08-15
-- **Root cause confirmed:** PayU payin orders stuck in INITIATED/PENDING had no automatic recovery path. The S2S webhook (`/api/payment/payu-s2s`) is the only credit trigger — if it is never delivered (network failure, PayU retry exhausted, brief server downtime), the order stays stuck and the merchant is never credited. No polling, no scheduled recheck, no alert existed. The Cashfree equivalent (`cashfreeStuckOrderScheduler.ts`) was already in place; PayU had nothing.
-- **Fix:** New scheduler `payuStuckOrderRecovery.ts`:
-  - Runs every 15 minutes + startup sweep
-  - Scans `payu_payment_orders` WHERE status IN (INITIATED, PENDING), older than staleMinutes (default 30), production merchants only
-  - For each stuck order: calls `queryPayuTransactionStatus` (existing PayU Verify Payment API helper)
-  - Decision per PayU response: `success`→credit, `failure/failed`→FAILED, `cancelled/cancel`→CANCELLED, `pending`→leave, `not found`→leave, API error→leave, no creds→skip but still alert
-  - After recoveries: re-counts remaining stuck orders, fires admin email alert if count ≥ threshold (default 3) with 4h cooldown
-- **Idempotency:** `creditWalletForPayu`'s `WHERE status IN (INITIATED, PENDING) RETURNING` atomic guard prevents double-credit even under concurrent scheduler + webhook delivery. Second run returns `outcome=duplicate`, no second wallet/ledger mutation.
-- **Wallet/ledger:** `source='payu_stuck_order_recovery'` written to `transactions.description`. `wallet_ledger` entry type `pending_credit`, identical to webhook path. No new mutations introduced — existing `creditWalletForPayu` called unmodified.
-- **Security:** Zero changes to `payuWebhook.ts`, `payinOrders.ts`, `app.ts`. No new endpoints. No credential exposure. Only production merchants scoped. Only credits on PayU-confirmed `success` — never on ambiguous/missing status.
-- **No new DB table.** 4 new `system_config` keys: `payu_stuck_order_stale_minutes` (30), `payu_stuck_order_alert_threshold` (3), `payu_stuck_order_alert_cooldown_hours` (4), `payu_stuck_order_alert_last_sent_at` (runtime-state). All seeded automatically from `SYSTEM_CONFIG_DEFAULTS` on first use. No schema migration needed.
-- **Do not deploy without explicit user approval.**
+- **Runtime confirmation (all 8 points PASS):**
+  1. `healthz/deep` = status:ok, schema_guard:pass, all 14 checks true ✅
+  2. Production SHA = `16851a9a` ✅
+  3. PM2 PID 2221869, online, 358 MB RSS ✅
+  4. PM2 log: `"PayU stuck order recovery scheduler initialised (every 15 min)"` ✅
+  5. 15-minute cron registered ✅
+  6. Startup sweep ran — 0 qualifying orders found — no credits issued ✅
+  7. Qualifying stuck PayU orders: 0 ✅
+  8. wallet_ledger: 126 rows (unchanged), transactions: 122 rows (unchanged), payu_stuck_order_recovery credits: 0 ✅
+- **Root cause of original gap:** Commit 5d587609 shipped `payuStuckOrderRecovery.ts` but three things were never committed to `index.ts` or the shared schema: (1) the import + `initPayuStuckOrderScheduler()` call in `index.ts`; (2) 4 `SYSTEM_CONFIG_KEYS` entries + 3 defaults + 1 no-default entry in `lib/db/src/schema/systemConfig.ts`; (3) `notifyAdminsOfStuckPayuOrders()` + `buildStuckPayuOrderHtml()` in `adminNotifyEmail.ts`. The scheduler file existed and was deployed but was an orphaned module — nothing imported it, no cron timer was ever registered.
+- **Fix summary:** `16851a9a` adds all three missing pieces. Scheduler now registers on startup, startup sweep runs immediately, 15-min cron ticks thereafter.
+- **Root cause of original problem (the task itself):** PayU payin orders stuck in INITIATED/PENDING had no automatic recovery path. The S2S webhook is the only credit trigger — if never delivered (network failure, PayU retry exhausted, brief server downtime), the order stays stuck and the merchant is never credited. The Cashfree equivalent was already in place; PayU had nothing.
+- **Scheduler behaviour:** Runs every 15 min + startup sweep. Scans `payu_payment_orders` WHERE status IN (INITIATED, PENDING), older than 30 min, production merchants only. Per order: calls PayU Verify Payment API → `success`→credit, `failure/failed`→FAILED, `cancelled`→CANCELLED, `pending`/`not found`/API error→leave. After scan: re-counts remaining; fires admin email if count ≥ threshold (3) with 4h cooldown.
+- **Idempotency:** `creditWalletForPayu` atomic `WHERE status IN (INITIATED, PENDING) RETURNING` guard prevents double-credit under concurrent scheduler + webhook delivery.
+- **Financial impact at deploy:** ₹0 — 0 qualifying orders existed; startup sweep found nothing to credit.
 
 ---
 
@@ -344,7 +349,7 @@ _None currently pending._
 
 | Task | Module | Exact Issue | Impact | Tests Required | Deploy |
 |---|---|---|---|---|---|
-| ~~#2475 (CLOSED)~~ | PayU webhook | ✅ Recovery scheduler implemented — commit 5d587609, awaiting deploy | Payment reliability | 20/20 new + 11/11 baseline | PENDING APPROVAL |
+| ~~#2475 (CLOSED)~~ | PayU webhook | ✅ LIVE — scheduler wired 16851a9a, runtime-confirmed 2026-08-15 | Payment reliability | 20/20 new + 11/11 baseline | ✅ DEPLOYED |
 | #2471 | EKQR alerts | Stuck-EKQR alert must stop sending when all admins opt out | Notification spam | Alert opt-out test | YES |
 | #301 | Callbacks | Alert merchants when signature failures spike | Security visibility | Spike detection test | YES |
 
@@ -385,9 +390,8 @@ _None currently pending._
 ## 8. NEXT ACTION QUEUE
 
 ```
-CURRENT TASK:  Task #2475 — PayU stuck-order recovery scheduler — COMPLETE
-               Commit 5d587609 pushed to github/main. Tests: 20+11+23+3+115 all PASS.
-               ⚠️ DEPLOY APPROVAL REQUIRED before this goes to production.
+CURRENT TASK:  None. Task #2475 is CLOSED / LIVE / STABLE as of 2026-08-15.
+               Production SHA: 16851a9a. Scheduler confirmed running (PM2 PID 2221869).
 
 NEXT TASK:     Task #2471 — Confirm stuck-EKQR alert stops sending when all
                admins have opted out (P0, alert reliability)
@@ -440,8 +444,10 @@ LATER:         Task #114 — Accurate merchant withdrawals stats (P1, financial)
 
 | SHA | Description | When to Use |
 |---|---|---|
-| `6e67df67` | **Current production** — Cashfree payout webhook security fix | Latest stable |
-| `1f41738e` | Pre-session — stuck-order scheduler tests | Rollback from `6e67df67` if regression |
+| `16851a9a` | **Current production** — PayU scheduler wired + systemConfig keys + notifyFn | Latest stable |
+| `f0c7f8a1` | Pre-wiring — master status doc (scheduler orphaned) | Rollback from `16851a9a` if regression |
+| `6e67df67` | Cashfree payout webhook security fix | Pre-PayU-scheduler stable baseline |
+| `1f41738e` | Pre-session — stuck-order scheduler tests | Rollback past stuck-order work |
 | `dec7d3b9` | Cashfree payin credit backfill tests | Rollback past stuck-order scheduler work |
 | `4f1b68c5` | Cashfree Payin Reconciliation UI | Rollback past reconciliation |
 | `6e85afbe` | STABLE_BASELINE.md reference — PayU live + IAM + schema guard | Full payment core rollback |
