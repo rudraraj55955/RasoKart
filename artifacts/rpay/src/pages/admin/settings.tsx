@@ -390,6 +390,11 @@ export default function AdminSettings() {
   const [quietHoursFlushInterval, setQuietHoursFlushInterval] = useState<number>(60);
   const [quietHoursFlushInitialized, setQuietHoursFlushInitialized] = useState(false);
 
+  const [cfStuckThreshold, setCfStuckThreshold] = useState<number>(5);
+  const [cfStuckStaleMinutes, setCfStuckStaleMinutes] = useState<number>(15);
+  const [cfStuckCooldownHours, setCfStuckCooldownHours] = useState<number>(4);
+  const [cfStuckInitialized, setCfStuckInitialized] = useState(false);
+
 
   // SMTP config form state
   const [smtpHost, setSmtpHost] = useState("");
@@ -1338,6 +1343,46 @@ export default function AdminSettings() {
       },
       onError: (err: Error) => toast.error(err.message),
     },
+  });
+
+  const { data: cfStuckAlertData, isLoading: cfStuckAlertLoading } = useQuery<{ threshold: number; staleMinutes: number; cooldownHours: number }>({
+    queryKey: ["/api/system-config/cashfree-stuck-order-alert"],
+    queryFn: () => apiGet("/system-config/cashfree-stuck-order-alert"),
+    staleTime: 30_000,
+  });
+
+  useEffect(() => {
+    if (!cfStuckInitialized && cfStuckAlertData) {
+      setCfStuckThreshold(cfStuckAlertData.threshold);
+      setCfStuckStaleMinutes(cfStuckAlertData.staleMinutes);
+      setCfStuckCooldownHours(cfStuckAlertData.cooldownHours);
+      setCfStuckInitialized(true);
+    }
+  }, [cfStuckInitialized, cfStuckAlertData]);
+
+  const currentCfStuckThreshold = cfStuckAlertData?.threshold ?? 5;
+  const currentCfStuckStaleMinutes = cfStuckAlertData?.staleMinutes ?? 15;
+  const currentCfStuckCooldownHours = cfStuckAlertData?.cooldownHours ?? 4;
+  const cfStuckUnchanged =
+    cfStuckThreshold === currentCfStuckThreshold &&
+    cfStuckStaleMinutes === currentCfStuckStaleMinutes &&
+    cfStuckCooldownHours === currentCfStuckCooldownHours;
+  const cfStuckValid = cfStuckThreshold >= 1 && cfStuckStaleMinutes >= 5 && cfStuckCooldownHours >= 1;
+
+  const { mutate: saveCfStuckAlert, isPending: savingCfStuckAlert } = useMutation({
+    mutationFn: () => apiPut("/system-config/cashfree-stuck-order-alert", {
+      threshold: cfStuckThreshold,
+      staleMinutes: cfStuckStaleMinutes,
+      cooldownHours: cfStuckCooldownHours,
+    }),
+    onSuccess: (res: { threshold: number; staleMinutes: number; cooldownHours: number }) => {
+      toast.success("Cashfree stuck order alert settings saved");
+      setCfStuckThreshold(res.threshold);
+      setCfStuckStaleMinutes(res.staleMinutes);
+      setCfStuckCooldownHours(res.cooldownHours);
+      qc.invalidateQueries({ queryKey: ["/api/system-config/cashfree-stuck-order-alert"] });
+    },
+    onError: (err: Error) => toast.error(err.message),
   });
 
   const testEmailTrimmed = testEmailTo.trim();
@@ -4790,6 +4835,124 @@ export default function AdminSettings() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Cashfree Stuck Order Alert */}
+      <Card className="border-border/50" id="cashfree-stuck-order-alert">
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-muted-foreground" />
+            <CardTitle className="text-base">Cashfree Stuck Order Alert</CardTitle>
+          </div>
+          <CardDescription className="text-sm">
+            The scheduler scans every 30 minutes for Cashfree payin orders that are still
+            CREATED or PENDING past the stale window. When the count meets or exceeds the
+            threshold an email goes to every active admin (no opt-out). A cooldown prevents
+            repeated alerts during a prolonged outage. Changes take effect on the next scheduler tick.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {cfStuckAlertLoading ? (
+            <SettingsFormSkeleton rows={3} />
+          ) : (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="cf-stuck-threshold" className="text-sm">
+                    Alert threshold (orders)
+                  </Label>
+                  <Input
+                    id="cf-stuck-threshold"
+                    type="number"
+                    min={1}
+                    max={10000}
+                    value={cfStuckThreshold}
+                    onChange={e => {
+                      const v = parseInt(e.target.value);
+                      if (!isNaN(v)) setCfStuckThreshold(Math.min(10000, Math.max(1, v)));
+                    }}
+                    className="w-full"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Min 1. Default: 5.
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="cf-stuck-stale" className="text-sm">
+                    Stale window (minutes)
+                  </Label>
+                  <Input
+                    id="cf-stuck-stale"
+                    type="number"
+                    min={5}
+                    max={1440}
+                    value={cfStuckStaleMinutes}
+                    onChange={e => {
+                      const v = parseInt(e.target.value);
+                      if (!isNaN(v)) setCfStuckStaleMinutes(Math.min(1440, Math.max(5, v)));
+                    }}
+                    className="w-full"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    5–1440 min. Default: 15.
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="cf-stuck-cooldown" className="text-sm">
+                    Alert cooldown (hours)
+                  </Label>
+                  <Input
+                    id="cf-stuck-cooldown"
+                    type="number"
+                    min={1}
+                    max={168}
+                    value={cfStuckCooldownHours}
+                    onChange={e => {
+                      const v = parseInt(e.target.value);
+                      if (!isNaN(v)) setCfStuckCooldownHours(Math.min(168, Math.max(1, v)));
+                    }}
+                    className="w-full"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    1–168 h (1 week). Default: 4.
+                  </p>
+                </div>
+              </div>
+
+              {!cfStuckValid && (
+                <p className="text-xs text-amber-400 flex items-center gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  Threshold must be ≥ 1, stale window ≥ 5 min, and cooldown ≥ 1 h.
+                </p>
+              )}
+
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  onClick={() => saveCfStuckAlert()}
+                  disabled={savingCfStuckAlert || cfStuckUnchanged || !cfStuckValid}
+                >
+                  <Save className="w-3.5 h-3.5 mr-1.5" />
+                  {savingCfStuckAlert ? "Saving…" : "Save"}
+                </Button>
+                {!cfStuckUnchanged && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setCfStuckThreshold(currentCfStuckThreshold);
+                      setCfStuckStaleMinutes(currentCfStuckStaleMinutes);
+                      setCfStuckCooldownHours(currentCfStuckCooldownHours);
+                    }}
+                    disabled={savingCfStuckAlert}
+                  >
+                    Cancel
+                  </Button>
+                )}
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Quiet Hours Flush Interval */}
       <Card className="border-border/50">

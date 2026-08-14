@@ -2527,6 +2527,108 @@ router.post("/ekqr/test", async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /api/system-config/cashfree-stuck-order-alert
+router.get("/cashfree-stuck-order-alert", async (req, res, next) => {
+  try {
+    const keys = [
+      SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_ALERT_THRESHOLD,
+      SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_STALE_MINUTES,
+      SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_ALERT_COOLDOWN_HOURS,
+    ];
+
+    const rows = await db
+      .select()
+      .from(systemConfigTable)
+      .where(inArray(systemConfigTable.key, keys));
+
+    const map = new Map(rows.map((r) => [r.key, r.value]));
+
+    res.json({
+      threshold: parseInt(
+        map.get(SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_ALERT_THRESHOLD) ??
+          SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_ALERT_THRESHOLD]
+      ),
+      staleMinutes: parseInt(
+        map.get(SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_STALE_MINUTES) ??
+          SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_STALE_MINUTES]
+      ),
+      cooldownHours: parseInt(
+        map.get(SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_ALERT_COOLDOWN_HOURS) ??
+          SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_ALERT_COOLDOWN_HOURS]
+      ),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /api/system-config/cashfree-stuck-order-alert
+router.put("/cashfree-stuck-order-alert", async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+    const { threshold, staleMinutes, cooldownHours } = req.body;
+
+    if (typeof threshold !== "number" || !Number.isInteger(threshold)) {
+      res.status(400).json({ error: "threshold must be an integer" });
+      return;
+    }
+    if (threshold < 1 || threshold > 10000) {
+      res.status(400).json({ error: "threshold must be between 1 and 10000" });
+      return;
+    }
+
+    if (typeof staleMinutes !== "number" || !Number.isInteger(staleMinutes)) {
+      res.status(400).json({ error: "staleMinutes must be an integer" });
+      return;
+    }
+    if (staleMinutes < 5 || staleMinutes > 1440) {
+      res.status(400).json({ error: "staleMinutes must be between 5 and 1440" });
+      return;
+    }
+
+    if (typeof cooldownHours !== "number" || !Number.isInteger(cooldownHours)) {
+      res.status(400).json({ error: "cooldownHours must be an integer" });
+      return;
+    }
+    if (cooldownHours < 1 || cooldownHours > 168) {
+      res.status(400).json({ error: "cooldownHours must be between 1 and 168" });
+      return;
+    }
+
+    const entries = [
+      { key: SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_ALERT_THRESHOLD,      value: String(threshold),    updatedByEmail: user.email },
+      { key: SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_STALE_MINUTES,        value: String(staleMinutes), updatedByEmail: user.email },
+      { key: SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_ALERT_COOLDOWN_HOURS, value: String(cooldownHours), updatedByEmail: user.email },
+    ];
+
+    for (const entry of entries) {
+      await db
+        .insert(systemConfigTable)
+        .values(entry)
+        .onConflictDoUpdate({
+          target: systemConfigTable.key,
+          set: { value: entry.value, updatedByEmail: entry.updatedByEmail, updatedAt: sql`now()` },
+        });
+    }
+
+    await db.insert(auditLogsTable).values({
+      adminId: user.id,
+      adminEmail: user.email,
+      action: "system_config_updated",
+      targetType: "system_config",
+      targetId: null,
+      details: JSON.stringify({ section: "cashfree_stuck_order_alert", threshold, staleMinutes, cooldownHours }),
+      ipAddress: (req as any).ip ?? null,
+    });
+
+    req.log.info({ threshold, staleMinutes, cooldownHours }, "Cashfree stuck order alert config updated");
+
+    res.json({ threshold, staleMinutes, cooldownHours });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // POST /api/system-config/ekqr/test-status
 // Tests the check-order-status endpoint by querying a known-nonexistent client_txn_id.
 // EKQR responds with { status: false, msg: "No record found" } (or a close variant) when
