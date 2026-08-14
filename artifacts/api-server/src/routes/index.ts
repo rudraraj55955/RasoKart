@@ -42,7 +42,6 @@ import cashfreeOrdersRouter from "./cashfreeOrders";
 import cashfreePayoutRouter from "./cashfreePayout";
 import cashfreePayoutWebhookRouter from "./cashfreePayoutWebhook";
 import payinOrdersRouter from "./payinOrders";
-import payinWebhookRouter from "./payinWebhook";
 import payinCustomWebhookRouter from "./payinCustomWebhook";
 import adminPayinOrdersRouter from "./adminPayinOrders";
 import adminPayinGatewayDebugRouter from "./adminPayinGatewayDebug";
@@ -121,9 +120,11 @@ router.use("/payout-beneficiaries", payoutBeneficiariesRouter);
 router.use("/api-keys", apiKeysRouter);
 // Public payout webhook alias — must come BEFORE /webhooks (which has global requireAuth)
 router.use("/webhooks/payouts/cashfree", cashfreePayoutWebhookRouter);
-// Public payin webhook — must come BEFORE /webhooks (which has global requireAuth)
-router.use("/webhooks/payin", payinWebhookRouter);
 // Public generic custom-gateway payin webhook — same reason as above.
+// NOTE: The Cashfree-specific payin webhook route (/webhooks/payin/cashfree) was
+// removed — the canonical route is POST /payment/cashfree-webhook (cashfreeWebhook.ts),
+// which is HARD fail-closed and uses the new wallet model. The alternate route used
+// legacy accounting (merchants.balance) and had a SOFT no-credential fallback.
 router.use("/webhooks/payin/custom", payinCustomWebhookRouter);
 // Public UPIGateway payin webhook — must come BEFORE /webhooks (which has global requireAuth)
 router.use("/webhooks/upigateway", upigatewayWebhookRouter);
