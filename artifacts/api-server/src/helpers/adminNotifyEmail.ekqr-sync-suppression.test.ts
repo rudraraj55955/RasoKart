@@ -379,3 +379,147 @@ describe("notifyAdminsOfStuckEkqrQrCodes — cooldown suppression", () => {
     );
   });
 });
+
+// ── All admins opted out ────────────────────────────────────────────────────────
+//
+// When getAdminEmails returns [] the function must return immediately at the
+// zero-recipient guard (adminNotifyEmail.ts line 802-805) without ever:
+//   - reading the cooldown timestamp (second db.select)
+//   - inserting into ekqrSyncAlertLogsTable (neither suppressed nor send log)
+//   - upserting the systemConfig last-sent key
+//   - calling sendMail
+//
+// This is the critical behavioural contract for Task #2471.  Every test below
+// seeds the first selectResponse as [] to simulate all admins having
+// ekqr_sync_alert_emails = false.
+
+describe("notifyAdminsOfStuckEkqrQrCodes — all admins opted out", () => {
+
+  it("does not call sendMail when all admins have opted out", async () => {
+    buildSelectMock([
+      [], // getAdminEmails → zero opted-in recipients
+    ]);
+    buildInsertMock([]);
+    const sendCalls: unknown[] = [];
+
+    await notifyAdminsOfStuckEkqrQrCodes(SAMPLE_OPTS, buildSendSpy(sendCalls));
+
+    assert.equal(
+      sendCalls.length,
+      0,
+      "sendMail must never be called when no admins are opted in",
+    );
+  });
+
+  it("makes no DB inserts when all admins have opted out", async () => {
+    buildSelectMock([
+      [], // getAdminEmails → zero recipients
+    ]);
+    const insertLog: Array<{ table: unknown; values: unknown }> = [];
+    buildInsertMock(insertLog);
+
+    await notifyAdminsOfStuckEkqrQrCodes(SAMPLE_OPTS, failSend);
+
+    assert.equal(
+      insertLog.length,
+      0,
+      "No inserts (suppression log, send log, or systemConfig update) must occur when all admins have opted out",
+    );
+  });
+
+  it("does not update the systemConfig last-sent key when all admins have opted out", async () => {
+    buildSelectMock([
+      [], // getAdminEmails → zero recipients
+    ]);
+    const insertLog: Array<{ table: unknown; values: unknown }> = [];
+    buildInsertMock(insertLog);
+
+    await notifyAdminsOfStuckEkqrQrCodes(SAMPLE_OPTS, failSend);
+
+    const systemConfigInserts = insertLog.filter(e => e.table === systemConfigTable);
+    assert.equal(
+      systemConfigInserts.length,
+      0,
+      "systemConfig last-sent key must NOT be touched when all admins have opted out",
+    );
+  });
+
+  it("skips the cooldown check entirely when all admins have opted out", async () => {
+    // Track how many times db.select is called.
+    // The zero-recipient guard fires after the FIRST select (getAdminEmails).
+    // The cooldown check would require a SECOND select.
+    // If the count stays at 1 the guard fired before cooldown was consulted.
+    let selectCallCount = 0;
+    (db as any).select = (_fields?: unknown) => {
+      selectCallCount++;
+      const rows = selectCallCount === 1 ? [] : [{ value: RECENT_TIMESTAMP }];
+      const chain: any = {
+        from: () => chain,
+        where: (_cond: unknown) =>
+          Object.assign(Promise.resolve(rows), {
+            limit: (_n: number) => Promise.resolve(rows),
+          }),
+      };
+      return chain;
+    };
+    buildInsertMock([]);
+
+    await notifyAdminsOfStuckEkqrQrCodes(SAMPLE_OPTS, failSend);
+
+    assert.equal(
+      selectCallCount,
+      1,
+      "Only one db.select call (getAdminEmails) must occur; cooldown check must be skipped when no recipients",
+    );
+  });
+
+  it("does not fire even when the cooldown has fully expired and all admins have opted out", async () => {
+    // Simulate: cooldown expired (old timestamp would normally allow a send),
+    // but all admins opted out → still no send.
+    buildSelectMock([
+      [], // getAdminEmails → zero recipients (cooldown check is never reached)
+      [{ value: OLD_TIMESTAMP }], // would be the cooldown row — never consumed
+    ]);
+    buildInsertMock([]);
+    const sendCalls: unknown[] = [];
+
+    await notifyAdminsOfStuckEkqrQrCodes(SAMPLE_OPTS, buildSendSpy(sendCalls));
+
+    assert.equal(
+      sendCalls.length,
+      0,
+      "sendMail must not fire when all admins opt out, even if the cooldown window has fully expired",
+    );
+  });
+
+  it("never throws when all admins have opted out", async () => {
+    buildSelectMock([
+      [], // zero recipients
+    ]);
+    buildInsertMock([]);
+
+    await assert.doesNotReject(
+      () => notifyAdminsOfStuckEkqrQrCodes(SAMPLE_OPTS, failSend),
+      "notifyAdminsOfStuckEkqrQrCodes must never throw when all admins have opted out",
+    );
+  });
+
+  it("never throws when all admins have opted out and db.select rejects", async () => {
+    (db as any).select = () => ({
+      from: () => ({
+        where: (_cond: unknown) => {
+          const rejection = Promise.reject(new Error("simulated DB error on opt-out path"));
+          return Object.assign(rejection, {
+            limit: (_n: number) => Promise.reject(new Error("simulated DB error on opt-out path")),
+          });
+        },
+      }),
+    });
+    buildInsertMock([]);
+
+    await assert.doesNotReject(
+      () => notifyAdminsOfStuckEkqrQrCodes(SAMPLE_OPTS, failSend),
+      "notifyAdminsOfStuckEkqrQrCodes must swallow DB errors on the opt-out path",
+    );
+  });
+});
