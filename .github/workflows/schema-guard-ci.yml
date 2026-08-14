@@ -68,6 +68,16 @@ jobs:
         # explicit in the CI log.
         run: echo "Cross-file consistency check ran as part of schema-guard-column-diff above."
 
+      - name: Run schema-guard deploy-window gap check
+        # Flags schemaGuard-only tables (no Drizzle pgTable) whose CREATE TABLE
+        # guard exists in schemaGuard.ts but is completely absent from
+        # db-migrate.ts.  On a fresh VPS deploy, db-migrate runs BEFORE the
+        # server starts; a table not present there won't exist until schemaGuard
+        # executes at server startup, causing 502s during the deploy window.
+        # NOTE: this check runs as part of the schema-guard-column-diff script
+        # above; this step is a no-op alias that makes the intent explicit.
+        run: echo "Deploy-window gap check ran as part of schema-guard-column-diff above."
+
       - name: Run schema-guard-alter-reverse-check
         # Reverse of the diff: every ALTER TABLE ADD COLUMN IF NOT EXISTS line
         # in schemaGuard.ts / db-migrate.ts must reference a column that actually

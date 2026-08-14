@@ -897,7 +897,76 @@ function main(): void {
 
   const crossFileOk = checkCrossFileConsistency();
 
-  if (!forwardOk || !reverseOk || !dropOk || !manifestOk || !manifestReverseOk || !unregisteredOk || !crossFileOk) {
+  // ── Deploy-window gap check ───────────────────────────────────────────────
+  //
+  // Flags tables that have a CREATE TABLE guard in schemaGuard.ts but NO
+  // corresponding CREATE TABLE in db-migrate.ts, AND no Drizzle pgTable entry.
+  //
+  // On a fresh VPS deploy, db-migrate.ts runs BEFORE the server starts (and
+  // therefore before schemaGuard executes).  A table whose CREATE TABLE exists
+  // only in schemaGuard.ts will not exist during that window, causing
+  // "relation does not exist" 502s until the server fully starts.
+  //
+  // Drizzle-tracked tables are excluded: they are managed by drizzle-kit push
+  // / migrations and their existence is guaranteed through a different path.
+  //
+  // Every schemaGuard-only table (no Drizzle pgTable) must have a
+  // CREATE TABLE IF NOT EXISTS guard in db-migrate.ts so it is created during
+  // the pre-startup migration step, not only at server start.
+
+  console.log(
+    "\nschema-guard-deploy-window-check: checking for schemaGuard-only tables absent from db-migrate.ts...\n"
+  );
+
+  let deployWindowOk = true;
+
+  if (fs.existsSync(SCHEMA_GUARD_FILE) && fs.existsSync(DB_MIGRATE_FILE)) {
+    const guardSrc = fs.readFileSync(SCHEMA_GUARD_FILE, "utf8");
+    const migrateSrc = fs.readFileSync(DB_MIGRATE_FILE, "utf8");
+
+    const guardCreateTables = collectCreateTableColumns(guardSrc);
+    const migrateCreateTables = collectCreateTableColumns(migrateSrc);
+
+    const deployGaps: string[] = [];
+    for (const table of guardCreateTables.keys()) {
+      // Drizzle-tracked tables are managed by drizzle-kit and are excluded.
+      if (drizzleLower.has(table)) continue;
+      // Flag tables present in schemaGuard.ts but absent from db-migrate.ts.
+      if (!migrateCreateTables.has(table)) {
+        deployGaps.push(table);
+      }
+    }
+
+    if (deployGaps.length === 0) {
+      console.log(
+        "✓ All schemaGuard-only tables (no Drizzle pgTable) also have a CREATE TABLE guard in db-migrate.ts."
+      );
+    } else {
+      deployWindowOk = false;
+      console.error(
+        `✗ Found ${deployGaps.length} schemaGuard-only table(s) with no CREATE TABLE in db-migrate.ts:\n`
+      );
+      console.error(
+        "  On a fresh VPS deploy, db-migrate.ts runs BEFORE the server starts (and before\n" +
+          "  schemaGuard executes).  These tables will not exist during that window, causing\n" +
+          "  'relation does not exist' 502s or startup errors until the server fully initialises.\n" +
+          "  Fix: add a CREATE TABLE IF NOT EXISTS block for each table to db-migrate.ts so\n" +
+          "  it is created during the pre-startup migration step, not only at server start.\n"
+      );
+      for (const table of deployGaps.sort()) {
+        console.error(
+          `  ${table}  ← CREATE TABLE in schemaGuard.ts but absent from db-migrate.ts`
+        );
+      }
+      console.error();
+    }
+  } else {
+    console.log(
+      "✓ Deploy-window check skipped — one or both guard files are absent."
+    );
+  }
+
+  if (!forwardOk || !reverseOk || !dropOk || !manifestOk || !manifestReverseOk || !unregisteredOk || !crossFileOk || !deployWindowOk) {
     process.exit(1);
   }
 }

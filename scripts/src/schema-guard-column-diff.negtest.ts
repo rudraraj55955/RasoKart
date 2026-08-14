@@ -162,9 +162,23 @@ function buildSchemaGuardOnlyFixtures(opts: SchemaGuardOnlyFixtureOptions): {
   const guardFile = path.join(dir, "guard.ts");
   fs.writeFileSync(guardFile, guardContent);
 
-  // ── Empty migrate file ────────────────────────────────────────────────────
+  // ── Migrate file: also has CREATE TABLE so the deploy-window check passes ─
+  // The deploy-window check flags tables that have CREATE TABLE in schemaGuard
+  // but not in db-migrate AND are not Drizzle-tracked.  Most tests using this
+  // helper are exercising column-level drift, not the deploy-window scenario,
+  // so we include a matching CREATE TABLE here to keep them green.  Tests that
+  // specifically want to exercise the deploy-window gap path should build their
+  // own fixture without this entry.
+  const migrateContent = [
+    `-- schemaGuard-only fixture (migrate)`,
+    `CREATE TABLE IF NOT EXISTS guard_only_table (`,
+    `  id SERIAL PRIMARY KEY,`,
+    colDefs,
+    `);`,
+  ].join("\n") + "\n";
+
   const migrateFile = path.join(dir, "migrate.ts");
-  fs.writeFileSync(migrateFile, `-- empty\n`);
+  fs.writeFileSync(migrateFile, migrateContent);
 
   // ── Manifest file: register guard_only_table so the unregistered-table
   // check passes for callers that are not testing that specific path ─────────
@@ -1056,6 +1070,137 @@ describe("schema-guard-column-diff negative-case contract", () => {
       code,
       0,
       "script must exit 0 when the table only has a CREATE TABLE in schemaGuard — no cross-file check applies",
+    );
+  });
+
+  // ── Deploy-window gap check ──────────────────────────────────────────────
+  //
+  // A table whose CREATE TABLE guard exists only in schemaGuard.ts (absent from
+  // db-migrate.ts) and has no Drizzle pgTable is a deploy-window gap: on a
+  // fresh VPS deploy, db-migrate runs BEFORE the server starts, so the table
+  // won't exist until schemaGuard runs at server startup — causing 502s during
+  // that window.
+
+  /**
+   * Build a fixture where schemaGuard.ts has a CREATE TABLE for a
+   * schemaGuard-only table but db-migrate.ts does NOT.  Used to exercise the
+   * deploy-window gap check specifically.  A manifest is written so the
+   * unregistered-table check does not also fire.
+   */
+  function buildDeployWindowFixture(opts: {
+    inMigrate: boolean;
+  }): { dir: string; env: NodeJS.ProcessEnv } {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sgcd-deploywin-"));
+
+    // Empty Drizzle schema — the table is schemaGuard-only.
+    const schemaDir = path.join(dir, "schema");
+    fs.mkdirSync(schemaDir, { recursive: true });
+    fs.writeFileSync(path.join(schemaDir, "index.ts"), `// no tables\n`);
+
+    // schemaGuard.ts: CREATE TABLE for deploy_gap_table
+    const guardFile = path.join(dir, "guard.ts");
+    fs.writeFileSync(
+      guardFile,
+      [
+        `-- schemaGuard deploy-window fixture`,
+        `CREATE TABLE IF NOT EXISTS deploy_gap_table (`,
+        `  id SERIAL PRIMARY KEY,`,
+        `  ref_code TEXT,`,
+        `);`,
+      ].join("\n") + "\n",
+    );
+
+    // db-migrate.ts: optionally also has CREATE TABLE
+    const migrateFile = path.join(dir, "migrate.ts");
+    if (opts.inMigrate) {
+      fs.writeFileSync(
+        migrateFile,
+        [
+          `-- db-migrate deploy-window fixture`,
+          `CREATE TABLE IF NOT EXISTS deploy_gap_table (`,
+          `  id SERIAL PRIMARY KEY,`,
+          `  ref_code TEXT,`,
+          `);`,
+        ].join("\n") + "\n",
+      );
+    } else {
+      fs.writeFileSync(migrateFile, `-- empty\n`);
+    }
+
+    // Manifest: register deploy_gap_table so the unregistered-table check passes.
+    const manifestFile = path.join(dir, "manifest.json");
+    fs.writeFileSync(
+      manifestFile,
+      JSON.stringify({
+        _readme: "deploy-window fixture manifest",
+        deploy_gap_table: ["id", "ref_code"],
+      }),
+    );
+
+    return {
+      dir,
+      env: {
+        ...process.env,
+        SGCD_SCHEMA_DIR: schemaDir,
+        SGCD_SCHEMA_INDEX: path.join(schemaDir, "index.ts"),
+        SGCD_GUARD_FILE: guardFile,
+        SGCD_MIGRATE_FILE: migrateFile,
+        SGCD_MANIFEST_FILE: manifestFile,
+      },
+    };
+  }
+
+  // Case DW-1: schemaGuard-only table in schemaGuard but not migrate → exit 1
+  test("exits 1 when a schemaGuard-only table has CREATE TABLE in schemaGuard.ts but not in db-migrate.ts (deploy-window gap)", () => {
+    const { dir, env } = buildDeployWindowFixture({ inMigrate: false });
+    fixtures.push({ dir });
+
+    const { code, stdout, stderr } = runScriptFull(env);
+    assert.equal(
+      code,
+      1,
+      "script must exit 1 when a schemaGuard-only table's CREATE TABLE is absent from db-migrate.ts",
+    );
+    const output = stdout + stderr;
+    assert.ok(
+      output.includes("deploy_gap_table"),
+      `output must name the offending table; got:\n${output}`,
+    );
+    assert.ok(
+      output.includes("db-migrate"),
+      `output must mention db-migrate.ts; got:\n${output}`,
+    );
+  });
+
+  // Case DW-2: schemaGuard-only table present in BOTH guard files → exit 0
+  test("exits 0 when a schemaGuard-only table has CREATE TABLE in both schemaGuard.ts and db-migrate.ts", () => {
+    const { dir, env } = buildDeployWindowFixture({ inMigrate: true });
+    fixtures.push({ dir });
+
+    const code = runScript(env);
+    assert.equal(
+      code,
+      0,
+      "script must exit 0 when the schemaGuard-only table is covered by a CREATE TABLE in both guard files",
+    );
+  });
+
+  // Case DW-3: Drizzle-tracked table in schemaGuard only → exit 0 (excluded from check)
+  test("exits 0 when a Drizzle-tracked table has CREATE TABLE only in schemaGuard.ts (Drizzle tables are excluded from the deploy-window check)", () => {
+    // buildFixtures creates a Drizzle-tracked table with CREATE TABLE only in
+    // the guard file and an empty migrate file.  The deploy-window check must
+    // not flag this because Drizzle-tracked tables are managed by drizzle-kit.
+    const { dir, env } = buildFixtures({
+      schemaColumns: ["name"],
+      guardColumns: ["name"],
+    });
+    fixtures.push({ dir });
+
+    const code = runScript(env);
+    assert.equal(
+      code,
+      0,
+      "script must exit 0 when the table with CREATE TABLE only in schemaGuard.ts is tracked by Drizzle",
     );
   });
 
