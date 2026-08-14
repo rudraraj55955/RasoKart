@@ -1,5 +1,6 @@
 import { Router } from "express";
-import { db, webhooksTable, callbackLogsTable, callbackLogAttemptsTable, auditLogsTable, systemConfigTable, SYSTEM_CONFIG_KEYS, SYSTEM_CONFIG_DEFAULTS } from "@workspace/db";
+import { db, webhooksTable, callbackLogsTable, callbackLogAttemptsTable, auditLogsTable, systemConfigTable, SYSTEM_CONFIG_KEYS, SYSTEM_CONFIG_DEFAULTS, merchantsTable } from "@workspace/db";
+import { decryptSecret } from "../helpers/cryptoUtils";
 import { and, count, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { fireCallback, loadWebhookRetryConfig } from "../helpers/callbackRetry";
@@ -501,11 +502,18 @@ router.post("/test", async (req, res) => {
   }
   const eventType = rawEventType as SupportedTestEvent;
 
-  const [webhook] = await db
-    .select()
-    .from(webhooksTable)
-    .where(eq(webhooksTable.merchantId, merchantId))
-    .limit(1);
+  const [[webhook], [merchant]] = await Promise.all([
+    db
+      .select()
+      .from(webhooksTable)
+      .where(eq(webhooksTable.merchantId, merchantId))
+      .limit(1),
+    db
+      .select({ callbackSecret: merchantsTable.callbackSecret })
+      .from(merchantsTable)
+      .where(eq(merchantsTable.id, merchantId))
+      .limit(1),
+  ]);
 
   if (!webhook || !webhook.url) {
     res.status(400).json({ error: "No webhook URL configured. Save a webhook URL first." });
@@ -532,10 +540,22 @@ router.post("/test", async (req, res) => {
     "X-RasoKart-Delivery": crypto.randomUUID(),
   };
 
-  const signed = !!(webhook.secret);
+  // Resolve the signing key: prefer merchants.callbackSecret (the RasoKart callback
+  // signing secret the merchant generated and stored on their server), fall back to
+  // the webhook-settings secret if no callback secret is configured.
+  let resolvedSigningKey: string | undefined;
+  if (merchant?.callbackSecret) {
+    const dec = decryptSecret(merchant.callbackSecret);
+    if (dec.ok) resolvedSigningKey = dec.value;
+  }
+  if (!resolvedSigningKey && webhook.secret) {
+    resolvedSigningKey = webhook.secret;
+  }
+
+  const signed = !!resolvedSigningKey;
   let signatureHeader: string | undefined;
-  if (webhook.secret) {
-    signatureHeader = "sha256=" + crypto.createHmac("sha256", webhook.secret).update(body).digest("hex");
+  if (resolvedSigningKey) {
+    signatureHeader = "sha256=" + crypto.createHmac("sha256", resolvedSigningKey).update(body).digest("hex");
     headers["X-Signature"] = signatureHeader;
   }
 

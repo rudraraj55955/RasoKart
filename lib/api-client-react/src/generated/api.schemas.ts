@@ -1958,6 +1958,8 @@ export interface CallbackSecretStatus {
      * @nullable
      */
   lastRotatedAt?: string | null;
+  /** True when at least one successful test callback delivery has been recorded for this merchant. Drives the "Callback Verified" onboarding step. */
+  callbackVerified?: boolean;
 }
 
 export type MerchantListCredentialEventEventType = typeof MerchantListCredentialEventEventType[keyof typeof MerchantListCredentialEventEventType];

@@ -294,6 +294,7 @@ export default function MerchantDashboard() {
         planAssigned={myPlan != null && !myPlan.isExpired && myPlan.status !== "suspended"}
         hasApiAccess={usage?.apiAccess === true}
         callbackSecretSet={secretStatus?.isSet === true}
+        callbackVerified={secretStatus?.callbackVerified === true}
         paymentServiceLive={activeConnections.length > 0}
       />
 

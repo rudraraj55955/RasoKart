@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, callbackLogsTable, qrCodesTable, apiKeysTable, merchantsTable, transactionsTable, qrPaymentEventsTable, webhooksTable, callbackLogAttemptsTable, systemSettingsTable, credentialEventsTable } from "@workspace/db";
-import { eq, and, count, countDistinct, sql, gte, lte, isNull, like, asc, desc } from "drizzle-orm";
+import { eq, and, count, countDistinct, sql, gte, lte, isNull, like, asc, desc, gt } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { requireApiKey, verifyCallbackSignature } from "../middlewares/callbackAuth";
 import { logger } from "../lib/logger";
@@ -283,7 +283,7 @@ router.get("/secret", async (req, res) => {
     return;
   }
 
-  const [[merchant], [webhook]] = await Promise.all([
+  const [[merchant], [webhook], verifiedCount] = await Promise.all([
     db
       .select({
         callbackSecret: merchantsTable.callbackSecret,
@@ -296,6 +296,16 @@ router.get("/secret", async (req, res) => {
       .from(webhooksTable)
       .where(eq(webhooksTable.merchantId, user.merchantId))
       .limit(1),
+    db
+      .select({ n: count() })
+      .from(callbackLogsTable)
+      .where(
+        and(
+          eq(callbackLogsTable.merchantId, user.merchantId),
+          eq(callbackLogsTable.isTest, true),
+          eq(callbackLogsTable.status, "success"),
+        )
+      ),
   ]);
 
   if (!merchant) {
@@ -305,6 +315,7 @@ router.get("/secret", async (req, res) => {
 
   const stored = merchant.callbackSecret;
   const lastRotatedAt = webhook?.secretRotatedAt?.toISOString() ?? null;
+  const callbackVerified = (verifiedCount[0]?.n ?? 0) > 0;
 
   // Decrypt so the prefix is derived from the actual secret value, not the
   // "enc:v1:…" storage envelope.
@@ -320,6 +331,7 @@ router.get("/secret", async (req, res) => {
     isSet: !!stored,
     secretPrefix,
     lastRotatedAt,
+    callbackVerified,
   });
 });
 

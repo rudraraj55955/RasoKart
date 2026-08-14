@@ -37,6 +37,8 @@ export interface OnboardingProgressProps {
   hasApiAccess?: boolean;
   /** callback signing secret has been generated */
   callbackSecretSet?: boolean;
+  /** at least one successful test callback delivery has been recorded */
+  callbackVerified?: boolean;
   /** at least one payment provider connection is active */
   paymentServiceLive?: boolean;
 }
@@ -56,6 +58,7 @@ export function OnboardingProgress({
   planAssigned = false,
   hasApiAccess = false,
   callbackSecretSet = false,
+  callbackVerified = false,
   paymentServiceLive = false,
 }: OnboardingProgressProps) {
   const dismissKey = userId ? `${DISMISS_SUFFIX}_${userId}` : null;
@@ -130,13 +133,19 @@ export function OnboardingProgress({
     {
       id: "callback",
       label: "Callback Verified",
-      description: callbackSecretSet
-        ? "Callback signing secret is configured for secure webhook delivery."
+      description: callbackVerified
+        ? "Test callback delivered successfully. Webhook integration verified."
+        : callbackSecretSet
+        ? "Secret configured. Send a test callback from Webhook Settings to verify."
         : "Set up your callback URL and signing secret for payment notifications.",
-      done: callbackSecretSet,
+      done: callbackVerified,
       optional: true,
       href: "/merchant/webhook",
-      cta: callbackSecretSet ? "View Settings" : "Configure",
+      cta: callbackVerified
+        ? "View Settings"
+        : callbackSecretSet
+        ? "Send Test Callback"
+        : "Configure",
     },
     {
       id: "live",

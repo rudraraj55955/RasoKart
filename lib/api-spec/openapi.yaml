@@ -14546,6 +14546,9 @@ components:
           type: ["string", "null"]
           format: date-time
           description: ISO timestamp of when the secret was last rotated (or first set). Null if no secret has ever been set.
+        callbackVerified:
+          type: boolean
+          description: True when at least one successful test callback delivery has been recorded for this merchant. Drives the "Callback Verified" onboarding step.
 
     MerchantListCredentialEvent:
       type: object
