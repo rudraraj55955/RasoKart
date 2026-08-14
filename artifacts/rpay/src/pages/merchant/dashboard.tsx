@@ -270,7 +270,7 @@ export default function MerchantDashboard() {
   const topLinks = [...allLinks].sort((a, b) => b.paymentCount - a.paymentCount).slice(0, 3);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-3 flex-wrap">
           <h1 className="text-3xl font-bold tracking-tight">Welcome, {user?.name || "Merchant"}</h1>

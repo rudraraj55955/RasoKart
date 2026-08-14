@@ -2851,10 +2851,10 @@ export default function ApiDocs() {
 
   return (
     <SharedPresetContext.Provider value={sharedPreset}>
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">API Documentation</h1>
+          <h1 className="text-xl sm:text-3xl font-bold tracking-tight">API Documentation</h1>
           <p className="text-muted-foreground mt-1">
             Reference for integrating RasoKart payment APIs into your application.
           </p>

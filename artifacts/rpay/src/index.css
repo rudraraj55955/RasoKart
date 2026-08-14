@@ -238,6 +238,94 @@
   }
 }
 
+/* ── Merchant page mobile density ─────────────────────────────────────────
+   Applied via .merchant-mobile-dense wrapper added by DashboardLayout
+   for non-admin, non-public-mode routes.
+
+   Targets:
+     1.  Page h1 title  — text-3xl (30px) → ~text-xl (20px/1.25rem)
+     2.  Page subtitle  — 14px → 13px
+     3.  Card header    — p-6 (24px) → p-3 (12px) via data-slot="card-header"
+     4.  Card content   — p-6 (24px) → p-3 (12px) via data-slot="card-content"
+     5.  Card footer    — p-6 (24px) → p-3 (12px) via data-slot="card-footer"
+     6.  Alert/banner   — py-3 → py-2 for inline alert banners
+     7.  Form helper    — muted text-sm → text-xs on mobile
+     8.  Section icon   — oversized icon badges → scale to 32px
+
+   Card default padding (p-6) is reset; any page that explicitly passes a
+   higher-specificity className (e.g. p-0, pt-4) still wins because those
+   Tailwind utilities are generated as class selectors (same 0,1,0 specificity
+   as data-slot rules), and class order in the stylesheet is preserved by v4.
+   ─────────────────────────────────────────────────────────────────────────── */
+@media (max-width: 767px) {
+  .merchant-mobile-dense {
+    /* 1. Page title */
+    & h1 {
+      font-size: 1.25rem;   /* was text-3xl = 1.875rem */
+      line-height: 1.75rem;
+      letter-spacing: -0.01em;
+    }
+
+    /* 2. Page subtitle / description immediately after title block */
+    & h1 + p,
+    & h1 + .text-muted-foreground {
+      font-size: 0.8125rem; /* 13px */
+    }
+
+    /* 3-5. Card sub-components — data-slot selectors beat single Tailwind
+            class selectors (specificity 0,2,0 vs 0,1,0) so the defaults
+            shrink without needing !important */
+    & [data-slot="card-header"] {
+      padding: 0.75rem;      /* was 1.5rem (p-6) */
+      padding-bottom: 0.5rem;
+    }
+
+    & [data-slot="card-content"] {
+      padding: 0.75rem;      /* was 1.5rem (p-6) */
+      padding-top: 0;
+    }
+
+    & [data-slot="card-footer"] {
+      padding: 0.75rem;
+      padding-top: 0;
+    }
+
+    /* 6. Alert / inline warning banners — reduce vertical height */
+    & [role="alert"] {
+      padding-top: 0.5rem;
+      padding-bottom: 0.5rem;
+    }
+
+    /* 7. Helper / description text inside forms */
+    & label + p,
+    & .text-xs.text-muted-foreground,
+    & .text-sm.text-muted-foreground:not(h1 + *) {
+      font-size: 0.75rem;   /* 12px */
+    }
+
+    /* 8. Page icon badge (the w-10 h-10 icon next to page title) */
+    & h1 ~ div > .w-10.h-10,
+    & .flex.items-center.gap-3 > .w-10.h-10 {
+      width: 2rem;
+      height: 2rem;
+    }
+
+    /* 9. Reduce inner spacing inside card content sections */
+    & [data-slot="card-content"] .space-y-5 > * + *,
+    & [data-slot="card-content"] .space-y-4 > * + * {
+      margin-top: 0.75rem;
+    }
+
+    /* 10. Event-type checkbox rows — compact */
+    & [data-slot="card-content"] .p-2 {
+      padding: 0.375rem 0.5rem;
+    }
+
+    /* 11. Bottom nav safe area — ensure content not hidden under nav */
+    padding-bottom: max(1.5rem, env(safe-area-inset-bottom, 1.5rem));
+  }
+}
+
 /* ══════════════════════════════════════════════════════════════════════════
    Global modal / dialog scroll fix — mobile, tablet, Samsung Fold
    ══════════════════════════════════════════════════════════════════════════
