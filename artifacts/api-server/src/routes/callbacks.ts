@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, callbackLogsTable, qrCodesTable, apiKeysTable, merchantsTable, transactionsTable, qrPaymentEventsTable, webhooksTable, callbackLogAttemptsTable, systemSettingsTable, credentialEventsTable } from "@workspace/db";
+import { db, callbackLogsTable, qrCodesTable, apiKeysTable, merchantsTable, transactionsTable, qrPaymentEventsTable, webhooksTable, callbackLogAttemptsTable, systemSettingsTable, credentialEventsTable, auditLogsTable } from "@workspace/db";
 import { eq, and, count, countDistinct, sql, gte, lte, isNull, like, asc, desc, gt } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { requireApiKey, verifyCallbackSignature } from "../middlewares/callbackAuth";
@@ -479,6 +479,25 @@ router.post("/:id/retry", requireAdmin, async (req, res) => {
   await scheduleCallbackRetry(id, 0, adminRetryMaxRetries, adminRetryDelayOverrides);
 
   req.log.info({ callbackLogId: id }, "Admin manually triggered callback retry");
+
+  // Audit log — all admin mutations must be recorded for accountability.
+  const adminUser = (req as any).user;
+  await db.insert(auditLogsTable).values({
+    adminId: adminUser.id as number,
+    adminEmail: adminUser.email ?? "unknown",
+    action: "admin_callback_retry",
+    targetType: "callback_log",
+    targetId: id,
+    ipAddress: (req.headers["cf-connecting-ip"] as string | undefined) ?? req.ip ?? null,
+    details: JSON.stringify({
+      callbackLogId: id,
+      previousStatus: log.status,
+      merchantId: log.merchantId,
+      triggeredBy: adminUser.email ?? adminUser.id,
+    }),
+  }).catch((err: unknown) => {
+    req.log.warn({ err, callbackLogId: id }, "Failed to insert audit log for admin callback retry");
+  });
 
   res.json({ success: true, id });
 });

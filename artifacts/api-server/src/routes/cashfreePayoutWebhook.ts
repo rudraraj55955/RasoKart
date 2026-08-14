@@ -150,6 +150,33 @@ router.post("/", async (req, res) => {
       return;
     }
 
+    // ── Timestamp staleness check — replay protection ─────────────────────────
+    // Cashfree sends x-webhook-timestamp as Unix epoch seconds.
+    // Reject requests where the timestamp is more than 5 minutes old or in the
+    // future, to prevent signature-replay attacks. A captured valid webhook
+    // would otherwise pass signature verification indefinitely.
+    // Note: idempotency guards on withdrawalsTable prevent duplicate wallet
+    // mutations, but rejecting at the signature layer is defence-in-depth.
+    const timestampSec = parseInt(timestamp, 10);
+    const nowSec = Math.floor(Date.now() / 1000);
+    const REPLAY_WINDOW_SECONDS = 300; // 5 minutes
+    if (!timestamp || isNaN(timestampSec) || Math.abs(nowSec - timestampSec) > REPLAY_WINDOW_SECONDS) {
+      logger.warn(
+        {
+          endpoint,
+          env: isLive ? "LIVE" : "SANDBOX",
+          timestamp,
+          timestampSec,
+          nowSec,
+          ageDeltaSeconds: isNaN(timestampSec) ? null : Math.abs(nowSec - timestampSec),
+        },
+        "cashfree_payout_webhook_stale_or_invalid_timestamp — replay window exceeded",
+      );
+      await insertLog({ endpoint, eventType: null, status: null, signatureVerified: false, payoutId: null, transferId: null, cfTransferId: null, utr: null, safeError: "webhook.stale_timestamp", processingResult: "rejected", rawPayload: rawBody });
+      res.status(401).json({ error: "Request timestamp is outside the allowed window" });
+      return;
+    }
+
     // ── Signature verification — single secret, no fallback ──────────────────
     // Cashfree Payout V2:  HMAC-SHA256(timestamp + rawBody, secret) → base64
     // Both header names are lowercase here because Express lowercases all headers.

@@ -48,10 +48,22 @@ export default function AdminApiMonitoring() {
         </div>
       ) : data ? (
         <>
+          {/* Scope notice — clarifies that metrics show live merchant traffic only */}
+          <div className="flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-xs text-amber-400/80">
+            <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+            <span>
+              Metrics reflect <span className="font-semibold text-amber-300">live merchant traffic only</span> — test deliveries and demo accounts are excluded.
+              {(data as any).testRequests > 0 && (
+                <> <span className="text-muted-foreground">({(data as any).testRequests.toLocaleString()} test {(data as any).testRequests === 1 ? "delivery" : "deliveries"} excluded.)</span></>
+              )}
+            </span>
+          </div>
+
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
             <StatCard
-              title="Total Webhook Calls"
+              title="Live Webhook Calls"
               value={data.totalRequests.toLocaleString()}
+              sub="All-time, live merchants only"
               icon={<Activity className="w-5 h-5 text-primary" />}
               accent="bg-primary/10"
             />
