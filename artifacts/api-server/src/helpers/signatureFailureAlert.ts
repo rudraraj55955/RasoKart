@@ -1,5 +1,6 @@
 import { db, callbackLogsTable, usersTable, systemConfigTable, SYSTEM_CONFIG_KEYS, SYSTEM_CONFIG_DEFAULTS, merchantsTable, signatureFailureAlertLogsTable } from "@workspace/db";
 import { eq, and, count, gte, inArray, sql } from "drizzle-orm";
+import cron from "node-cron";
 import { logger } from "../lib/logger";
 import { sendMail } from "./mailer";
 
@@ -193,7 +194,10 @@ function buildAlertHtml(failureCount: number, threshold: number): string {
 </html>`;
 }
 
-export async function checkAndAlertSignatureFailures(): Promise<void> {
+export async function checkAndAlertSignatureFailures(
+  /** Injectable for tests. Production callers omit this and get the real sendMail. */
+  _sendMail: (opts: { to: string; subject: string; html: string }) => Promise<boolean> = sendMail
+): Promise<void> {
   try {
     const { threshold, cooldownHours } = await loadAlertConfig();
 
@@ -270,13 +274,13 @@ export async function checkAndAlertSignatureFailures(): Promise<void> {
 
     const adminHtml = buildAlertHtml(total, threshold);
     const adminResults = await Promise.allSettled(
-      adminRecipients.map((email) => sendMail({ to: email, subject, html: adminHtml }))
+      adminRecipients.map((email) => _sendMail({ to: email, subject, html: adminHtml }))
     );
     const adminSent = adminResults.filter((r) => r.status === "fulfilled" && r.value).length;
 
     const merchantResults = await Promise.allSettled(
       merchantRecipients.map((r) =>
-        sendMail({ to: r.email, subject, html: buildMerchantAlertHtml(r.failureCount, threshold, r.merchantName) })
+        _sendMail({ to: r.email, subject, html: buildMerchantAlertHtml(r.failureCount, threshold, r.merchantName) })
       )
     );
     const merchantSent = merchantResults.filter((r) => r.status === "fulfilled" && r.value).length;
@@ -314,4 +318,29 @@ export async function checkAndAlertSignatureFailures(): Promise<void> {
   } catch (err) {
     logger.error({ err }, "Failed to check/send signature failure alert");
   }
+}
+
+// ── Scheduler ─────────────────────────────────────────────────────────────────
+
+/**
+ * Register a cron job that checks for signature failure spikes every 30 minutes.
+ * Also runs an immediate startup sweep so the alert fires even when the server
+ * was down at the normal tick time.
+ */
+export function initSignatureFailureAlertScheduler(): void {
+  // Startup sweep — run immediately so we don't miss a spike that built up
+  // while the server was restarting.
+  checkAndAlertSignatureFailures().catch((err) => {
+    logger.warn({ err }, "Startup signature failure alert sweep failed");
+  });
+
+  cron.schedule("*/30 * * * *", async () => {
+    try {
+      await checkAndAlertSignatureFailures();
+    } catch (err) {
+      logger.error({ err }, "Signature failure alert scheduler tick failed");
+    }
+  });
+
+  logger.info("Signature failure alert scheduler initialised (every 30 min)");
 }

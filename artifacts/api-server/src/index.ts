@@ -29,6 +29,7 @@ import { initSnoozeCleanupScheduler, runSnoozeCleanup } from "./helpers/snoozeCl
 import { initPayoutStuckCleanupScheduler, runStuckPayoutCleanup } from "./helpers/payoutStuckCleanupScheduler";
 import { initCashfreeStuckOrderScheduler, runStuckCashfreeOrderScan } from "./helpers/cashfreeStuckOrderScheduler";
 import { initPayuStuckOrderScheduler } from "./helpers/payuStuckOrderRecovery";
+import { initSignatureFailureAlertScheduler } from "./helpers/signatureFailureAlert";
 import { initGithubSyncLogCleanupScheduler, runGithubSyncLogCleanup } from "./helpers/githubSyncLogCleanupScheduler";
 import { resolveStaleOutageOnBoot } from "./helpers/smartRouter";
 import { markServerInitialized } from "./lib/startupState";
@@ -200,6 +201,7 @@ async function main() {
   initPayoutStuckCleanupScheduler();
   initCashfreeStuckOrderScheduler();
   initPayuStuckOrderScheduler();
+  initSignatureFailureAlertScheduler();
   initGithubSyncLogCleanupScheduler();
   scheduleCallbackRetryWorker();
   initQuietHoursFlushScheduler();
