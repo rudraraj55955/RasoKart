@@ -744,6 +744,76 @@ function main(): void {
     console.error(`✗ Failed to read schema-guard manifest: ${(err as Error).message}`);
   }
 
+  // ── Manifest reverse check: every CREATE TABLE column must be in the manifest ─
+  //
+  // Complements the forward check above.  If a developer renames a column in the
+  // CREATE TABLE body without updating the manifest, the old name stays in the
+  // manifest and the forward check passes — the manifest just points to the old
+  // (now absent) name, so that check is satisfied.  Meanwhile the new (renamed)
+  // column is present in the CREATE TABLE body but absent from the manifest,
+  // which this reverse check catches.
+  //
+  // Together, forward + reverse make the manifest a two-way contract:
+  //   • Every manifest column must appear in the CREATE TABLE body (forward).
+  //   • Every CREATE TABLE column must appear in the manifest (reverse).
+
+  console.log(
+    "\nschema-guard-manifest-reverse-check: verifying CREATE TABLE columns are declared in the manifest...\n"
+  );
+
+  let manifestReverseOk = true;
+  if (manifest.size === 0) {
+    // Manifest is empty — no tables registered, nothing to reverse-check.
+    // (The forward check already logged the "empty" or "no tables" message.)
+    console.log(
+      "✓ Manifest is empty — no schemaGuard-only tables to reverse-check."
+    );
+  } else {
+    const reverseGaps: Array<{ table: string; undeclared: string[] }> = [];
+
+    for (const [table, manifestCols] of manifest) {
+      const ctCols = createTableCols.get(table);
+      // If there is no CREATE TABLE body for this table, the forward check
+      // already reported it as a gap — skip here to avoid double-reporting.
+      if (!ctCols) continue;
+
+      const manifestColSet = new Set(manifestCols.map((c) => c.toLowerCase()));
+      const undeclared = [...ctCols].filter((c) => !manifestColSet.has(c));
+      if (undeclared.length > 0) {
+        reverseGaps.push({ table, undeclared });
+      }
+    }
+
+    if (reverseGaps.length === 0) {
+      console.log(
+        "✓ All CREATE TABLE columns for manifest-registered tables are declared in the manifest."
+      );
+    } else {
+      manifestReverseOk = false;
+      console.error(
+        `✗ Found ${reverseGaps.length} schemaGuard-only table(s) with CREATE TABLE column(s) not declared in the manifest:\n`
+      );
+      console.error(
+        "  These columns appear in the CREATE TABLE IF NOT EXISTS body in schemaGuard.ts /\n" +
+          "  db-migrate.ts but are absent from schema-guard-only-columns.json.  This\n" +
+          "  typically indicates a column was renamed: the old name was left in the manifest\n" +
+          "  (so the forward check passes) while the new name went unrecorded.  Update the\n" +
+          "  manifest entry to match the current CREATE TABLE body exactly.\n" +
+          "  Fix: add the missing column(s) to the table's array in schema-guard-only-columns.json,\n" +
+          "  and remove any stale column names that are no longer in the CREATE TABLE body.\n"
+      );
+      for (const { table, undeclared } of reverseGaps.sort((a, b) =>
+        a.table.localeCompare(b.table)
+      )) {
+        console.error(`  ${table}:`);
+        for (const col of undeclared) {
+          console.error(`    • ${col}  ← present in CREATE TABLE body but absent from manifest`);
+        }
+        console.error();
+      }
+    }
+  }
+
   // ── Unregistered guard-only table check ──────────────────────────────────
   //
   // Detects CREATE TABLE IF NOT EXISTS guards in schemaGuard.ts / db-migrate.ts
@@ -802,7 +872,7 @@ function main(): void {
     console.error();
   }
 
-  if (!forwardOk || !reverseOk || !dropOk || !manifestOk || !unregisteredOk) {
+  if (!forwardOk || !reverseOk || !dropOk || !manifestOk || !manifestReverseOk || !unregisteredOk) {
     process.exit(1);
   }
 }

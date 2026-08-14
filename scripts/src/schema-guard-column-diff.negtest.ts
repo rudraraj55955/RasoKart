@@ -656,6 +656,69 @@ describe("schema-guard-column-diff negative-case contract", () => {
     );
   });
 
+  // ── Manifest reverse check ───────────────────────────────────────────────
+  //
+  // The reverse check ensures that every column in a CREATE TABLE body of a
+  // manifest-registered table also appears in the manifest.  This catches
+  // column renames where the old name stays in the manifest (passing the
+  // forward check) while the new name in the CREATE TABLE body goes unrecorded.
+
+  // Case R1: CREATE TABLE has a column not declared in the manifest → exit 1
+  test("exits 1 when a CREATE TABLE column is absent from the manifest", () => {
+    // CREATE TABLE body has: id, tenant_id, new_col
+    // Manifest declares:     id, tenant_id           ← new_col is missing
+    //
+    // The forward check passes (all manifest columns ARE in CREATE TABLE).
+    // The reverse check fails because new_col is in CREATE TABLE but not in the manifest.
+    const { dir, env } = buildSchemaGuardOnlyFixtures({
+      guardCreateTableColumns: ["tenant_id", "new_col"],
+    });
+    fixtures.push({ dir });
+
+    // Override the manifest so new_col is intentionally omitted (simulating a
+    // rename where the developer updated CREATE TABLE but forgot the manifest).
+    const manifestFile = path.join(dir, "manifest.json");
+    fs.writeFileSync(
+      manifestFile,
+      JSON.stringify({
+        _readme: "test manifest — new_col intentionally omitted to exercise the reverse check",
+        guard_only_table: ["id", "tenant_id"],
+      }),
+    );
+
+    const { code, stdout, stderr } = runScriptFull({ ...env, SGCD_MANIFEST_FILE: manifestFile });
+    assert.equal(
+      code,
+      1,
+      "script must exit 1 when 'new_col' is in the CREATE TABLE body but absent from the manifest",
+    );
+    const output = stdout + stderr;
+    assert.ok(
+      output.includes("new_col"),
+      `output must mention the undeclared column; got:\n${output}`,
+    );
+  });
+
+  // Case R2: all CREATE TABLE columns are declared in the manifest → exit 0
+  test("exits 0 when all CREATE TABLE columns are declared in the manifest", () => {
+    // CREATE TABLE body has: id, tenant_id, status
+    // Manifest declares:     id, tenant_id, status   ← full match
+    //
+    // buildSchemaGuardOnlyFixtures already writes a manifest that lists
+    // id + all guardCreateTableColumns, so the default env is sufficient.
+    const { dir, env } = buildSchemaGuardOnlyFixtures({
+      guardCreateTableColumns: ["tenant_id", "status"],
+    });
+    fixtures.push({ dir });
+
+    const code = runScript(env);
+    assert.equal(
+      code,
+      0,
+      "script must exit 0 when every CREATE TABLE column is declared in the manifest",
+    );
+  });
+
   // ── Typo'd table name in DROP COLUMN ────────────────────────────────────
   //
   // A DROP COLUMN whose table name does not appear in the Drizzle schema OR in
