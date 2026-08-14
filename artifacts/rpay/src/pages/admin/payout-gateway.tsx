@@ -22,7 +22,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useDisableGatewayGuard } from "@/components/admin/disable-gateway-dialog";
 import { CredentialHistoryDialog } from "@/components/admin/credential-history-dialog";
@@ -30,7 +30,7 @@ import { toast } from "sonner";
 import {
   Save, Eye, EyeOff, RefreshCw, Upload, Plus, RotateCcw, ChevronLeft, ChevronRight,
   Loader2, AlertCircle, CheckCircle2, Clock, XCircle, Banknote, Settings2, List, Copy,
-  Shield, ShieldOff, ShieldAlert, Activity,
+  Shield, ShieldOff, ShieldAlert, Activity, Trash2,
 } from "lucide-react";
 
 const AUTH_HEADERS = { Authorization: `Bearer ${getToken()}` };
@@ -280,6 +280,10 @@ function SettingsTab() {
   const [successOpen, setSuccessOpen] = useState(false);
   const [errorOpen, setErrorOpen] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  // Clear webhook secret dialog
+  const [clearWebhookDialogOpen, setClearWebhookDialogOpen] = useState(false);
+  const [clearingWebhookSecret, setClearingWebhookSecret] = useState(false);
+
   // Check Transfer Status dialog
   const [transferStatusOpen, setTransferStatusOpen] = useState(false);
   const [transferIdInput, setTransferIdInput] = useState("");
@@ -316,6 +320,21 @@ function SettingsTab() {
     if (daily !== null && (isNaN(daily) || daily < 0)) return "Daily payout limit must be a positive number.";
     if (min !== null && max !== null && min > max) return "Min payout limit cannot exceed max payout limit.";
     return null;
+  }
+
+  async function doClearWebhookSecret() {
+    setClearingWebhookSecret(true);
+    try {
+      await updateConfig({ data: { webhookSecret: "" } as any });
+      qc.invalidateQueries({ queryKey: getPayoutGatewayConfigQueryKey() });
+      setClearWebhookDialogOpen(false);
+      toast.success("Webhook secret override removed. Payout Client Secret is now the active signing key.");
+    } catch (err: any) {
+      const msg = (err?.data as any)?.error ?? err?.message ?? "Failed to remove webhook secret override";
+      toast.error(msg);
+    } finally {
+      setClearingWebhookSecret(false);
+    }
   }
 
   async function doSave() {
@@ -600,15 +619,29 @@ function SettingsTab() {
 
           {/* Webhook Secret */}
           <div className="space-y-1.5">
-            <Label className="text-xs">Webhook Secret <span className="text-muted-foreground font-normal">(for HMAC signature verification)</span></Label>
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              {!isLoading && (config?.webhookSecretSet
-                ? <><CheckCircle2 className="w-3 h-3 text-emerald-400" />Secret is saved</>
-                : <span>Not configured — incoming webhooks will not be signature-verified</span>)}
+            <Label className="text-xs">Webhook Secret Override <span className="text-muted-foreground font-normal">(optional — overrides Payout Client Secret for HMAC verification)</span></Label>
+            <div className="flex items-center justify-between gap-2 min-h-[20px]">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                {!isLoading && (config?.webhookSecretSet
+                  ? <><CheckCircle2 className="w-3 h-3 text-emerald-400" /><span>Secret override is saved</span></>
+                  : <span className="text-amber-400/80">No webhook secret override configured — Payout Client Secret fallback active.</span>)}
+              </div>
+              {!isLoading && config?.webhookSecretSet && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 px-2 text-xs text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0"
+                  onClick={() => setClearWebhookDialogOpen(true)}
+                >
+                  <Trash2 className="w-3 h-3 mr-1" />
+                  Clear override
+                </Button>
+              )}
             </div>
             <div className="relative">
               <Input type={showWebhookSecret ? "text" : "password"}
-                placeholder={config?.webhookSecretSet ? "Enter new webhook secret to rotate" : "Enter webhook secret (optional)"}
+                placeholder={config?.webhookSecretSet ? "Enter new value to replace the existing override" : "Enter webhook secret override (optional)"}
                 value={webhookSecret} onChange={e => setWebhookSecret(e.target.value)} className="pr-10 text-sm" />
               <button type="button" onClick={() => setShowWebhookSecret(p => !p)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
@@ -791,6 +824,46 @@ function SettingsTab() {
               {checkingTransfer
                 ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Checking…</>
                 : <><RefreshCw className="w-4 h-4 mr-2" />Check Status</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Clear Webhook Secret Override — confirmation dialog ── */}
+      <Dialog open={clearWebhookDialogOpen} onOpenChange={open => { if (!clearingWebhookSecret) setClearWebhookDialogOpen(open); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="w-4 h-4" />
+              Remove Webhook Secret Override?
+            </DialogTitle>
+            <DialogDescription>
+              This removes the Payout Webhook Secret override. Cashfree Payout webhooks will then be verified using the Payout Client Secret — the correct Cashfree V2 signing key.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-1 text-sm text-muted-foreground">
+            <p>This will permanently remove the saved Payout Webhook Secret override from the configuration.</p>
+            <p>
+              After removal, all incoming Cashfree Payout webhooks will be verified using the{" "}
+              <span className="text-foreground font-medium">Payout Client Secret</span> — the correct Cashfree V2 signing key.
+            </p>
+            <div className="text-xs bg-muted/40 border border-border/40 rounded-md px-3 py-2 space-y-0.5">
+              <p>The following remain unchanged:</p>
+              <ul className="list-disc list-inside mt-1 space-y-0.5 text-muted-foreground/80">
+                <li>Payout Client ID and Client Secret</li>
+                <li>Webhook signature verification algorithm</li>
+                <li>All payout settings and transaction data</li>
+              </ul>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" size="sm" onClick={() => setClearWebhookDialogOpen(false)} disabled={clearingWebhookSecret}>
+              Cancel
+            </Button>
+            <Button variant="destructive" size="sm" onClick={doClearWebhookSecret} disabled={clearingWebhookSecret}>
+              {clearingWebhookSecret
+                ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Removing…</>
+                : <><Trash2 className="w-3.5 h-3.5 mr-1.5" />Remove Override</>}
             </Button>
           </DialogFooter>
         </DialogContent>
