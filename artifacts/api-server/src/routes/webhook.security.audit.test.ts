@@ -342,6 +342,7 @@ describe("W — Payout webhook signature verification", () => {
     assert.equal(body.ok, true);
     assert.equal(body.received, true);
   });
+
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
