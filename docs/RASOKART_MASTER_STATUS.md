@@ -4,9 +4,9 @@ _Read this before starting any task. Update this after every task._
 
 ---
 
-**Last Updated:** 2026-08-15 (IST) — post-session update  
+**Last Updated:** 2026-08-15 (IST) — Task #2475 complete  
 **Updated By:** Agent (main)  
-**Trigger:** End-of-session sync after Cashfree payout webhook security fix + 13 stuck-order correction
+**Trigger:** Task #2475 — PayU stuck-order recovery scheduler implemented, tested, committed
 
 ---
 
@@ -232,17 +232,37 @@ git revert --no-commit 6e67df67 312b2af4 && git commit -m "revert: cashfree payo
 
 ---
 
+### 2.19 Task #2475 — PayU Stuck-Order Recovery Scheduler
+- **Module:** PayU payin — webhook reliability / missing-webhook recovery
+- **Final Status:** ✅ CLOSED — COMMITTED 2026-08-15, AWAITING DEPLOY APPROVAL
+- **Commit SHA:** `5d587609`
+- **Production SHA:** `d7dc6468` (not yet deployed — deploy approval required)
+- **Rollback SHA:** `d7dc6468` (simply don't deploy)
+- **Tests:**
+  - `payuStuckOrderRecovery.test.ts` — 20/20 PASS (new)
+  - `payuWebhook.test.ts` — 11/11 PASS (baseline unchanged)
+  - `webhook.security.audit.test.ts` — 23/23 PASS (unchanged)
+  - `systemConfig.coverage.test.ts` — 3/3 PASS (new keys covered)
+  - `schema-guard-coverage` — 115/115 PASS (no new table)
+- **Closure date:** 2026-08-15
+- **Root cause confirmed:** PayU payin orders stuck in INITIATED/PENDING had no automatic recovery path. The S2S webhook (`/api/payment/payu-s2s`) is the only credit trigger — if it is never delivered (network failure, PayU retry exhausted, brief server downtime), the order stays stuck and the merchant is never credited. No polling, no scheduled recheck, no alert existed. The Cashfree equivalent (`cashfreeStuckOrderScheduler.ts`) was already in place; PayU had nothing.
+- **Fix:** New scheduler `payuStuckOrderRecovery.ts`:
+  - Runs every 15 minutes + startup sweep
+  - Scans `payu_payment_orders` WHERE status IN (INITIATED, PENDING), older than staleMinutes (default 30), production merchants only
+  - For each stuck order: calls `queryPayuTransactionStatus` (existing PayU Verify Payment API helper)
+  - Decision per PayU response: `success`→credit, `failure/failed`→FAILED, `cancelled/cancel`→CANCELLED, `pending`→leave, `not found`→leave, API error→leave, no creds→skip but still alert
+  - After recoveries: re-counts remaining stuck orders, fires admin email alert if count ≥ threshold (default 3) with 4h cooldown
+- **Idempotency:** `creditWalletForPayu`'s `WHERE status IN (INITIATED, PENDING) RETURNING` atomic guard prevents double-credit even under concurrent scheduler + webhook delivery. Second run returns `outcome=duplicate`, no second wallet/ledger mutation.
+- **Wallet/ledger:** `source='payu_stuck_order_recovery'` written to `transactions.description`. `wallet_ledger` entry type `pending_credit`, identical to webhook path. No new mutations introduced — existing `creditWalletForPayu` called unmodified.
+- **Security:** Zero changes to `payuWebhook.ts`, `payinOrders.ts`, `app.ts`. No new endpoints. No credential exposure. Only production merchants scoped. Only credits on PayU-confirmed `success` — never on ambiguous/missing status.
+- **No new DB table.** 4 new `system_config` keys: `payu_stuck_order_stale_minutes` (30), `payu_stuck_order_alert_threshold` (3), `payu_stuck_order_alert_cooldown_hours` (4), `payu_stuck_order_alert_last_sent_at` (runtime-state). All seeded automatically from `SYSTEM_CONFIG_DEFAULTS` on first use. No schema migration needed.
+- **Do not deploy without explicit user approval.**
+
+---
+
 ## 3. IN PROGRESS
 
-### TASK #2475 — Catch a broken PayU webhook before it silently stops completing payments
-- **Module:** PayU webhook reliability
-- **Current work:** Automated test / detection for broken PayU webhook processing
-- **Current checkpoint:** Task assigned and IN_PROGRESS; no commits yet in this session
-- **What remains:** Implement the detection/test mechanism; verify in CI
-- **Current owner:** Agent (main)
-- **Priority:** P1 (payment reliability)
-- **Blocked by:** NONE
-- **Notes:** Do not modify `payuWebhook.ts` production logic without running the PayU regression suite (11 tests).
+_No tasks currently in progress._
 
 ---
 
@@ -324,7 +344,7 @@ _None currently pending._
 
 | Task | Module | Exact Issue | Impact | Tests Required | Deploy |
 |---|---|---|---|---|---|
-| #2475 (IN_PROGRESS) | PayU webhook | Detect broken webhook before it silently stops payments | Payment reliability | PayU regression suite (11 tests) | YES |
+| ~~#2475 (CLOSED)~~ | PayU webhook | ✅ Recovery scheduler implemented — commit 5d587609, awaiting deploy | Payment reliability | 20/20 new + 11/11 baseline | PENDING APPROVAL |
 | #2471 | EKQR alerts | Stuck-EKQR alert must stop sending when all admins opt out | Notification spam | Alert opt-out test | YES |
 | #301 | Callbacks | Alert merchants when signature failures spike | Security visibility | Spike detection test | YES |
 
@@ -365,14 +385,11 @@ _None currently pending._
 ## 8. NEXT ACTION QUEUE
 
 ```
-CURRENT TASK:  docs/RASOKART_MASTER_STATUS.md creation (this file) — COMPLETE
+CURRENT TASK:  Task #2475 — PayU stuck-order recovery scheduler — COMPLETE
+               Commit 5d587609 pushed to github/main. Tests: 20+11+23+3+115 all PASS.
+               ⚠️ DEPLOY APPROVAL REQUIRED before this goes to production.
 
-NEXT TASK:     Task #2475 — Catch a broken PayU webhook before it silently
-               stops completing payments (IN_PROGRESS, P0, payment reliability)
-               → Do not modify payuWebhook.ts production logic without running
-               the 11-test PayU regression suite first.
-
-THEN:          Task #2471 — Confirm stuck-EKQR alert stops sending when all
+NEXT TASK:     Task #2471 — Confirm stuck-EKQR alert stops sending when all
                admins have opted out (P0, alert reliability)
 
 THEN:          Task #301 — Alert merchants when signature failures spike (P1, security)
