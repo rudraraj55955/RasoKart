@@ -1351,6 +1351,20 @@ export default function AdminSettings() {
     staleTime: 30_000,
   });
 
+  const { data: cfStuckStatus, isLoading: cfStuckStatusLoading } = useQuery<{
+    stuckCount: number;
+    staleMinutes: number;
+    lastSentAt: string | null;
+    cooldownExpiresAt: string | null;
+    cooldownActive: boolean;
+  }>({
+    queryKey: ["/api/system-config/cashfree-stuck-order-status"],
+    queryFn: () => apiGet("/system-config/cashfree-stuck-order-status"),
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+    staleTime: 30_000,
+  });
+
   useEffect(() => {
     if (!cfStuckInitialized && cfStuckAlertData) {
       setCfStuckThreshold(cfStuckAlertData.threshold);
@@ -4855,6 +4869,54 @@ export default function AdminSettings() {
             <SettingsFormSkeleton rows={3} />
           ) : (
             <>
+              {/* Live status banner */}
+              {!cfStuckStatusLoading && cfStuckStatus != null && (() => {
+                const count = cfStuckStatus.stuckCount;
+                const threshold = currentCfStuckThreshold;
+                const breached = count >= threshold;
+                const cooldownRemaining = formatTimeRemaining(cfStuckStatus.cooldownExpiresAt, now);
+                return (
+                  <div className={`rounded-lg border px-4 py-3 space-y-1.5 text-xs ${
+                    breached
+                      ? "bg-red-500/10 border-red-500/20 text-red-400"
+                      : "bg-muted/10 border-border/40 text-muted-foreground"
+                  }`}>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`inline-flex items-center gap-1.5 font-medium ${breached ? "text-red-400" : "text-foreground"}`}>
+                        <AlertCircle className={`w-3.5 h-3.5 shrink-0 ${breached ? "text-red-400" : "text-muted-foreground"}`} />
+                        {count === 0
+                          ? "No stuck orders right now"
+                          : `${count} stuck order${count !== 1 ? "s" : ""} right now`}
+                      </span>
+                      {count > 0 && (
+                        <span className="text-muted-foreground">
+                          (threshold: {threshold})
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-4 flex-wrap">
+                      {cfStuckStatus.lastSentAt ? (
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3 h-3 shrink-0" />
+                          Last alert: {formatTimeAgo(cfStuckStatus.lastSentAt)}
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3 h-3 shrink-0" />
+                          No alert sent yet
+                        </span>
+                      )}
+                      {cfStuckStatus.cooldownActive && cooldownRemaining && (
+                        <span className="flex items-center gap-1 text-amber-400">
+                          <Clock className="w-3 h-3 shrink-0" />
+                          Next alert in {cooldownRemaining}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="space-y-1.5">
                   <Label htmlFor="cf-stuck-threshold" className="text-sm">

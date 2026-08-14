@@ -1,10 +1,10 @@
 import { Router } from "express";
-import { db, systemConfigTable, SYSTEM_CONFIG_KEYS, SYSTEM_CONFIG_DEFAULTS, auditLogsTable, signatureFailureAlertLogsTable, webhookFailureAlertLogsTable, ekqrSyncAlertLogsTable, storageCleanupRunsTable, uploadedObjectsTable, merchantsTable, merchantConnectionsTable, qrCodesTable, cashfreePaymentOrdersTable, cashfreePayoutsTable, providerIntegrationsTable } from "@workspace/db";
+import { db, systemConfigTable, SYSTEM_CONFIG_KEYS, SYSTEM_CONFIG_DEFAULTS, auditLogsTable, signatureFailureAlertLogsTable, webhookFailureAlertLogsTable, ekqrSyncAlertLogsTable, storageCleanupRunsTable, uploadedObjectsTable, merchantsTable, merchantConnectionsTable, qrCodesTable, cashfreePaymentOrdersTable, cashfreePayoutsTable, providerIntegrationsTable, PAYIN_ORDER_STATUS } from "@workspace/db";
 import { ekqrCreateOrder, ekqrClientTxnId, ekqrCheckOrderStatus, ekqrFormatDate } from "../helpers/ekqr";
 import { testPayoutConnection, cashfreePayoutGetTransferStatus, normalizeCashfreePayoutStatus, type CashfreePayoutEnv } from "../helpers/cashfreePayout";
 import { cashfreeCreateOrder, type CashfreeEnv } from "../helpers/cashfree";
 import { encryptSecret, decryptSecret } from "../helpers/cryptoUtils";
-import { inArray, desc, count, countDistinct, sql, eq, and, isNotNull } from "drizzle-orm";
+import { inArray, desc, count, countDistinct, sql, eq, and, isNotNull, lte } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { requireAuth, requireAdmin, requirePermission } from "../middlewares/auth";
 import { PERMISSIONS } from "../permissions";
@@ -2624,6 +2624,86 @@ router.put("/cashfree-stuck-order-alert", async (req, res, next) => {
     req.log.info({ threshold, staleMinutes, cooldownHours }, "Cashfree stuck order alert config updated");
 
     res.json({ threshold, staleMinutes, cooldownHours });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/system-config/cashfree-stuck-order-status
+// Returns the live count of stuck Cashfree payin orders plus last-alert metadata.
+// Read-only: performs the same count query as the scheduler but never sends an alert.
+// Used by the settings card to display a live signal alongside the threshold controls.
+router.get("/cashfree-stuck-order-status", async (req, res, next) => {
+  try {
+    // Load config values needed for the count query and cooldown calculation
+    const configRows = await db
+      .select()
+      .from(systemConfigTable)
+      .where(
+        inArray(systemConfigTable.key, [
+          SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_STALE_MINUTES,
+          SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_ALERT_COOLDOWN_HOURS,
+          SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_ALERT_LAST_SENT_AT,
+        ]),
+      );
+    const configMap = new Map(configRows.map((r) => [r.key, r.value]));
+
+    const staleMinutes = Math.max(
+      1,
+      parseInt(
+        configMap.get(SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_STALE_MINUTES) ??
+          SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_STALE_MINUTES],
+      ) || 15,
+    );
+    const cooldownHours = Math.max(
+      1,
+      parseInt(
+        configMap.get(SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_ALERT_COOLDOWN_HOURS) ??
+          SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_ALERT_COOLDOWN_HOURS],
+      ) || 4,
+    );
+    const rawLastSentAt = configMap.get(SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_ALERT_LAST_SENT_AT) ?? null;
+
+    // Scope to production merchants, exclude WLOAD orders, only CREATED/PENDING
+    const staleThreshold = new Date(Date.now() - staleMinutes * 60 * 1000);
+    const prodMerchantIds = db
+      .select({ id: merchantsTable.id })
+      .from(merchantsTable)
+      .where(eq(merchantsTable.environment, "production"));
+
+    const [row] = await db
+      .select({ cnt: count() })
+      .from(cashfreePaymentOrdersTable)
+      .where(
+        and(
+          inArray(cashfreePaymentOrdersTable.status, [
+            PAYIN_ORDER_STATUS.CREATED,
+            PAYIN_ORDER_STATUS.PENDING,
+          ]),
+          lte(cashfreePaymentOrdersTable.createdAt, staleThreshold),
+          sql`${cashfreePaymentOrdersTable.cashfreeOrderId} NOT LIKE 'WLOAD_%'`,
+          inArray(cashfreePaymentOrdersTable.merchantId, prodMerchantIds),
+        ),
+      );
+
+    const stuckCount = row?.cnt ?? 0;
+
+    // Compute cooldown state
+    const lastSentDate = rawLastSentAt ? new Date(rawLastSentAt) : null;
+    const lastSentValid = lastSentDate != null && !isNaN(lastSentDate.getTime());
+    const lastSentAt = lastSentValid ? lastSentDate!.toISOString() : null;
+    const cooldownExpiresAt = lastSentValid
+      ? new Date(lastSentDate!.getTime() + cooldownHours * 60 * 60 * 1000).toISOString()
+      : null;
+    const cooldownActive = cooldownExpiresAt ? new Date(cooldownExpiresAt) > new Date() : false;
+
+    res.json({
+      stuckCount,
+      staleMinutes,
+      lastSentAt,
+      cooldownExpiresAt,
+      cooldownActive,
+    });
   } catch (err) {
     next(err);
   }
