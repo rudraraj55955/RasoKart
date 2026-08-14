@@ -1,4 +1,5 @@
 import { Router } from "express";
+import crypto from "node:crypto";
 import { db, cashfreePayoutsTable, cashfreePayoutWebhookLogsTable, systemConfigTable, SYSTEM_CONFIG_KEYS, withdrawalsTable } from "@workspace/db";
 import { and, eq, inArray, or } from "drizzle-orm";
 import { logger } from "../lib/logger";
@@ -150,7 +151,96 @@ router.post("/", async (req, res) => {
       return;
     }
 
-    // ── Timestamp staleness check — replay protection ─────────────────────────
+    // ── Timestamp check — two webhook formats from Cashfree Payout ───────────
+    //
+    // FORMAT A — Standard Payout V2 transfer events (TRANSFER_SUCCESS, TRANSFER_FAILED,
+    //   WEBHOOK_TEST, etc.):
+    //   Headers:   x-webhook-timestamp (Unix epoch seconds) + x-webhook-signature (HMAC)
+    //   Signing:   HMAC-SHA256(timestamp + rawBody, clientSecret) → base64
+    //   → Strict replay-window enforcement (300 s).
+    //
+    // FORMAT B — Cashfree informational/alert events (LOW_BALANCE_ALERT, etc.):
+    //   Headers:   neither x-webhook-timestamp nor x-webhook-signature are present
+    //   Signing:   a "signature" field is embedded in the JSON body itself
+    //   Action:    non-financial (no transfer_id / no wallet mutations); always return 200
+    //              and log for visibility.  Body-signature formula is opaque — we try
+    //              several HMAC candidates and record whether any matched.
+    if (!timestamp) {
+      const bodyObj = req.body as Record<string, unknown>;
+      const bodyEventRaw = ((bodyObj["event"] ?? bodyObj["type"]) as string | undefined) ?? null;
+      const bodySignature  = (bodyObj["signature"] as string | undefined) ?? "";
+
+      if (bodySignature && activeSecret) {
+        // Body-signed informational event — try several known HMAC formula variants.
+        // The exact Cashfree signing input for these events is undocumented;
+        // we attempt the most likely candidates and log results for future diagnosis.
+        const hmacCandidate = (input: string) =>
+          crypto.createHmac("sha256", activeSecret).update(input).digest("base64");
+
+        const bodyWithoutSig = Object.fromEntries(
+          Object.entries(bodyObj).filter(([k]) => k !== "signature")
+        );
+        const candidates: Record<string, string> = {
+          "full_raw_body":          hmacCandidate(rawBody),
+          "body_without_sig_json":  hmacCandidate(JSON.stringify(bodyWithoutSig)),
+          "alertTime+balance":      hmacCandidate(
+            `${bodyObj["alertTime"] ?? ""}${bodyObj["currentBalance"] ?? ""}`
+          ),
+          "event+alertTime+balance": hmacCandidate(
+            `${bodyEventRaw ?? ""}${bodyObj["alertTime"] ?? ""}${bodyObj["currentBalance"] ?? ""}`
+          ),
+        };
+        const matchedFormula = Object.keys(candidates).find(k => candidates[k] === bodySignature);
+        const bodySignatureVerified = matchedFormula !== undefined;
+
+        logger.info(
+          {
+            endpoint,
+            env: isLive ? "LIVE" : "SANDBOX",
+            bodyEventType: bodyEventRaw,
+            rawBodyBytes,
+            bodySignatureVerified,
+            matchedFormula: matchedFormula ?? null,
+            // Log computed candidates alongside received sig for future formula discovery.
+            // All values are HMACs (no secret values are logged).
+            receivedSig: bodySignature.slice(-8),
+            candidateTails: Object.fromEntries(
+              Object.entries(candidates).map(([k, v]) => [k, v.slice(-8)])
+            ),
+          },
+          "cashfree_payout_webhook_body_signed_event",
+        );
+
+        // Body-signed events carry no transfer_id and trigger no wallet mutations.
+        // Return 200 to prevent Cashfree from retrying these informational events.
+        eventType = bodyEventRaw;
+        processingResult = "info_event";
+        signatureVerified = bodySignatureVerified || null;
+        res.status(200).json({ ok: true, received: true });
+        await insertLog({
+          endpoint, eventType, status: null,
+          signatureVerified, payoutId: null, transferId: null, cfTransferId: null, utr: null,
+          safeError: bodySignatureVerified ? null : "webhook.body_signature_formula_unknown",
+          processingResult, rawPayload: rawBody,
+        });
+        return;
+      }
+
+      // No x-webhook-timestamp AND no body signature → reject (malformed request).
+      logger.warn(
+        { endpoint, env: isLive ? "LIVE" : "SANDBOX", hasBodySignature: !!bodySignature, rawBodyBytes },
+        "cashfree_payout_webhook_missing_timestamp — neither header timestamp nor body signature present",
+      );
+      await insertLog({
+        endpoint, eventType: null, status: null, signatureVerified: false, payoutId: null,
+        transferId: null, cfTransferId: null, utr: null,
+        safeError: "webhook.missing_timestamp", processingResult: "rejected", rawPayload: rawBody,
+      });
+      res.status(401).json({ error: "Request is missing required timestamp" });
+      return;
+    }
+
+    // ── Standard Format A: timestamp staleness check (replay protection) ──────
     // Cashfree sends x-webhook-timestamp as Unix epoch seconds.
     // Reject requests where the timestamp is more than 5 minutes old or in the
     // future, to prevent signature-replay attacks. A captured valid webhook
@@ -160,7 +250,7 @@ router.post("/", async (req, res) => {
     const timestampSec = parseInt(timestamp, 10);
     const nowSec = Math.floor(Date.now() / 1000);
     const REPLAY_WINDOW_SECONDS = 300; // 5 minutes
-    if (!timestamp || isNaN(timestampSec) || Math.abs(nowSec - timestampSec) > REPLAY_WINDOW_SECONDS) {
+    if (isNaN(timestampSec) || Math.abs(nowSec - timestampSec) > REPLAY_WINDOW_SECONDS) {
       logger.warn(
         {
           endpoint,

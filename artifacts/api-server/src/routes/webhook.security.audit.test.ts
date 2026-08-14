@@ -343,6 +343,52 @@ describe("W — Payout webhook signature verification", () => {
     assert.equal(body.received, true);
   });
 
+  it("W8 — LOW_BALANCE_ALERT (body-signed, no header timestamp/signature) → 200 info_event, no wallet mutation", async () => {
+    // Cashfree Payout LOW_BALANCE_ALERT events arrive without x-webhook-timestamp or
+    // x-webhook-signature headers — they embed a "signature" field in the JSON body instead.
+    // The handler must accept these (return 200) and NOT attempt any wallet mutation,
+    // because they are purely informational (no transfer_id / no payout state change).
+    stubPayoutWebhookDb(ENCRYPTED_PAYOUT_SECRET);
+    const alertPayload = {
+      event: "LOW_BALANCE_ALERT",
+      alertTime: "2026-08-15 02:36:52",
+      currentBalance: "100.00",
+      signature: "some_cashfree_body_signature_value",
+    };
+    const r = await post(server, "/api/cashfree-payout/webhook", alertPayload, {
+      "Content-Type": "application/json",
+      // Deliberately omit x-webhook-timestamp and x-webhook-signature headers
+    });
+    assert.equal(r.status, 200, `Expected 200 for body-signed LOW_BALANCE_ALERT, got ${r.status}`);
+    const body = r.json<{ ok: boolean; received: boolean }>();
+    assert.equal(body.ok, true, "Response body.ok should be true");
+    assert.equal(body.received, true, "Response body.received should be true");
+    // The handler must return before any wallet/payout mutation code is reached.
+    // Verified by the route's early-return structure (no transfer_id lookup issued).
+  });
+
+  it("W9 — missing timestamp AND no body signature → 401 missing_timestamp", async () => {
+    // A request with no x-webhook-timestamp header AND no signature field in the body
+    // is a malformed request that doesn't match either Cashfree webhook format.
+    // It must be rejected (not silently accepted).
+    stubPayoutWebhookDb(ENCRYPTED_PAYOUT_SECRET);
+    const malformedPayload = {
+      event: "transfer_failed",
+      transfer: { transfer_id: "NO_SIG_NO_TIMESTAMP" },
+      // No "signature" field in body
+    };
+    const r = await post(server, "/api/cashfree-payout/webhook", malformedPayload, {
+      "Content-Type": "application/json",
+      // No x-webhook-timestamp, no x-webhook-signature, no body signature
+    });
+    assert.equal(r.status, 401, `Expected 401 for missing timestamp + no body sig, got ${r.status}`);
+    const body = r.json<{ error: string }>();
+    assert.ok(
+      body.error?.toLowerCase().includes("missing") || body.error?.toLowerCase().includes("timestamp"),
+      `Expected missing-timestamp error, got: ${body.error}`,
+    );
+  });
+
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
