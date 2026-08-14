@@ -33,7 +33,8 @@ export type NotificationType =
   | "gateway_recovered"
   | "cleanup_failure_repeated"
   | "ekqr_daily_cap_full"
-  | "payu_credit_failed";
+  | "payu_credit_failed"
+  | "payout_webhook_no_secret";
 
 type InAppPrefField = keyof Pick<
   typeof usersTable.$inferSelect,

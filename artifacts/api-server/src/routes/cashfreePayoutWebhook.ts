@@ -6,6 +6,7 @@ import { verifyCashfreeWebhookSignature } from "../helpers/cashfree";
 import { normalizeCashfreePayoutStatus } from "../helpers/cashfreePayout";
 import { mutateWallet } from "./wallets";
 import { decryptSecret } from "../helpers/cryptoUtils";
+import { maybeAlertPayoutWebhookNoSecret } from "../helpers/payoutWebhookNoSecretAlert";
 
 const router = Router();
 
@@ -135,7 +136,8 @@ router.post("/", async (req, res) => {
     if (!activeSecret) {
       // Fail-closed: no secret configured — log event but perform NO state mutations.
       // Return 200 so Cashfree does not retry. Configure the secret to enable processing.
-      logger.warn({ endpoint, env: isLive ? "LIVE" : "SANDBOX" }, "cashfree_payout_webhook_no_secret_configured — skipping all state mutations");
+      const envLabel = isLive ? "LIVE" : "SANDBOX";
+      logger.warn({ endpoint, env: envLabel }, "cashfree_payout_webhook_no_secret_configured — skipping all state mutations");
       const body = req.body as Record<string, unknown>;
       eventType = ((body["type"] ?? body["event"]) as string | undefined) ?? null;
       const data = body["data"] as Record<string, unknown> | undefined;
@@ -147,6 +149,8 @@ router.post("/", async (req, res) => {
       processingResult = "received";
       res.status(200).json({ ok: true, received: true });
       await insertLog({ endpoint, eventType, status: statusRaw, signatureVerified: null, payoutId: null, transferId, cfTransferId, utr, safeError: "No secret configured — webhook received without signature verification", processingResult, rawPayload: rawBody });
+      // Rate-limited admin alert — at most once per hour; never blocks or throws.
+      await maybeAlertPayoutWebhookNoSecret(1, envLabel).catch(() => undefined);
       return;
     }
 

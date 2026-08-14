@@ -58,11 +58,13 @@ import {
   systemConfigTable,
   apiKeysTable,
   auditLogsTable,
+  notificationsTable,
   SYSTEM_CONFIG_KEYS,
 } from "@workspace/db";
 import app from "../app.js";
 import { encryptSecret } from "../helpers/cryptoUtils.js";
 import { generateToken } from "../middlewares/auth.js";
+import { resetPayoutNoSecretAlertRateLimit } from "../helpers/payoutWebhookNoSecretAlert.js";
 
 process.env["SESSION_SECRET"] ??= "rk_ci_webhook_security_audit_test_session_s32";
 
@@ -253,16 +255,22 @@ describe("W — Payout webhook signature verification", () => {
       { key: SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENV, value: "live" },
     ];
 
+    // Admin user returned when the alert queries active admins
+    const adminRows = [{ id: ADMIN_USER_ID }];
+
     (db as any).select = () => ({
-      from: () => ({
-        where: () => systemRows,
+      from: (tbl: unknown) => ({
+        where: () => (tbl === usersTable ? adminRows : systemRows),
       }),
     });
-    // insert should record without error
+    // insert should record without error and support .returning() for createBulkNotifications
     (db as any).insert = (tbl: unknown) => ({
       values: (vals: unknown) => {
         savedInserts.push({ tbl, vals });
-        return Promise.resolve();
+        const p = Promise.resolve([]) as any;
+        p.returning = () => Promise.resolve([]);
+        p.onConflictDoNothing = () => ({ returning: () => Promise.resolve([]) });
+        return p;
       },
     });
   }
@@ -328,7 +336,9 @@ describe("W — Payout webhook signature verification", () => {
     assert.equal(r.status, 401, `Expected 401 for future timestamp, got ${r.status}`);
   });
 
-  it("W7 — no secret configured → 200 but processingResult=received, no state mutation", async () => {
+  it("W7 — no secret configured → 200 but processingResult=received, no state mutation, alert sent", async () => {
+    // Reset in-process rate limit so the alert fires even if W7 runs after another test
+    resetPayoutNoSecretAlertRateLimit();
     stubPayoutWebhookDb(null);
     const ts = String(Math.floor(Date.now() / 1000));
     const r = await post(server, "/api/cashfree-payout/webhook", PAYLOAD, {
@@ -341,6 +351,15 @@ describe("W — Payout webhook signature verification", () => {
     const body = r.json<{ ok: boolean; received: boolean }>();
     assert.equal(body.ok, true);
     assert.equal(body.received, true);
+
+    // A rate-limited admin notification must have been inserted for the no-secret condition.
+    // createBulkNotifications calls db.insert(notificationsTable).values([...]).returning().
+    const notifInsert = savedInserts.find((i: any) => i.tbl === notificationsTable);
+    assert.ok(notifInsert, "Expected a notifications table insert for the no-secret admin alert");
+    const notifVals = (notifInsert as any).vals as Array<{ userId: number; type: string; title: string; body: string }>;
+    assert.ok(Array.isArray(notifVals) && notifVals.length > 0, "Expected at least one admin notification row");
+    assert.equal(notifVals[0].type, "payout_webhook_no_secret", `Expected notification type 'payout_webhook_no_secret', got: ${notifVals[0].type}`);
+    assert.ok(notifVals[0].userId === ADMIN_USER_ID, `Expected notification userId=${ADMIN_USER_ID}, got: ${notifVals[0].userId}`);
   });
 
 });
