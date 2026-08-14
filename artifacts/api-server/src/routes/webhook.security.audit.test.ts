@@ -491,6 +491,55 @@ describe("W — Payout webhook signature verification", () => {
     );
   });
 
+  it("W7b — concurrent no-secret webhooks → exactly one notification batch (rate-limit concurrency guard)", async () => {
+    // Reset so both concurrent requests start with a clear rate-limit.
+    resetPayoutNoSecretAlertRateLimit();
+    stubPayoutWebhookDb(null);
+    const ts = String(Math.floor(Date.now() / 1000));
+    const opts = {
+      "Content-Type": "application/json",
+      "x-webhook-signature": "irrelevant",
+      "x-webhook-timestamp": ts,
+    };
+    // Fire two requests simultaneously — the rate-limit slot is claimed
+    // synchronously before the first await, so only the first call that
+    // passes the cooldown check can proceed; the second sees the slot taken.
+    const [r1, r2] = await Promise.all([
+      post(server, "/api/cashfree-payout/webhook", PAYLOAD, opts),
+      post(server, "/api/cashfree-payout/webhook", PAYLOAD, opts),
+    ]);
+    assert.equal(r1.status, 200, `Expected 200 for first concurrent request, got ${r1.status}`);
+    assert.equal(r2.status, 200, `Expected 200 for second concurrent request, got ${r2.status}`);
+
+    // Exactly one notification batch must have been inserted regardless of
+    // request interleaving — the atomic slot claim prevents a double-send.
+    const notifInserts = savedInserts.filter((i: any) => i.tbl === notificationsTable);
+    assert.equal(
+      notifInserts.length, 1,
+      `Expected exactly 1 notifications insert for concurrent no-secret burst, got ${notifInserts.length}`,
+    );
+  });
+
+  it("W7c — sequential no-secret webhook within cooldown → no second alert sent", async () => {
+    // Do NOT reset the rate limit — W7b already set it, cooldown is active.
+    stubPayoutWebhookDb(null);
+    const ts = String(Math.floor(Date.now() / 1000));
+    const r = await post(server, "/api/cashfree-payout/webhook", PAYLOAD, {
+      "Content-Type": "application/json",
+      "x-webhook-signature": "irrelevant",
+      "x-webhook-timestamp": ts,
+    });
+    assert.equal(r.status, 200, `Expected 200 within cooldown, got ${r.status}`);
+
+    // savedInserts is cleared by afterEach between tests, so any insert here
+    // would be fresh — the absence confirms the rate limit suppressed the alert.
+    const notifInserts = savedInserts.filter((i: any) => i.tbl === notificationsTable);
+    assert.equal(
+      notifInserts.length, 0,
+      `Expected 0 notification inserts when cooldown is active, got ${notifInserts.length}`,
+    );
+  });
+
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
