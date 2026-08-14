@@ -74,6 +74,16 @@ jobs:
         # the guard — so a parser bug can't silently pass a real gap.
         run: pnpm --filter @workspace/scripts run schema-guard-column-diff:negtest
 
+      - name: Verify schema-guard-column-diff CI contract
+        # End-to-end contract check that proves a failing column-diff run will
+        # block the merge button:
+        #   1. Audits this workflow YAML to confirm every required step is wired.
+        #   2. Runs the negative-case tests and parses TAP output to confirm the
+        #      reverse-check cases pass (proving exit-1 propagates to CI failure).
+        #   3. Runs column-diff against the real schema and asserts exit 0
+        #      (baseline is green — no unguarded columns).
+        run: pnpm --filter @workspace/scripts run verify-schema-guard-ci-contract
+
   # ── Job 2: Real-DB fresh-install smoke test ─────────────────────────────────
   schema-guard-fresh-install:
     name: Schema guard fresh-install smoke (real DB)
