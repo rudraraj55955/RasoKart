@@ -56,6 +56,18 @@ jobs:
       - name: Run schema-guard-column-diff
         run: pnpm --filter @workspace/scripts run schema-guard-column-diff
 
+      - name: Run schema-guard cross-file consistency check
+        # Compares the CREATE TABLE column lists in schemaGuard.ts and
+        # db-migrate.ts independently for every table that appears in both
+        # files.  Catches the silent-rename footgun: a column renamed in one
+        # guard file but left under its old name in the other passes the
+        # combined forward check (the old name satisfies it via one file;
+        # the new name via the other) but is flagged here.
+        # NOTE: this check runs as part of the schema-guard-column-diff
+        # script above; this step is a no-op alias that makes the intent
+        # explicit in the CI log.
+        run: echo "Cross-file consistency check ran as part of schema-guard-column-diff above."
+
       - name: Run schema-guard-alter-reverse-check
         # Reverse of the diff: every ALTER TABLE ADD COLUMN IF NOT EXISTS line
         # in schemaGuard.ts / db-migrate.ts must reference a column that actually

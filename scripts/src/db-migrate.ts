@@ -531,6 +531,7 @@ async function migrate() {
     ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS company_address TEXT;
     ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS footer_text TEXT;
     ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS updated_by INTEGER;
+    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS grievance_officer_name TEXT;
     INSERT INTO company_settings (id, company_name, support_phone)
       SELECT 1, 'Nickey Collection Private Limited', '9358774496'
       WHERE NOT EXISTS (SELECT 1 FROM company_settings);
@@ -691,6 +692,11 @@ async function migrate() {
     ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS supports_payment_links BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS supports_webhooks BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS updated_by_email VARCHAR(255);
+    ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS collection_type TEXT NOT NULL DEFAULT 'api_gateway';
+    ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS own_upi_id TEXT;
+    ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS own_qr_image_url TEXT;
+    ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS own_account_holder TEXT;
+    ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS own_instructions TEXT;
 
     CREATE TABLE IF NOT EXISTS provider_visibility (
       id SERIAL PRIMARY KEY,
@@ -1601,6 +1607,11 @@ async function migrate() {
     CREATE UNIQUE INDEX IF NOT EXISTS razorpay_orders_rzp_payment_id_uniq  ON razorpay_payment_orders(razorpay_payment_id) WHERE razorpay_payment_id IS NOT NULL;
     CREATE UNIQUE INDEX IF NOT EXISTS razorpay_orders_utr_uniq              ON razorpay_payment_orders(utr) WHERE utr IS NOT NULL;
     CREATE INDEX        IF NOT EXISTS razorpay_orders_merchant_created_idx  ON razorpay_payment_orders(merchant_id, created_at);
+    ALTER TABLE razorpay_payment_orders ADD COLUMN IF NOT EXISTS error_code TEXT;
+    ALTER TABLE razorpay_payment_orders ADD COLUMN IF NOT EXISTS error_description TEXT;
+    ALTER TABLE razorpay_payment_orders ADD COLUMN IF NOT EXISTS error_source TEXT;
+    ALTER TABLE razorpay_payment_orders ADD COLUMN IF NOT EXISTS captured_at TIMESTAMPTZ;
+    ALTER TABLE razorpay_payment_orders ADD COLUMN IF NOT EXISTS settlement_id TEXT;
 
     CREATE TABLE IF NOT EXISTS razorpay_webhook_logs (
       id                  SERIAL PRIMARY KEY,

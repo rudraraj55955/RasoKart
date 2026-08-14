@@ -234,12 +234,27 @@ async function runGuard(executor: GuardExecutor = db): Promise<void> {
     await exec.execute(sql`
       CREATE TABLE IF NOT EXISTS routing_configs (
         id SERIAL PRIMARY KEY,
-        name TEXT NOT NULL,
-        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        config_name VARCHAR(64),
+        description TEXT,
+        strategy VARCHAR(32) NOT NULL DEFAULT 'priority',
+        is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        fallback_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        timeout_ms INTEGER NOT NULL DEFAULT 30000,
+        min_success_rate_threshold NUMERIC(5,2) DEFAULT 80.00,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_by_email VARCHAR(255)
       )
     `);
+    // Self-heal legacy DBs that were created with the old (name, is_active) schema:
+    await exec.execute(sql`ALTER TABLE routing_configs ADD COLUMN IF NOT EXISTS config_name VARCHAR(64)`);
+    await exec.execute(sql`ALTER TABLE routing_configs ADD COLUMN IF NOT EXISTS description TEXT`);
+    await exec.execute(sql`ALTER TABLE routing_configs ADD COLUMN IF NOT EXISTS strategy VARCHAR(32) NOT NULL DEFAULT 'priority'`);
+    await exec.execute(sql`ALTER TABLE routing_configs ADD COLUMN IF NOT EXISTS is_enabled BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE routing_configs ADD COLUMN IF NOT EXISTS fallback_enabled BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE routing_configs ADD COLUMN IF NOT EXISTS timeout_ms INTEGER NOT NULL DEFAULT 30000`);
+    await exec.execute(sql`ALTER TABLE routing_configs ADD COLUMN IF NOT EXISTS min_success_rate_threshold NUMERIC(5,2) DEFAULT 80.00`);
+    await exec.execute(sql`ALTER TABLE routing_configs ADD COLUMN IF NOT EXISTS updated_by_email VARCHAR(255)`);
     await exec.execute(sql`
       CREATE TABLE IF NOT EXISTS routing_rules (
         id SERIAL PRIMARY KEY,

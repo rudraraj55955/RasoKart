@@ -830,6 +830,235 @@ describe("schema-guard-column-diff negative-case contract", () => {
     );
   });
 
+  // ── Cross-file consistency check ────────────────────────────────────────
+  //
+  // Verifies that the script exits 1 when a CREATE TABLE body in schemaGuard.ts
+  // and db-migrate.ts define different column sets for the same table.  This is
+  // the rename-without-sync scenario: a developer renames a column in one guard
+  // file but leaves the old name in the other.  The combined forward check
+  // misses it; the cross-file check must catch it.
+
+  /**
+   * Build a fixture pair where schemaGuard and db-migrate each have a CREATE
+   * TABLE block for the same table, but with independently-specified column
+   * lists.  Both files are Drizzle-tracked (via the schemaColumns list) so
+   * the forward, reverse, manifest, and unregistered-table checks don't fire
+   * independently of the cross-file scenario under test.
+   *
+   * guardColumns   — columns in schemaGuard.ts CREATE TABLE body
+   * migrateColumns — columns in db-migrate.ts  CREATE TABLE body
+   * schemaColumns  — columns in the Drizzle pgTable (must be a superset of
+   *                  guardColumns ∪ migrateColumns so the forward check passes)
+   */
+  function buildCrossFileFixtures(opts: {
+    schemaColumns: string[];
+    guardColumns: string[];
+    migrateColumns: string[];
+  }): { dir: string; env: NodeJS.ProcessEnv } {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sgcd-crossfile-"));
+
+    // ── schema dir ──────────────────────────────────────────────────────────
+    const schemaDir = path.join(dir, "schema");
+    fs.mkdirSync(schemaDir, { recursive: true });
+
+    fs.writeFileSync(
+      path.join(schemaDir, "index.ts"),
+      `export * from "./fixture_table";\n`,
+    );
+
+    const colDefs = opts.schemaColumns
+      .map((c) => `  ${c}: text("${c}"),`)
+      .join("\n");
+    fs.writeFileSync(
+      path.join(schemaDir, "fixture_table.ts"),
+      [
+        `import { pgTable, text, serial } from "drizzle-orm/pg-core";`,
+        ``,
+        `export const fixtureTable = pgTable("fixture_table", {`,
+        `  id: serial("id").primaryKey(),`,
+        colDefs,
+        `});`,
+      ].join("\n") + "\n",
+    );
+
+    // ── schemaGuard file ─────────────────────────────────────────────────────
+    const guardColDefs = opts.guardColumns.map((c) => `  ${c} TEXT,`).join("\n");
+    const guardFile = path.join(dir, "guard.ts");
+    fs.writeFileSync(
+      guardFile,
+      [
+        `-- schemaGuard fixture`,
+        `CREATE TABLE IF NOT EXISTS fixture_table (`,
+        `  id SERIAL PRIMARY KEY,`,
+        guardColDefs,
+        `);`,
+      ].join("\n") + "\n",
+    );
+
+    // ── db-migrate file ──────────────────────────────────────────────────────
+    const migrateColDefs = opts.migrateColumns
+      .map((c) => `  ${c} TEXT,`)
+      .join("\n");
+    const migrateFile = path.join(dir, "migrate.ts");
+    fs.writeFileSync(
+      migrateFile,
+      [
+        `-- db-migrate fixture`,
+        `CREATE TABLE IF NOT EXISTS fixture_table (`,
+        `  id SERIAL PRIMARY KEY,`,
+        migrateColDefs,
+        `);`,
+      ].join("\n") + "\n",
+    );
+
+    return {
+      dir,
+      env: {
+        ...process.env,
+        SGCD_SCHEMA_DIR: schemaDir,
+        SGCD_SCHEMA_INDEX: path.join(schemaDir, "index.ts"),
+        SGCD_GUARD_FILE: guardFile,
+        SGCD_MIGRATE_FILE: migrateFile,
+      },
+    };
+  }
+
+  // Case CF-1: column in schemaGuard CREATE TABLE but absent from db-migrate → exit 1
+  test("exits 1 when a column is in schemaGuard.ts CREATE TABLE but absent from db-migrate.ts for the same table", () => {
+    // Simulates: developer renamed 'status_v1' → 'status_v2' in schemaGuard.ts
+    // but forgot to update db-migrate.ts.  The combined forward check passes
+    // (status_v1 satisfies it via db-migrate, status_v2 satisfies it via
+    // schemaGuard) but the cross-file check must flag the inconsistency.
+    const { dir, env } = buildCrossFileFixtures({
+      // Drizzle schema has status_v2 (the renamed column)
+      schemaColumns: ["status_v2"],
+      // schemaGuard.ts was updated to use the new name
+      guardColumns: ["status_v2"],
+      // db-migrate.ts still has the old name — this is the drift
+      migrateColumns: ["status_v1"],
+    });
+    fixtures.push({ dir });
+
+    const { code, stdout, stderr } = runScriptFull(env);
+    assert.equal(
+      code,
+      1,
+      "script must exit 1 when 'status_v2' is in schemaGuard.ts but absent from db-migrate.ts CREATE TABLE",
+    );
+    // The error output must name the drifting column(s) so developers know what to fix.
+    const output = stdout + stderr;
+    assert.ok(
+      output.includes("status_v2") || output.includes("status_v1"),
+      `output must mention the drifting column name(s); got:\n${output}`,
+    );
+  });
+
+  // Case CF-2: column in db-migrate CREATE TABLE but absent from schemaGuard → exit 1
+  test("exits 1 when a column is in db-migrate.ts CREATE TABLE but absent from schemaGuard.ts for the same table", () => {
+    // Mirror of CF-1: the rename was applied to db-migrate but not schemaGuard.
+    const { dir, env } = buildCrossFileFixtures({
+      schemaColumns: ["amount_cents"],
+      // schemaGuard still has the old column name
+      guardColumns: ["amount"],
+      // db-migrate was updated to the new name
+      migrateColumns: ["amount_cents"],
+    });
+    fixtures.push({ dir });
+
+    const { code, stdout, stderr } = runScriptFull(env);
+    assert.equal(
+      code,
+      1,
+      "script must exit 1 when 'amount_cents' is in db-migrate.ts but absent from schemaGuard.ts CREATE TABLE",
+    );
+    const output = stdout + stderr;
+    assert.ok(
+      output.includes("amount_cents") || output.includes("amount"),
+      `output must mention the drifting column name(s); got:\n${output}`,
+    );
+  });
+
+  // Case CF-3: both files define the same column set → exit 0 (no cross-file drift)
+  test("exits 0 when schemaGuard.ts and db-migrate.ts CREATE TABLE bodies define the same column set", () => {
+    const { dir, env } = buildCrossFileFixtures({
+      schemaColumns: ["status", "amount_cents"],
+      guardColumns: ["status", "amount_cents"],   // in sync
+      migrateColumns: ["status", "amount_cents"], // in sync
+    });
+    fixtures.push({ dir });
+
+    const code = runScript(env);
+    assert.equal(
+      code,
+      0,
+      "script must exit 0 when both guard files define the same column set for the shared table",
+    );
+  });
+
+  // Case CF-4: table only appears in one guard file → exit 0 (no cross-file check)
+  //
+  // Not every table needs a CREATE TABLE in both files.  Tables introduced
+  // after the initial deploy typically only have a CREATE TABLE in schemaGuard
+  // and ALTER TABLE ADD COLUMN lines in db-migrate.  The cross-file check must
+  // not flag these — it only applies to tables present in BOTH files.
+  test("exits 0 when a table has a CREATE TABLE in only one guard file (not a cross-file scenario)", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sgcd-cf4-"));
+    fixtures.push({ dir });
+
+    // ── Schema dir ────────────────────────────────────────────────────────
+    const schemaDir = path.join(dir, "schema");
+    fs.mkdirSync(schemaDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(schemaDir, "index.ts"),
+      `export * from "./fixture_table";\n`,
+    );
+    fs.writeFileSync(
+      path.join(schemaDir, "fixture_table.ts"),
+      [
+        `import { pgTable, text, serial } from "drizzle-orm/pg-core";`,
+        `export const fixtureTable = pgTable("fixture_table", {`,
+        `  id: serial("id").primaryKey(),`,
+        `  name: text("name"),`,
+        `});`,
+      ].join("\n") + "\n",
+    );
+
+    // schemaGuard has the CREATE TABLE
+    const guardFile = path.join(dir, "guard.ts");
+    fs.writeFileSync(
+      guardFile,
+      [
+        `CREATE TABLE IF NOT EXISTS fixture_table (`,
+        `  id SERIAL PRIMARY KEY,`,
+        `  name TEXT,`,
+        `);`,
+      ].join("\n") + "\n",
+    );
+
+    // db-migrate has only an ALTER TABLE ADD COLUMN (no CREATE TABLE for this table)
+    const migrateFile = path.join(dir, "migrate.ts");
+    fs.writeFileSync(
+      migrateFile,
+      `-- no CREATE TABLE here, only extensions\n` +
+        `ALTER TABLE fixture_table ADD COLUMN IF NOT EXISTS name TEXT;\n`,
+    );
+
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      SGCD_SCHEMA_DIR: schemaDir,
+      SGCD_SCHEMA_INDEX: path.join(schemaDir, "index.ts"),
+      SGCD_GUARD_FILE: guardFile,
+      SGCD_MIGRATE_FILE: migrateFile,
+    };
+
+    const code = runScript(env);
+    assert.equal(
+      code,
+      0,
+      "script must exit 0 when the table only has a CREATE TABLE in schemaGuard — no cross-file check applies",
+    );
+  });
+
   // Case 9: schemaGuard-only table — DROP COLUMN for a column that exists ONLY via
   // ALTER TABLE ADD COLUMN (not in CREATE TABLE body) → exit 1.
   //

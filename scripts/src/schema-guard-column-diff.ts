@@ -872,7 +872,32 @@ function main(): void {
     console.error();
   }
 
-  if (!forwardOk || !reverseOk || !dropOk || !manifestOk || !manifestReverseOk || !unregisteredOk) {
+  // ── Cross-file consistency check ─────────────────────────────────────────
+  //
+  // Detects columns that were renamed in one guard file but left under their
+  // old name in the other.  Because the forward check merges both files, the
+  // old name satisfies the check via db-migrate.ts while the new name satisfies
+  // it via schemaGuard.ts — so the combined check always passes even though the
+  // two files are out of sync.
+  //
+  // Strategy: parse each guard file independently and collect the column set
+  // from each CREATE TABLE body.  For every table that has a CREATE TABLE block
+  // in BOTH files, the two column sets must be identical.  A column present in
+  // schemaGuard.ts but absent from db-migrate.ts (or vice-versa) is flagged as
+  // a cross-file rename that was not synced.
+  //
+  // Note: ALTER TABLE ADD COLUMN lines are intentionally excluded.  It is
+  // normal and expected to add a column via ALTER in one file only (e.g.
+  // as a post-initial-release extension).  Only the base CREATE TABLE body,
+  // which is the authoritative table definition, must stay in sync.
+
+  console.log(
+    "\nschema-guard-cross-file-check: comparing CREATE TABLE column lists across guard files...\n"
+  );
+
+  const crossFileOk = checkCrossFileConsistency();
+
+  if (!forwardOk || !reverseOk || !dropOk || !manifestOk || !manifestReverseOk || !unregisteredOk || !crossFileOk) {
     process.exit(1);
   }
 }
@@ -884,6 +909,111 @@ const isMain =
   fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
 if (isMain) {
   main();
+}
+
+/**
+ * Cross-file consistency check.
+ *
+ * Parses schemaGuard.ts and db-migrate.ts independently and compares the
+ * FULL per-file column coverage (CREATE TABLE ∪ ALTER TABLE ADD COLUMN) for
+ * every table that has any guard mention in BOTH files.  A column present in
+ * one file's coverage but absent from the other's is flagged as cross-file
+ * drift.
+ *
+ * Using full per-file coverage (not CREATE TABLE-only) correctly handles the
+ * common "CREATE TABLE in one file + ALTER TABLE ADD COLUMN in the other"
+ * pattern — both files end up covering the same column set, so the check
+ * passes.  A genuine rename, where the new column name is absent from one
+ * file entirely (neither CREATE TABLE nor ALTER TABLE ADD COLUMN), is still
+ * caught because neither mechanism covers it in that file.
+ *
+ * Returns true (check passed) or false (drift found).
+ */
+function checkCrossFileConsistency(): boolean {
+  const guardExists = fs.existsSync(SCHEMA_GUARD_FILE);
+  const migrateExists = fs.existsSync(DB_MIGRATE_FILE);
+
+  if (!guardExists || !migrateExists) {
+    console.log(
+      "✓ Cross-file check skipped — one or both guard files are absent."
+    );
+    return true;
+  }
+
+  const guardSrc = fs.readFileSync(SCHEMA_GUARD_FILE, "utf8");
+  const migrateSrc = fs.readFileSync(DB_MIGRATE_FILE, "utf8");
+
+  // Full per-file coverage: CREATE TABLE ∪ ALTER TABLE ADD COLUMN per table.
+  const guardCols = collectGuardedColumns(guardSrc);
+  const migrateCols = collectGuardedColumns(migrateSrc);
+
+  // Narrow the comparison to tables that have a CREATE TABLE body in BOTH
+  // guard files.  A table with CREATE TABLE in only one file and ALTER TABLE
+  // ADD COLUMN extensions in the other is a common, legitimate pattern — the
+  // base definition lives in one file while post-deploy expansions live in the
+  // other.  We must not flag that pattern.  Cross-file drift only makes sense
+  // to audit when both files independently define the table's base schema via
+  // CREATE TABLE, because that's where a silent rename is most likely to occur.
+  const guardCreateTables = collectCreateTableColumns(guardSrc);
+  const migrateCreateTables = collectCreateTableColumns(migrateSrc);
+  const commonTables = [...guardCreateTables.keys()].filter((t) =>
+    migrateCreateTables.has(t)
+  );
+
+  if (commonTables.length === 0) {
+    console.log(
+      "✓ No tables share a CREATE TABLE block in both guard files — cross-file check not applicable."
+    );
+    return true;
+  }
+
+  const drifts: Array<{
+    table: string;
+    onlyInGuard: string[];
+    onlyInMigrate: string[];
+  }> = [];
+
+  for (const table of commonTables) {
+    const g = guardCols.get(table)!;
+    const m = migrateCols.get(table)!;
+    const onlyInGuard = [...g].filter((c) => !m.has(c)).sort();
+    const onlyInMigrate = [...m].filter((c) => !g.has(c)).sort();
+    if (onlyInGuard.length > 0 || onlyInMigrate.length > 0) {
+      drifts.push({ table, onlyInGuard, onlyInMigrate });
+    }
+  }
+
+  if (drifts.length === 0) {
+    console.log(
+      `✓ CREATE TABLE column lists match between schemaGuard.ts and db-migrate.ts` +
+        ` for all ${commonTables.length} shared table(s).`
+    );
+    return true;
+  }
+
+  console.error(
+    `✗ Found ${drifts.length} table(s) where the CREATE TABLE column lists differ between guard files:\n`
+  );
+  console.error(
+    "  This typically indicates a column was renamed in one guard file but not the other.\n" +
+      "  Because the forward check merges both files, the old name satisfies it via one file\n" +
+      "  while the new name satisfies it via the other — so the rename goes undetected.\n" +
+      "  Fix: update the CREATE TABLE body in both schemaGuard.ts and db-migrate.ts so\n" +
+      "  they define the same column set for the affected table(s).\n"
+  );
+  for (const { table, onlyInGuard, onlyInMigrate } of drifts.sort((a, b) =>
+    a.table.localeCompare(b.table)
+  )) {
+    console.error(`  ${table}:`);
+    for (const col of onlyInGuard) {
+      console.error(`    • ${col}  ← present in schemaGuard.ts (CREATE TABLE or ALTER TABLE) but absent from db-migrate.ts`);
+    }
+    for (const col of onlyInMigrate) {
+      console.error(`    • ${col}  ← present in db-migrate.ts (CREATE TABLE or ALTER TABLE) but absent from schemaGuard.ts`);
+    }
+    console.error();
+  }
+  return false;
 }
 
 function collectAllCreateTableColumns(): Map<string, Set<string>> {
