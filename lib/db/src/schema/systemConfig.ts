@@ -165,6 +165,17 @@ export const SYSTEM_CONFIG_KEYS = {
   // Compared against today's UTC date to enforce once-per-day deduplication
   // without requiring a separate table or cron job.
   UPIGATEWAY_CAP_ALERT_LAST_SENT_DATE: "upigateway_cap_alert_last_sent_date",
+  // Cashfree stuck payin order monitoring
+  // An order is "stuck" when its status is not PAID and it is older than
+  // CASHFREE_STUCK_ORDER_STALE_MINUTES minutes (default 15).
+  // The dashboard surfaces the live count; the scheduler fires an email alert
+  // when the count crosses CASHFREE_STUCK_ORDER_ALERT_THRESHOLD and the
+  // cooldown has elapsed.
+  CASHFREE_STUCK_ORDER_STALE_MINUTES:          "cashfree_stuck_order_stale_minutes",
+  CASHFREE_STUCK_ORDER_ALERT_THRESHOLD:        "cashfree_stuck_order_alert_threshold",
+  CASHFREE_STUCK_ORDER_ALERT_COOLDOWN_HOURS:   "cashfree_stuck_order_alert_cooldown_hours",
+  // runtime-state: ISO timestamp of the last alert email (written by scheduler)
+  CASHFREE_STUCK_ORDER_ALERT_LAST_SENT_AT:     "cashfree_stuck_order_alert_last_sent_at",
 } as const;
 
 export const SYSTEM_CONFIG_DEFAULTS = {
@@ -261,6 +272,9 @@ export const SYSTEM_CONFIG_DEFAULTS = {
   [SYSTEM_CONFIG_KEYS.PAYU_LIVE_VERIFIED]:  "false",
   [SYSTEM_CONFIG_KEYS.PAYU_LIVE_VERIFIED_AT]: "",
   [SYSTEM_CONFIG_KEYS.VA_CLEANUP_RETENTION_DAYS]: "30",
+  [SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_STALE_MINUTES]:        "15",
+  [SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_ALERT_THRESHOLD]:      "5",
+  [SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_ALERT_COOLDOWN_HOURS]: "4",
 } as const;
 
 /**
@@ -302,6 +316,7 @@ export const SYSTEM_CONFIG_NO_DEFAULT_KEYS: ReadonlySet<string> = new Set([
   SYSTEM_CONFIG_KEYS.RAZORPAY_SETTLEMENT_BALANCE,
   SYSTEM_CONFIG_KEYS.RAZORPAY_SETTLEMENT_LAST_UTR,
   SYSTEM_CONFIG_KEYS.RAZORPAY_SETTLEMENT_LAST_UPDATED_AT,
+  SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_ALERT_LAST_SENT_AT, // runtime-state: written by scheduler; never seeded
   // ── credential: must be configured per-environment; no safe empty default ─
   SYSTEM_CONFIG_KEYS.EKQR_API_KEY,
   SYSTEM_CONFIG_KEYS.EKQR_WEBHOOK_SECRET,

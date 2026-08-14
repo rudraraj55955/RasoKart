@@ -27,6 +27,7 @@ import { eq } from "drizzle-orm";
 import { initNotifReminderScheduler, runNotifReminderScan } from "./helpers/notifReminderScheduler";
 import { initSnoozeCleanupScheduler, runSnoozeCleanup } from "./helpers/snoozeCleanupScheduler";
 import { initPayoutStuckCleanupScheduler, runStuckPayoutCleanup } from "./helpers/payoutStuckCleanupScheduler";
+import { initCashfreeStuckOrderScheduler, runStuckCashfreeOrderScan } from "./helpers/cashfreeStuckOrderScheduler";
 import { initGithubSyncLogCleanupScheduler, runGithubSyncLogCleanup } from "./helpers/githubSyncLogCleanupScheduler";
 import { resolveStaleOutageOnBoot } from "./helpers/smartRouter";
 import { markServerInitialized } from "./lib/startupState";
@@ -196,6 +197,7 @@ async function main() {
   initNotifReminderScheduler();
   initSnoozeCleanupScheduler();
   initPayoutStuckCleanupScheduler();
+  initCashfreeStuckOrderScheduler();
   initGithubSyncLogCleanupScheduler();
   scheduleCallbackRetryWorker();
   initQuietHoursFlushScheduler();
@@ -250,6 +252,12 @@ async function main() {
   // history edit) so they don't accumulate indefinitely on disk.
   runGithubSyncLogCleanup({ source: "manual" }).catch((err) => {
     logger.warn({ err }, "Startup GitHub sync log cleanup sweep failed");
+  });
+
+  // Startup sweep: check for Cashfree payin orders stuck in a non-PAID state
+  // so an alert fires immediately if the server was down during an outage.
+  runStuckCashfreeOrderScan().catch((err) => {
+    logger.warn({ err }, "Startup Cashfree stuck order sweep failed");
   });
 
   // ── 6. Mark fully initialised ───────────────────────────────────────────────

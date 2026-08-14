@@ -1415,3 +1415,116 @@ export async function notifyAdminsOfPayuCreditFailure(opts: {
     logger.error({ err, txnid: opts.txnid }, "Failed to send PayU credit failure alerts");
   }
 }
+
+// ── Cashfree stuck payin order alert ─────────────────────────────────────────
+// Payment-integrity alert: every active admin is notified (no opt-out),
+// matching the pattern used for credential rotation alerts.
+
+const CASHFREE_STUCK_ORDER_ALERT_LAST_SENT_KEY = SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_ALERT_LAST_SENT_AT;
+
+function buildStuckCashfreeOrderHtml(opts: {
+  stuck: number;
+  threshold: number;
+  staleMinutes: number;
+}): string {
+  const dashboardUrl = `${APP_DOMAIN}/admin/deposits?tab=upi`;
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8" /></head>
+<body style="font-family:sans-serif;background:#f9f9f9;padding:24px;">
+  <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:8px;padding:24px;border:1px solid #e5e7eb;">
+    <h2 style="color:#dc2626;margin-top:0;">🔴 Cashfree Stuck Orders Alert</h2>
+    <p style="color:#374151;">
+      <strong>${opts.stuck}</strong> Cashfree payin order${opts.stuck !== 1 ? "s are" : " is"} stuck in a
+      non-PAID status for more than <strong>${opts.staleMinutes} minute${opts.staleMinutes !== 1 ? "s" : ""}</strong>
+      (threshold: ${opts.threshold}).
+    </p>
+    <p style="color:#6b7280;font-size:14px;">
+      These orders may indicate a webhook delivery failure or a decryption/signature issue.
+      Check the Cashfree payin orders table and webhook logs immediately.
+    </p>
+    <a href="${dashboardUrl}"
+       style="display:inline-block;background:#dc2626;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:bold;margin-top:8px;">
+      View Payin Orders →
+    </a>
+    <p style="margin-top:24px;color:#9ca3af;font-size:12px;">
+      This alert was sent by RasoKart because the stuck order count exceeded the configured threshold.
+      To adjust the threshold or cooldown, update the system config keys
+      <code>cashfree_stuck_order_alert_threshold</code> and <code>cashfree_stuck_order_alert_cooldown_hours</code>.
+    </p>
+  </div>
+</body>
+</html>`;
+}
+
+/**
+ * Notify every active admin when the count of stuck Cashfree payin orders
+ * crosses the configured threshold. Respects cooldown to avoid alert storms.
+ *
+ * "Stuck" = status ≠ PAID and older than staleMinutes minutes.
+ * Uses getAllActiveAdminEmails() — no opt-out, same as credential rotation alerts.
+ */
+export async function notifyAdminsOfStuckCashfreeOrders(
+  opts: {
+    stuck: number;
+    threshold: number;
+    staleMinutes: number;
+    cooldownHours: number;
+  },
+  _sendMail: typeof sendMail = sendMail,
+): Promise<void> {
+  try {
+    const recipients = await getAllActiveAdminEmails();
+    if (recipients.length === 0) {
+      logger.info("No active admin emails found for stuck Cashfree order alert — skipping");
+      return;
+    }
+
+    // Cooldown check — avoid spamming during prolonged outages
+    const cooldownCutoff = new Date(Date.now() - opts.cooldownHours * 60 * 60 * 1000);
+    const [lastSentRow] = await db
+      .select({ value: systemConfigTable.value })
+      .from(systemConfigTable)
+      .where(eq(systemConfigTable.key, CASHFREE_STUCK_ORDER_ALERT_LAST_SENT_KEY))
+      .limit(1);
+
+    if (lastSentRow?.value) {
+      const lastSentAt = new Date(lastSentRow.value);
+      if (lastSentAt > cooldownCutoff) {
+        logger.info(
+          { cooldownHours: opts.cooldownHours, lastSentAt: lastSentRow.value },
+          "Cashfree stuck order alert suppressed — within cooldown window",
+        );
+        return;
+      }
+    }
+
+    const html = buildStuckCashfreeOrderHtml(opts);
+    const subject = `[RasoKart] 🔴 ${opts.stuck} Cashfree Payin Order${opts.stuck !== 1 ? "s" : ""} Stuck — Action Required`;
+
+    const results = await Promise.allSettled(
+      recipients.map(email => _sendMail({ to: email, subject, html })),
+    );
+
+    const sent = results.filter(r => r.status === "fulfilled" && (r as PromiseFulfilledResult<boolean>).value).length;
+
+    if (sent > 0) {
+      const now = new Date().toISOString();
+      await db
+        .insert(systemConfigTable)
+        .values({ key: CASHFREE_STUCK_ORDER_ALERT_LAST_SENT_KEY, value: now })
+        .onConflictDoUpdate({
+          target: systemConfigTable.key,
+          set: { value: now, updatedAt: sql`now()` },
+        });
+    }
+
+    logger.info(
+      { stuck: opts.stuck, threshold: opts.threshold, totalAdmins: recipients.length, sent },
+      "Admin stuck Cashfree order alert emails dispatched",
+    );
+  } catch (err) {
+    logger.error({ err }, "Failed to send admin stuck Cashfree order alert emails");
+  }
+}

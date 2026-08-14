@@ -269,7 +269,7 @@ export default function AdminCashfreePayinRecon() {
                 className="w-full sm:w-44"
               />
             </div>
-            <Button onClick={loadReport} disabled={loadingReport} className="flex-shrink-0">
+            <Button onClick={() => void loadReport(true)} disabled={loadingReport} className="flex-shrink-0">
               {loadingReport
                 ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Loading…</>
                 : <><Search className="h-4 w-4 mr-2" />Load Stuck Orders</>
@@ -332,7 +332,7 @@ export default function AdminCashfreePayinRecon() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={loadReport}
+                  onClick={() => void loadReport()}
                   disabled={loadingReport}
                 >
                   <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loadingReport ? "animate-spin" : ""}`} />

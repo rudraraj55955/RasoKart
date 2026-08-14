@@ -498,7 +498,9 @@ export const GetDashboardStatsResponse = zod.object({
   "qrCount": zod.number(),
   "vaCount": zod.number(),
   "pendingSettlementAmount": zod.number().optional(),
-  "demoDataOnly": zod.boolean().optional().describe('True when all merchants are known seed\/demo accounts. Cleared automatically once a real merchant is onboarded.')
+  "demoDataOnly": zod.boolean().optional().describe('True when all merchants are known seed\/demo accounts. Cleared automatically once a real merchant is onboarded.'),
+  "stuckCashfreeOrderCount": zod.number().optional().describe('Admin-only: count of Cashfree payin orders in CREATED or PENDING status that are older than the configured stale threshold. Absent for merchant sessions.'),
+  "stuckCashfreeOrderStaleMinutes": zod.number().optional().describe('Admin-only: the effective stale threshold in minutes used for the stuckCashfreeOrderCount. Absent for merchant sessions.')
 })
 
 

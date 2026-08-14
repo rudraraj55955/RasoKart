@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { readFileSync } from "fs";
-import { db, transactionsTable, merchantsTable, callbackLogsTable, qrCodesTable, virtualAccountsTable, reconciliationRunsTable, settlementsTable, merchantPlansTable, providersTable, systemSettingsTable } from "@workspace/db";
+import { db, transactionsTable, merchantsTable, callbackLogsTable, qrCodesTable, virtualAccountsTable, reconciliationRunsTable, settlementsTable, merchantPlansTable, providersTable, systemSettingsTable, cashfreePaymentOrdersTable, systemConfigTable, PAYIN_ORDER_STATUS, SYSTEM_CONFIG_KEYS } from "@workspace/db";
 import { eq, sql, and, gte, count, countDistinct, inArray, notInArray, ne, lte, isNotNull } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { readFailureStreak, getCleanupFailureThreshold, CLEANUP_ALERT_SNOOZE_KEY } from "../helpers/githubSyncLogCleanupScheduler";
@@ -165,6 +165,58 @@ router.get("/stats", async (req, res, next) => {
       pendingSettlementAmount = Number(psRow?.total ?? 0);
     }
 
+    // Stuck Cashfree payin orders (admin-only).
+    //
+    // "Stuck" = CREATED or PENDING (actionable states where a webhook is still
+    // expected) and older than the configured stale window. FAILED and EXPIRED
+    // are terminal states: they will never receive a completing webhook so they
+    // must NOT be counted here or the alert fires forever on ordinary abandoned
+    // payments. Wallet-load orders (WLOAD_ prefix) follow a different lifecycle
+    // and are always excluded.
+    //
+    // The environment filter mirrors the rest of the stats endpoint so the
+    // count matches what the destination payin orders page shows.
+    let stuckCashfreeOrderCount: number | undefined;
+    let stuckCashfreeOrderStaleMinutes: number | undefined;
+    if (isAdmin) {
+      try {
+        const [staleMinRow] = await db
+          .select({ value: systemConfigTable.value })
+          .from(systemConfigTable)
+          .where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_STALE_MINUTES))
+          .limit(1);
+        const staleMinutes = Math.max(1, parseInt(staleMinRow?.value ?? "15", 10) || 15);
+        const staleThreshold = new Date(Date.now() - staleMinutes * 60 * 1000);
+
+        // Apply the same merchant environment filter used by the rest of the stats
+        const envCond = envParam === "production"
+          ? inArray(cashfreePaymentOrdersTable.merchantId, getProdMerchantIds())
+          : envParam === "demo"
+            ? notInArray(cashfreePaymentOrdersTable.merchantId, getProdMerchantIds())
+            : undefined; // "all" — no env restriction
+
+        const [stuckRow] = await db
+          .select({ cnt: count() })
+          .from(cashfreePaymentOrdersTable)
+          .where(and(
+            // Only actionable stuck states — FAILED/EXPIRED are terminal
+            inArray(cashfreePaymentOrdersTable.status, [
+              PAYIN_ORDER_STATUS.CREATED,
+              PAYIN_ORDER_STATUS.PENDING,
+            ]),
+            lte(cashfreePaymentOrdersTable.createdAt, staleThreshold),
+            sql`${cashfreePaymentOrdersTable.cashfreeOrderId} NOT LIKE 'WLOAD_%'`,
+            envCond,
+          ));
+        stuckCashfreeOrderCount = stuckRow?.cnt ?? 0;
+        stuckCashfreeOrderStaleMinutes = staleMinutes;
+      } catch {
+        // Non-critical — silently omit on edge-case environments
+        stuckCashfreeOrderCount = undefined;
+        stuckCashfreeOrderStaleMinutes = undefined;
+      }
+    }
+
     res.json({
       totalDeposits,
       totalWithdrawals,
@@ -180,6 +232,8 @@ router.get("/stats", async (req, res, next) => {
       vaCount,
       demoDataOnly,
       ...(pendingSettlementAmount !== undefined ? { pendingSettlementAmount } : {}),
+      ...(stuckCashfreeOrderCount !== undefined ? { stuckCashfreeOrderCount } : {}),
+      ...(stuckCashfreeOrderStaleMinutes !== undefined ? { stuckCashfreeOrderStaleMinutes } : {}),
     });
   } catch (err) {
     next(err);

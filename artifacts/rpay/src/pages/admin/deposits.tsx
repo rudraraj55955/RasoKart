@@ -365,9 +365,11 @@ export default function AdminDeposits() {
   const urlFilters = useUrlFilters({
     status: { default: "all", allow: ["all", "success", "pending", "failed"] },
     env: { default: "production", allow: ["production", "demo", "all"] },
+    tab: { default: "manual", allow: ["manual", "upi"] },
   });
   const { status } = urlFilters;
   const env = urlFilters.env as "production" | "demo" | "all";
+  const activeTab = urlFilters.tab as "manual" | "upi";
   function setStatus(v: string) { urlFilters.set("status", v); }
   function setEnv(v: string) { urlFilters.set("env", v); setPage(1); }
   const [merchantId, setMerchantId] = useState("");
@@ -557,7 +559,7 @@ export default function AdminDeposits() {
         </Button>
       </div>
 
-      <Tabs defaultValue="manual" className="space-y-6">
+      <Tabs value={activeTab} onValueChange={(v) => urlFilters.set("tab", v)} className="space-y-6">
         <TabsList>
           <TabsTrigger value="manual">Bank Deposits</TabsTrigger>
           <TabsTrigger value="upi">UPI (Payin)</TabsTrigger>
