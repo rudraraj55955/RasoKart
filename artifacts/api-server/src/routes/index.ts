@@ -99,6 +99,7 @@ import policyVersionsRouter from "./policyVersions";
 import iamRouter from "./iam";
 import adminAgentsRouter from "./adminAgents";
 import agentActivateRouter from "./agentActivate";
+import adminCashfreePayinReconRouter from "./adminCashfreePayinRecon";
 import { devHelperRouter } from "./devHelper";
 
 const router: IRouter = Router();
@@ -254,6 +255,9 @@ router.use("/iam", iamRouter);
 
 // Admin full-lifecycle agent management (create, suspend, revoke, etc.)
 router.use("/admin/agents", adminAgentsRouter);
+
+// Cashfree Payin Reconciliation — Super Admin only stuck-order report + backfill
+router.use("/admin/cashfree-payin-recon", adminCashfreePayinReconRouter);
 
 // Promotional CMS — Super Admin campaign management + public banner delivery
 router.use("/cms", cmsRouter);

@@ -601,10 +601,11 @@ const ADMIN_NAV = [
   {
     group: "Finance",
     items: [
-      { title: "Reconciliation",       icon: GitMerge,    href: "/admin/reconciliation" },
-      { title: "Reports",              icon: BarChart3,   href: "/admin/reports" },
-      { title: "Merchant Statements",  icon: FileText,    href: "/admin/merchant-statements" },
-      { title: "Platform Profit",      icon: TrendingUp,  href: "/admin/platform-profit", superAdminOnly: true as const },
+      { title: "Reconciliation",              icon: GitMerge,    href: "/admin/reconciliation" },
+      { title: "Cashfree Payin Recon",        icon: Receipt,     href: "/admin/cashfree-payin-recon", superAdminOnly: true as const },
+      { title: "Reports",                     icon: BarChart3,   href: "/admin/reports" },
+      { title: "Merchant Statements",         icon: FileText,    href: "/admin/merchant-statements" },
+      { title: "Platform Profit",             icon: TrendingUp,  href: "/admin/platform-profit", superAdminOnly: true as const },
     ],
   },
   {

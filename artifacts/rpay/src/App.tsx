@@ -151,6 +151,7 @@ import AdminRazorpayWebhookLogs from "@/pages/admin/razorpay-webhook-logs";
 import AdminRazorpayCapabilities from "@/pages/admin/razorpay-capabilities";
 import AdminRazorpayAnalytics from "@/pages/admin/razorpay-analytics";
 import AdminRazorpayRefunds from "@/pages/admin/razorpay-refunds";
+import AdminCashfreePayinRecon from "@/pages/admin/cashfree-payin-recon";
 import PayPage from "@/pages/pay";
 import QrPayPage from "@/pages/qr-pay";
 import VaPayPage from "@/pages/va-pay";
@@ -532,6 +533,7 @@ function Router() {
       <Route path="/admin/merchant-access"><AdminRoute component={AdminMerchantAccess} /></Route>
       <Route path="/admin/ledger"><AdminRoute component={AdminLedger} /></Route>
       <Route path="/admin/reconciliation"><AdminRoute component={AdminReconciliation} /></Route>
+      <Route path="/admin/cashfree-payin-recon"><AdminRoute component={AdminCashfreePayinRecon} /></Route>
       <Route path="/admin/payment-links"><AdminRoute component={AdminPaymentLinks} /></Route>
       <Route path="/admin/settings"><AdminRoute component={AdminSettings} /></Route>
       <Route path="/admin/company-branding"><AdminRoute component={AdminCompanyBranding} /></Route>
