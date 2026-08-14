@@ -14,6 +14,7 @@ import {
 import { eq, and, ne, inArray } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { verifyCashfreeWebhookSignature } from "../helpers/cashfree";
+import { decryptSecret } from "../helpers/cryptoUtils";
 import { creditWalletForLoad } from "./payoutWalletLoad";
 
 const router = Router();
@@ -63,9 +64,10 @@ router.post("/cashfree-webhook", async (req, res) => {
 
   try {
     // ── Signature verification — FAIL CLOSED ──────────────────────────────
-    // Load both candidate secrets in one round-trip.
-    // Stored values for cashfree_webhook_secret and cashfree_client_secret are
-    // both plaintext (not AES-encrypted) — consistent with cashfreeOrders.ts.
+    // Load both candidate secrets in one round-trip. Both keys are stored
+    // encrypted (enc:v1:…) when saved via Admin UI. resolveSecret() decrypts
+    // with a plaintext fallback so both paths work regardless of how the
+    // value was stored. This mirrors the pattern in payinWebhook.ts:74-79.
     const secretRows = await db
       .select({ key: systemConfigTable.key, value: systemConfigTable.value })
       .from(systemConfigTable)
@@ -74,10 +76,19 @@ router.post("/cashfree-webhook", async (req, res) => {
         SYSTEM_CONFIG_KEYS.CASHFREE_CLIENT_SECRET,
       ]));
 
-    const secretMap       = new Map(secretRows.map(r => [r.key, r.value ?? ""]));
-    const webhookSecret   = secretMap.get(SYSTEM_CONFIG_KEYS.CASHFREE_WEBHOOK_SECRET)?.trim() ?? "";
-    const clientSecretFb  = secretMap.get(SYSTEM_CONFIG_KEYS.CASHFREE_CLIENT_SECRET)?.trim() ?? "";
-    const signingSecret   = webhookSecret || clientSecretFb;
+    const secretMap = new Map(secretRows.map(r => [r.key, r.value]));
+
+    function resolveSecret(key: string): string | null {
+      const raw = secretMap.get(key);
+      if (!raw) return null;
+      const decrypted = decryptSecret(raw);
+      const value = (decrypted.ok ? decrypted.value : raw).trim();
+      return value || null;
+    }
+
+    const webhookSecret  = resolveSecret(SYSTEM_CONFIG_KEYS.CASHFREE_WEBHOOK_SECRET);
+    const clientSecretFb = resolveSecret(SYSTEM_CONFIG_KEYS.CASHFREE_CLIENT_SECRET);
+    const signingSecret  = webhookSecret ?? clientSecretFb;
 
     // No signing credential configured → reject; never fall through to credit path.
     if (!signingSecret) {
