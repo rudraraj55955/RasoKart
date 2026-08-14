@@ -19,7 +19,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useDisableGatewayGuard } from "@/components/admin/disable-gateway-dialog";
 import { CredentialHistoryDialog } from "@/components/admin/credential-history-dialog";
 import { toast } from "sonner";
-import { Save, Eye, EyeOff, CheckCircle2, AlertCircle, RefreshCw, Shield, Zap, CreditCard, ChevronLeft, ChevronRight, PlugZap, IndianRupee } from "lucide-react";
+import { Save, Eye, EyeOff, CheckCircle2, AlertCircle, RefreshCw, Shield, Zap, CreditCard, ChevronLeft, ChevronRight, PlugZap, IndianRupee, XCircle } from "lucide-react";
 
 export default function AdminPaymentGateway() {
   const qc = useQueryClient();
@@ -41,6 +41,7 @@ export default function AdminPaymentGateway() {
   const [showClientId, setShowClientId] = useState(false);
   const [showClientSecret, setShowClientSecret] = useState(false);
   const [showWebhookSecret, setShowWebhookSecret] = useState(false);
+  const [clearWebhookSecret, setClearWebhookSecret] = useState(false);
   const [saving, setSaving] = useState(false);
 
   // Advanced connection settings
@@ -101,7 +102,8 @@ export default function AdminPaymentGateway() {
       };
       if (clientId.trim()) body.clientId = clientId.trim();
       if (clientSecret.trim()) body.clientSecret = clientSecret.trim();
-      if (webhookSecret !== undefined && webhookSecret !== "") body.webhookSecret = webhookSecret.trim() || "";
+      if (clearWebhookSecret) body.webhookSecret = "";
+      else if (webhookSecret !== "") body.webhookSecret = webhookSecret.trim();
       if (baseUrl !== null) body.baseUrl = baseUrl.trim();
 
       await updateConfig.mutateAsync(
@@ -112,6 +114,7 @@ export default function AdminPaymentGateway() {
       setClientId("");
       setClientSecret("");
       setWebhookSecret("");
+      setClearWebhookSecret(false);
       toast.success("Gateway configuration saved");
     } catch {
       toast.error("Failed to save gateway configuration");
@@ -361,26 +364,46 @@ export default function AdminPaymentGateway() {
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label>Webhook Secret</Label>
-                <div className="relative">
-                  <Input
-                    type={showWebhookSecret ? "text" : "password"}
-                    placeholder={config?.webhookSecretSet ? "••••••••••••••••" : "Enter Webhook Secret"}
-                    value={webhookSecret}
-                    onChange={(e) => setWebhookSecret(e.target.value)}
-                    className="pr-10 font-mono text-sm"
-                  />
-                  <button
-                    type="button"
-                    className="absolute inset-y-0 right-2 flex items-center text-muted-foreground hover:text-foreground"
-                    onClick={() => setShowWebhookSecret(v => !v)}
-                  >
-                    {showWebhookSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Input
+                      type={showWebhookSecret ? "text" : "password"}
+                      placeholder={config?.webhookSecretSet && !clearWebhookSecret ? "Enter new secret to rotate" : "Enter Webhook Secret"}
+                      value={webhookSecret}
+                      onChange={(e) => { setWebhookSecret(e.target.value); if (clearWebhookSecret) setClearWebhookSecret(false); }}
+                      className="pr-10 font-mono text-sm"
+                      disabled={clearWebhookSecret}
+                    />
+                    <button
+                      type="button"
+                      className="absolute inset-y-0 right-2 flex items-center text-muted-foreground hover:text-foreground disabled:opacity-40"
+                      onClick={() => setShowWebhookSecret(v => !v)}
+                      disabled={clearWebhookSecret}
+                    >
+                      {showWebhookSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  {config?.webhookSecretSet && !clearWebhookSecret && (
+                    <Button type="button" size="sm" variant="outline"
+                      className="shrink-0 h-10 text-xs text-rose-400 border-rose-500/30 hover:bg-rose-500/10 hover:text-rose-300"
+                      onClick={() => { setClearWebhookSecret(true); setWebhookSecret(""); }}>
+                      <XCircle className="w-3.5 h-3.5 mr-1" />Clear
+                    </Button>
+                  )}
+                  {clearWebhookSecret && (
+                    <Button type="button" size="sm" variant="outline"
+                      className="shrink-0 h-10 text-xs"
+                      onClick={() => setClearWebhookSecret(false)}>
+                      Cancel
+                    </Button>
+                  )}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {config?.webhookSecretSet
-                    ? "Webhook secret is set. Used to verify HMAC-SHA256 signatures on incoming webhooks."
-                    : "No webhook secret configured. Incoming webhooks will not be signature-verified."}
+                  {clearWebhookSecret
+                    ? "Webhook secret will be removed when you save."
+                    : config?.webhookSecretSet
+                      ? "Webhook secret is set. Used to verify HMAC-SHA256 signatures on incoming webhooks."
+                      : "No webhook secret configured. Incoming webhooks will not be signature-verified."}
                 </p>
               </div>
 
