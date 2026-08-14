@@ -688,9 +688,11 @@ function main(): void {
     "\nschema-guard-manifest-check: verifying schemaGuard-only column manifest...\n"
   );
 
+  // Hoist `manifest` so the unregistered-table check below can also use it.
+  let manifest = new Map<string, string[]>();
   let manifestOk = true;
   try {
-    const manifest = collectManifestColumns(MANIFEST_FILE);
+    manifest = collectManifestColumns(MANIFEST_FILE);
 
     if (manifest.size === 0) {
       console.log(
@@ -742,7 +744,65 @@ function main(): void {
     console.error(`✗ Failed to read schema-guard manifest: ${(err as Error).message}`);
   }
 
-  if (!forwardOk || !reverseOk || !dropOk || !manifestOk) {
+  // ── Unregistered guard-only table check ──────────────────────────────────
+  //
+  // Detects CREATE TABLE IF NOT EXISTS guards in schemaGuard.ts / db-migrate.ts
+  // that have NEITHER a corresponding Drizzle pgTable NOR a manifest entry.
+  //
+  // Such a table is completely invisible to all other checks:
+  //   • The manifest forward check can't audit it — it's not in the manifest.
+  //   • The Drizzle forward check can't audit it — there's no Drizzle schema.
+  //
+  // This means any column drift in that table goes undetected by CI, silently
+  // producing "column does not exist" errors on a fresh deploy.
+  //
+  // Every schemaGuard-only table must be registered in schema-guard-only-columns.json
+  // so its columns are validated by the manifest forward check.
+  //
+  // Workflow for developers adding a new schemaGuard-only table:
+  //   1. Add the CREATE TABLE IF NOT EXISTS block to schemaGuard.ts / db-migrate.ts.
+  //   2. Add an entry for the table to schema-guard-only-columns.json with every
+  //      column the application code expects to exist.
+  //   CI fails here if step 2 is skipped.
+
+  console.log(
+    "\nschema-guard-unregistered-table-check: verifying all guard-only tables are in the manifest...\n"
+  );
+
+  let unregisteredOk = true;
+  const manifestTableNames = new Set(manifest.keys());
+  const unregistered: string[] = [];
+
+  for (const table of createTableCols.keys()) {
+    if (!drizzleLower.has(table) && !manifestTableNames.has(table)) {
+      unregistered.push(table);
+    }
+  }
+
+  if (unregistered.length === 0) {
+    console.log(
+      "✓ All CREATE TABLE guards for schemaGuard-only tables are registered in the manifest."
+    );
+  } else {
+    unregisteredOk = false;
+    console.error(
+      `✗ Found ${unregistered.length} schemaGuard-only table(s) with no manifest entry:\n`
+    );
+    console.error(
+      "  These tables have a CREATE TABLE IF NOT EXISTS guard in schemaGuard.ts /\n" +
+        "  db-migrate.ts but no corresponding Drizzle pgTable and no entry in\n" +
+        "  schema-guard-only-columns.json.  Their columns cannot be audited by CI —\n" +
+        "  column drift goes undetected until a 'column does not exist' error at runtime.\n" +
+        "  Fix: add an entry for the table to schema-guard-only-columns.json, listing\n" +
+        "  every column that application code reads or writes.\n"
+    );
+    for (const table of unregistered.sort()) {
+      console.error(`  ${table}  ← no Drizzle pgTable and no manifest entry`);
+    }
+    console.error();
+  }
+
+  if (!forwardOk || !reverseOk || !dropOk || !manifestOk || !unregisteredOk) {
     process.exit(1);
   }
 }
