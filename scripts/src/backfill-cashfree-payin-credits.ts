@@ -427,7 +427,16 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch(err => {
-  console.error("Fatal error:", err);
-  process.exit(1);
-});
+// Export the core credit function so tests can import it without triggering
+// CLI side-effects or the pool.end() call.
+export { backfillOrder };
+
+// Only run as a script when executed directly (not when imported by tests).
+import { fileURLToPath } from "url";
+const _isMain = process.argv[1] === fileURLToPath(import.meta.url);
+if (_isMain) {
+  main().catch(err => {
+    console.error("Fatal error:", err);
+    process.exit(1);
+  });
+}

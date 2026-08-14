@@ -29,7 +29,8 @@
     "schema-guard-column-diff:negtest": "node --import tsx/esm --test ./src/schema-guard-column-diff.negtest.ts",
     "verify-schema-guard-ci-contract": "tsx ./src/verify-schema-guard-ci-contract.ts",
     "test:plan-feature-gates": "playwright test --config=playwright.config.ts e2e/plan-feature-gates.spec.ts",
-    "backfill:cashfree-payin-credits": "tsx ./src/backfill-cashfree-payin-credits.ts"
+    "backfill:cashfree-payin-credits": "tsx ./src/backfill-cashfree-payin-credits.ts",
+    "test:backfill-cashfree-payin-credits": "node --import tsx/esm --test ./src/backfill-cashfree-payin-credits.test.ts"
   },
   "dependencies": {
     "@workspace/db": "workspace:*",
