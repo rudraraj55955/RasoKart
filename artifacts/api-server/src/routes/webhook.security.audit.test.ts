@@ -621,3 +621,8 @@ describe("M — API monitoring scope (GET /api/api-monitoring)", () => {
     assert.equal(r.status, 401, `Unauthenticated request must be rejected. Got ${r.status}`);
   });
 });
+
+// NOTE: The Cashfree payin webhook secret clear round-trip tests (stateful,
+// covering set → clear → re-set via PUT /api/system-config/cashfree) live in
+// the dedicated file:
+//   cashfree-payin-webhook-secret-roundtrip.test.ts
