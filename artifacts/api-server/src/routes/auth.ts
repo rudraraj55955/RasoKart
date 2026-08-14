@@ -4,7 +4,7 @@ import jwt from "jsonwebtoken";
 import { db, usersTable, merchantsTable, credentialEventsTable, merchantTrustedIpsTable, auditLogsTable, merchantAuthOtpsTable, authProvidersTable, socialProviderSettingsTable } from "@workspace/db";
 import { DbRateLimitStore } from "../lib/rateLimitStore";
 import { eq, and, count, desc } from "drizzle-orm";
-import { generateToken, requireAuth, resolveUserPermissions } from "../middlewares/auth";
+import { generateToken, requireAuth, requireAdmin, resolveUserPermissions } from "../middlewares/auth";
 import { logger } from "../lib/logger";
 import { makeRateLimiter, safeIpKey } from "../helpers/makeRateLimiter";
 import { sendNewLoginAlertEmail } from "../helpers/newLoginEmail";
@@ -2898,5 +2898,141 @@ router.post("/admin/password/reset", adminPasswordResetLimiter, async (req, res,
     next(err);
   }
 });
+
+// ─── Admin self-service password change ──────────────────────────────────────
+// POST /api/auth/admin/change-password
+// Allows any authenticated admin (or super-admin) to change their OWN password.
+// Never accepts a target user ID — always operates on req.user.id only.
+
+const adminPasswordChangeLimiter = makeRateLimiter({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5,
+  store: new DbRateLimitStore(),
+  message: { error: "Too many password change attempts. Please try again later." },
+  keyGenerator: (req) => {
+    // Key by authenticated user ID when available, fall back to IP.
+    const userId = (req as any).user?.id;
+    return userId != null
+      ? `admin-pw-change:${userId}`
+      : `admin-pw-change-ip:${safeIpKey(req)}`;
+  },
+});
+
+router.post(
+  "/admin/change-password",
+  requireAuth,
+  requireAdmin,
+  adminPasswordChangeLimiter,
+  async (req, res, next) => {
+    try {
+      const { currentPassword, newPassword, confirmPassword } = req.body ?? {};
+
+      // ── 1. Input presence ───────────────────────────────────────────────
+      if (
+        typeof currentPassword !== "string" ||
+        typeof newPassword !== "string" ||
+        typeof confirmPassword !== "string" ||
+        !currentPassword || !newPassword || !confirmPassword
+      ) {
+        res.status(400).json({ error: "All fields are required." });
+        return;
+      }
+
+      // ── 2. New == Confirm ───────────────────────────────────────────────
+      if (newPassword !== confirmPassword) {
+        res.status(400).json({ error: "New password and confirmation do not match." });
+        return;
+      }
+
+      // ── 3. Strength — admin rules are stricter than the shared helper ────
+      // (min-10, uppercase, lowercase, number, special char)
+      // We enforce these inline rather than modifying the shared helper so
+      // that merchant / OTP-reset flows are not affected.
+      const ADMIN_PW_RULES: { re: RegExp; msg: string }[] = [
+        { re: /.{10,}/, msg: "Password must be at least 10 characters." },
+        { re: /[A-Z]/, msg: "Password must contain at least one uppercase letter." },
+        { re: /[a-z]/, msg: "Password must contain at least one lowercase letter." },
+        { re: /[0-9]/, msg: "Password must contain at least one number." },
+        { re: /[^A-Za-z0-9]/, msg: "Password must contain at least one special character." },
+      ];
+      for (const rule of ADMIN_PW_RULES) {
+        if (!rule.re.test(newPassword)) {
+          res.status(400).json({ error: rule.msg });
+          return;
+        }
+      }
+
+      // ── 4. Fetch own record (never a caller-supplied target ID) ──────────
+      const reqUser = (req as any).user;
+      const selfId: number = reqUser?.id;
+      const [selfUser] = await db
+        .select({
+          id: usersTable.id,
+          email: usersTable.email,
+          passwordHash: usersTable.passwordHash,
+          isActive: usersTable.isActive,
+        })
+        .from(usersTable)
+        .where(eq(usersTable.id, selfId))
+        .limit(1);
+
+      if (!selfUser || !selfUser.isActive || !selfUser.passwordHash) {
+        // Generic — do not reveal why
+        res.status(401).json({ error: "Authentication failed. Please sign in again." });
+        return;
+      }
+
+      // ── 5. Verify current password ───────────────────────────────────────
+      const currentMatches = await bcrypt.compare(currentPassword, selfUser.passwordHash);
+      if (!currentMatches) {
+        req.log.warn({ userId: selfId }, "admin_pw_change_wrong_current");
+        res.status(401).json({ error: "Current password is incorrect." });
+        return;
+      }
+
+      // ── 6. New must differ from current ─────────────────────────────────
+      const sameAsCurrent = await bcrypt.compare(newPassword, selfUser.passwordHash);
+      if (sameAsCurrent) {
+        res.status(400).json({ error: "New password must differ from your current password." });
+        return;
+      }
+
+      // ── 7. Hash and persist ──────────────────────────────────────────────
+      const newHash = await bcrypt.hash(newPassword, 10);
+      const changedAt = new Date();
+      await db
+        .update(usersTable)
+        .set({ passwordHash: newHash, passwordUpdatedAt: changedAt })
+        .where(eq(usersTable.id, selfId));
+
+      // ── 8. Audit log (no password / hash values stored) ─────────────────
+      try {
+        await db.insert(auditLogsTable).values({
+          adminId: selfId,
+          adminEmail: selfUser.email,
+          action: "admin.password_changed",
+          targetType: "user",
+          targetId: selfId,
+          details: JSON.stringify({ reason: "self_service" }),
+          ipAddress: req.ip ?? null,
+        });
+      } catch (auditErr) {
+        // Audit failure must never block the password change itself
+        req.log.error({ err: auditErr, userId: selfId }, "admin_pw_change_audit_log_failed");
+      }
+
+      req.log.info({ userId: selfId }, "admin_pw_change_ok");
+
+      // ── 9. Success — existing JWTs are now invalidated by passwordUpdatedAt
+      res.json({
+        success: true,
+        message:
+          "Password changed. Your previous sessions have been invalidated — please sign in again.",
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
 
 export default router;

@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useState } from "react";
+import { ReactNode, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useHasPermission } from "@/hooks/use-has-permission";
 import { Spinner } from "@/components/ui/spinner";
@@ -9,6 +9,9 @@ import { format } from "date-fns";
 import { Link, useLocation } from "wouter";
 import { LogOut, LayoutDashboard, Store, ArrowRightLeft, Landmark, FileText, Webhook, KeyRound, Users, Package, Plug, BookOpen, QrCode, Building2, CreditCard, ArrowDownLeft, Activity, Shield, UserCog, Sliders, Eye, LayoutGrid, Lock, Receipt, BookMarked, Zap, GitMerge, Link2, Paintbrush, Settings, ShieldAlert, ShieldCheck, X, Download, ShieldOff, Layers, ToggleLeft, BadgeCheck, BarChart3, Wallet, Headphones, Code2, CheckCircle2, TrendingUp, User, MessageSquare, Mail, ChevronDown, ChevronUp, Trash2, Menu, Megaphone, GitCommit } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { NotificationBell } from "@/components/notification-bell";
 import { RasoKartLogo } from "@/components/ui/rasokart-logo";
@@ -17,6 +20,149 @@ import { Card, CardContent } from "@/components/ui/card";
 import { MobileBottomNav } from "@/components/layout/mobile-bottom-nav";
 import { InstallAppButton } from "@/components/ui/install-app-banner";
 import { apiUrl } from "@/lib/api-url";
+
+// ── Admin self-service password change dialog ─────────────────────────────────
+
+function validatePasswordClient(pw: string): string | null {
+  if (pw.length < 10)           return "Password must be at least 10 characters.";
+  if (!/[A-Z]/.test(pw))        return "Password must contain at least one uppercase letter.";
+  if (!/[a-z]/.test(pw))        return "Password must contain at least one lowercase letter.";
+  if (!/[0-9]/.test(pw))        return "Password must contain at least one number.";
+  if (!/[^A-Za-z0-9]/.test(pw)) return "Password must contain at least one special character.";
+  return null;
+}
+
+function AdminChangePasswordDialog({
+  open,
+  onOpenChange,
+  onSuccess,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onSuccess: () => void;
+}) {
+  const [current, setCurrent]   = useState("");
+  const [next, setNext]         = useState("");
+  const [confirm, setConfirm]   = useState("");
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState<string | null>(null);
+  const [done, setDone]         = useState(false);
+  const firstRef = useRef<HTMLInputElement>(null);
+
+  // Reset form whenever dialog opens
+  useEffect(() => {
+    if (open) {
+      setCurrent(""); setNext(""); setConfirm("");
+      setError(null); setDone(false); setLoading(false);
+      setTimeout(() => firstRef.current?.focus(), 50);
+    }
+  }, [open]);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+
+    if (!next || !confirm || !current) { setError("All fields are required."); return; }
+    if (next !== confirm) { setError("New password and confirmation do not match."); return; }
+    const strengthErr = validatePasswordClient(next);
+    if (strengthErr) { setError(strengthErr); return; }
+
+    setLoading(true);
+    try {
+      const res = await fetch(apiUrl("/api/auth/admin/change-password"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("rasokart_token")}` },
+        body: JSON.stringify({ currentPassword: current, newPassword: next, confirmPassword: confirm }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError((data as any)?.error ?? "Password change failed. Please try again.");
+        return;
+      }
+      setDone(true);
+      // Give admin 2 s to read the success message, then sign out
+      // (old JWT is now invalidated by passwordUpdatedAt on the server)
+      setTimeout(() => { onSuccess(); onOpenChange(false); }, 2000);
+    } catch {
+      setError("Network error. Please check your connection and try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!loading) onOpenChange(v); }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <KeyRound className="w-4 h-4 text-primary shrink-0" />
+            Change Password
+          </DialogTitle>
+          <DialogDescription className="text-xs text-muted-foreground">
+            Minimum 10 characters — uppercase, lowercase, number, and special character required.
+            All existing sessions will be signed out after a successful change.
+          </DialogDescription>
+        </DialogHeader>
+
+        {done ? (
+          <div className="py-6 text-center space-y-2">
+            <p className="text-sm font-medium text-emerald-400">Password changed successfully.</p>
+            <p className="text-xs text-muted-foreground">Signing you out…</p>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="adm-pw-current" className="text-xs">Current Password</Label>
+              <Input
+                id="adm-pw-current"
+                ref={firstRef}
+                type="password"
+                autoComplete="current-password"
+                value={current}
+                onChange={(e) => { setCurrent(e.target.value); setError(null); }}
+                disabled={loading}
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="adm-pw-new" className="text-xs">New Password</Label>
+              <Input
+                id="adm-pw-new"
+                type="password"
+                autoComplete="new-password"
+                value={next}
+                onChange={(e) => { setNext(e.target.value); setError(null); }}
+                disabled={loading}
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="adm-pw-confirm" className="text-xs">Confirm New Password</Label>
+              <Input
+                id="adm-pw-confirm"
+                type="password"
+                autoComplete="new-password"
+                value={confirm}
+                onChange={(e) => { setConfirm(e.target.value); setError(null); }}
+                disabled={loading}
+                required
+              />
+            </div>
+            {error && <p className="text-xs text-destructive" role="alert">{error}</p>}
+            <DialogFooter className="pt-2">
+              <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={loading}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={loading}>
+                {loading ? "Changing…" : "Change Password"}
+              </Button>
+            </DialogFooter>
+          </form>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 export const REPORTS_SNOOZE_EVENT = "rasokart-reports-snooze-changed";
 export function getReportSnoozeKey(userId: number | string | undefined): string {
@@ -869,6 +1015,7 @@ function VersionBadge() {
 export function DashboardLayout({ children, publicMode = false }: DashboardLayoutProps) {
   const { user, logout } = useAuth();
   const [location] = useLocation();
+  const [pwDialogOpen, setPwDialogOpen] = useState(false);
   // Hooks must run unconditionally on every render (React rules-of-hooks).
   // Previously this was called after an early `if (!user) return ...`
   // below, so the very first render right after a hard-redirect login (user
@@ -956,15 +1103,37 @@ export function DashboardLayout({ children, publicMode = false }: DashboardLayou
               {!publicMode && isAdmin && <VersionBadge />}
             </div>
             {user ? (
-              <div className="flex items-center justify-between">
-                <div className="flex flex-col truncate pr-2">
-                  <span className="text-sm font-medium truncate">{user.name}</span>
-                  <span className="text-xs text-muted-foreground truncate">{user.email}</span>
+              <>
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-col truncate pr-2">
+                    <span className="text-sm font-medium truncate">{user.name}</span>
+                    <span className="text-xs text-muted-foreground truncate">{user.email}</span>
+                  </div>
+                  <div className="flex items-center shrink-0">
+                    {isAdmin && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setPwDialogOpen(true)}
+                        title="Change password"
+                        className="text-muted-foreground hover:text-foreground"
+                      >
+                        <KeyRound className="w-4 h-4" />
+                      </Button>
+                    )}
+                    <Button variant="ghost" size="icon" onClick={logout} title="Sign out" className="text-muted-foreground hover:text-foreground">
+                      <LogOut className="w-4 h-4" />
+                    </Button>
+                  </div>
                 </div>
-                <Button variant="ghost" size="icon" onClick={logout} title="Sign out" className="shrink-0 text-muted-foreground hover:text-foreground">
-                  <LogOut className="w-4 h-4" />
-                </Button>
-              </div>
+                {isAdmin && (
+                  <AdminChangePasswordDialog
+                    open={pwDialogOpen}
+                    onOpenChange={setPwDialogOpen}
+                    onSuccess={logout}
+                  />
+                )}
+              </>
             ) : (
               <Link href="/merchant/login">
                 <Button variant="outline" size="sm" className="w-full">Sign In</Button>
