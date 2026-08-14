@@ -154,26 +154,31 @@ router.post("/", async (req, res) => {
     // ── Timestamp check — two webhook formats from Cashfree Payout ───────────
     //
     // FORMAT A — Standard Payout V2 transfer events (TRANSFER_SUCCESS, TRANSFER_FAILED,
-    //   WEBHOOK_TEST, etc.):
-    //   Headers:   x-webhook-timestamp (Unix epoch seconds) + x-webhook-signature (HMAC)
-    //   Signing:   HMAC-SHA256(timestamp + rawBody, clientSecret) → base64
-    //   → Strict replay-window enforcement (300 s).
+    //   WEBHOOK_TEST, CREDIT_CONFIRMATION, etc.):
+    //   Required headers: x-webhook-timestamp (Unix epoch seconds) + x-webhook-signature
+    //   Signing:          HMAC-SHA256(timestamp + rawBody, clientSecret) → base64
+    //   Enforcement:      strict 300-second replay window (see below).
     //
     // FORMAT B — Cashfree informational/alert events (LOW_BALANCE_ALERT, etc.):
-    //   Headers:   neither x-webhook-timestamp nor x-webhook-signature are present
-    //   Signing:   a "signature" field is embedded in the JSON body itself
-    //   Action:    non-financial (no transfer_id / no wallet mutations); always return 200
-    //              and log for visibility.  Body-signature formula is opaque — we try
-    //              several HMAC candidates and record whether any matched.
+    //   Observed in production: x-webhook-timestamp and x-webhook-signature headers are
+    //   ABSENT. A "signature" field appears in the JSON body.
+    //   SECURITY STATUS: Cashfree does not publicly document the body-signature algorithm
+    //   for these events. All HMAC formula candidates attempted against production captures
+    //   failed to match. The body "signature" field therefore CANNOT be cryptographically
+    //   verified with the available credentials and documented algorithms.
+    //   Action: Return HTTP 200 as an operational ACK only (to stop Cashfree retry storms).
+    //           The event is NOT authenticated. signatureVerified is set to explicit false.
+    //           processingResult = "ignored_unverified_info". ZERO state mutations.
     if (!timestamp) {
       const bodyObj = req.body as Record<string, unknown>;
       const bodyEventRaw = ((bodyObj["event"] ?? bodyObj["type"]) as string | undefined) ?? null;
       const bodySignature  = (bodyObj["signature"] as string | undefined) ?? "";
 
       if (bodySignature && activeSecret) {
-        // Body-signed informational event — try several known HMAC formula variants.
-        // The exact Cashfree signing input for these events is undocumented;
-        // we attempt the most likely candidates and log results for future diagnosis.
+        // Body carries a "signature" field with no header-based auth.
+        // Attempt several known HMAC formula variants to discover the algorithm.
+        // Even if a candidate matches in the future, NEVER mutate payout/wallet state
+        // without the Cashfree-documented algorithm confirmed from official sources.
         const hmacCandidate = (input: string) =>
           crypto.createHmac("sha256", activeSecret).update(input).digest("base64");
 
@@ -181,9 +186,9 @@ router.post("/", async (req, res) => {
           Object.entries(bodyObj).filter(([k]) => k !== "signature")
         );
         const candidates: Record<string, string> = {
-          "full_raw_body":          hmacCandidate(rawBody),
-          "body_without_sig_json":  hmacCandidate(JSON.stringify(bodyWithoutSig)),
-          "alertTime+balance":      hmacCandidate(
+          "full_raw_body":           hmacCandidate(rawBody),
+          "body_without_sig_json":   hmacCandidate(JSON.stringify(bodyWithoutSig)),
+          "alertTime+balance":       hmacCandidate(
             `${bodyObj["alertTime"] ?? ""}${bodyObj["currentBalance"] ?? ""}`
           ),
           "event+alertTime+balance": hmacCandidate(
@@ -191,42 +196,57 @@ router.post("/", async (req, res) => {
           ),
         };
         const matchedFormula = Object.keys(candidates).find(k => candidates[k] === bodySignature);
+        // bodySignatureVerified is true ONLY when a known candidate formula matched.
+        // Currently always false for all production LOW_BALANCE_ALERT events.
         const bodySignatureVerified = matchedFormula !== undefined;
 
-        logger.info(
+        // SECURITY: signatureVerified is explicit boolean — never null — for this path.
+        // processingResult distinguishes verified vs unverified informational events.
+        // HTTP 200 is an operational ACK to stop retry storms, NOT an authentication
+        // acceptance. No payout/wallet/ledger mutations occur in this code path.
+        eventType      = bodyEventRaw;
+        signatureVerified = bodySignatureVerified; // explicit true or false, NEVER null
+        processingResult  = bodySignatureVerified
+          ? "info_event"              // formula matched — authenticated informational event
+          : "ignored_unverified_info"; // formula unknown — ACK only, NOT authenticated
+
+        logger.warn(
           {
             endpoint,
             env: isLive ? "LIVE" : "SANDBOX",
             bodyEventType: bodyEventRaw,
             rawBodyBytes,
+            // authentication outcome — false until Cashfree documents the body-sig algorithm
             bodySignatureVerified,
             matchedFormula: matchedFormula ?? null,
-            // Log computed candidates alongside received sig for future formula discovery.
-            // All values are HMACs (no secret values are logged).
-            receivedSig: bodySignature.slice(-8),
+            processingResult,
+            // Tail-8 of received sig and each candidate for formula discovery (no secret logged).
+            receivedSigTail:  bodySignature.slice(-8),
             candidateTails: Object.fromEntries(
               Object.entries(candidates).map(([k, v]) => [k, v.slice(-8)])
             ),
           },
-          "cashfree_payout_webhook_body_signed_event",
+          bodySignatureVerified
+            ? "cashfree_payout_webhook_body_signed_event_verified"
+            : "cashfree_payout_webhook_body_signed_event_unverified — HTTP 200 ACK only; body-signature formula undocumented; event is NOT authenticated",
         );
 
-        // Body-signed events carry no transfer_id and trigger no wallet mutations.
-        // Return 200 to prevent Cashfree from retrying these informational events.
-        eventType = bodyEventRaw;
-        processingResult = "info_event";
-        signatureVerified = bodySignatureVerified || null;
         res.status(200).json({ ok: true, received: true });
         await insertLog({
           endpoint, eventType, status: null,
-          signatureVerified, payoutId: null, transferId: null, cfTransferId: null, utr: null,
-          safeError: bodySignatureVerified ? null : "webhook.body_signature_formula_unknown",
-          processingResult, rawPayload: rawBody,
+          signatureVerified,      // explicit false for all currently observed events
+          payoutId: null, transferId: null, cfTransferId: null, utr: null,
+          safeError: bodySignatureVerified
+            ? null
+            : "webhook.body_signature_unverified — body-signature algorithm undocumented by Cashfree; event NOT authenticated",
+          processingResult,
+          rawPayload: rawBody,
         });
         return;
       }
 
-      // No x-webhook-timestamp AND no body signature → reject (malformed request).
+      // No x-webhook-timestamp AND no body signature field → malformed request.
+      // Reject with 401 (Cashfree will retry, but without auth there is nothing to process).
       logger.warn(
         { endpoint, env: isLive ? "LIVE" : "SANDBOX", hasBodySignature: !!bodySignature, rawBodyBytes },
         "cashfree_payout_webhook_missing_timestamp — neither header timestamp nor body signature present",

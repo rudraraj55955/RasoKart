@@ -10,7 +10,11 @@
  *  W4.  Missing x-webhook-timestamp → 401 rejected
  *  W5.  Stale timestamp (>5 min old) → 401 rejected  [replay protection]
  *  W6.  Future timestamp (>5 min ahead) → 401 rejected
- *  W7.  No secret configured → 200 but processingResult=received, no state
+ *  W7.  No secret configured → 200 ACK; processingResult=received; no state mutation
+ *  W8.  LOW_BALANCE_ALERT body-signed (no header auth) → 200 ACK-only; signatureVerified=false;
+ *       processingResult=ignored_unverified_info; ZERO mutations (body-sig algo undocumented)
+ *  W8b. Arbitrary forged JSON with body.signature → same as W8; NOT authenticated; no mutation
+ *  W9.  Missing timestamp AND no body signature → 401 missing_timestamp
  *
  *  OUTGOING CALLBACK RETRY ISOLATION (callbacks.ts)
  *  C1.  Admin retry on failed log → 200, audit log written
@@ -343,34 +347,98 @@ describe("W — Payout webhook signature verification", () => {
     assert.equal(body.received, true);
   });
 
-  it("W8 — LOW_BALANCE_ALERT (body-signed, no header timestamp/signature) → 200 info_event, no wallet mutation", async () => {
-    // Cashfree Payout LOW_BALANCE_ALERT events arrive without x-webhook-timestamp or
-    // x-webhook-signature headers — they embed a "signature" field in the JSON body instead.
-    // The handler must accept these (return 200) and NOT attempt any wallet mutation,
-    // because they are purely informational (no transfer_id / no payout state change).
+  it("W8 — LOW_BALANCE_ALERT (body-signed, no header auth) → 200 ACK-only; event NOT authenticated", async () => {
+    // Cashfree LOW_BALANCE_ALERT arrives without x-webhook-timestamp or x-webhook-signature
+    // headers; it embeds a "signature" field in the JSON body instead.
+    // SECURITY CONTRACT:
+    //   - HTTP 200 is returned as an operational ACK to stop Cashfree retry storms only.
+    //   - The event is NOT authenticated (body-signature algorithm undocumented by Cashfree).
+    //   - signatureVerified must be explicit false (never null) in the DB log.
+    //   - processingResult must be "ignored_unverified_info" (not "info_event").
+    //   - ZERO payout/wallet/ledger state mutations.
     stubPayoutWebhookDb(ENCRYPTED_PAYOUT_SECRET);
+    savedInserts.length = 0; // reset before this test
     const alertPayload = {
       event: "LOW_BALANCE_ALERT",
       alertTime: "2026-08-15 02:36:52",
       currentBalance: "100.00",
-      signature: "some_cashfree_body_signature_value",
+      signature: "some_cashfree_body_signature_value_that_wont_match",
     };
     const r = await post(server, "/api/cashfree-payout/webhook", alertPayload, {
       "Content-Type": "application/json",
       // Deliberately omit x-webhook-timestamp and x-webhook-signature headers
     });
-    assert.equal(r.status, 200, `Expected 200 for body-signed LOW_BALANCE_ALERT, got ${r.status}`);
+    assert.equal(r.status, 200, `Expected 200 ACK for LOW_BALANCE_ALERT, got ${r.status}`);
     const body = r.json<{ ok: boolean; received: boolean }>();
-    assert.equal(body.ok, true, "Response body.ok should be true");
-    assert.equal(body.received, true, "Response body.received should be true");
-    // The handler must return before any wallet/payout mutation code is reached.
-    // Verified by the route's early-return structure (no transfer_id lookup issued).
+    assert.equal(body.ok, true, "Response body.ok must be true");
+    assert.equal(body.received, true, "Response body.received must be true");
+    // Allow the event loop to drain so the post-response insertLog resolves
+    await new Promise(resolve => setImmediate(resolve));
+    // Verify the DB log entry records the event as NOT authenticated
+    const logInsert = savedInserts[savedInserts.length - 1];
+    assert.ok(logInsert, "A log row must be written");
+    const logVals = logInsert?.vals as any;
+    assert.strictEqual(
+      logVals?.signatureVerified,
+      false,
+      `signatureVerified must be explicit false (got ${logVals?.signatureVerified}); ACK-only events are NOT authenticated`,
+    );
+    assert.strictEqual(
+      logVals?.processingResult,
+      "ignored_unverified_info",
+      `processingResult must be 'ignored_unverified_info', got '${logVals?.processingResult}'`,
+    );
+  });
+
+  it("W8b — arbitrary forged JSON with body.signature field → 200 ACK-only; NOT authenticated; no mutation", async () => {
+    // Security property: an attacker sending arbitrary JSON with a body "signature" field
+    // must NOT be treated as an authenticated event. The handler must return 200 ACK-only
+    // (to avoid retry storms) but mark signatureVerified=false and perform no state mutations.
+    stubPayoutWebhookDb(ENCRYPTED_PAYOUT_SECRET);
+    savedInserts.length = 0;
+    const forgedPayload = {
+      event: "TRANSFER_SUCCESS",       // high-value event type
+      transfer: { transfer_id: "ATTACKER_CONTROLLED", cf_transfer_id: "EVIL", transfer_status: "SUCCESS", transfer_utr: "UTR_FAKE" },
+      signature: "i_am_a_forged_body_signature",  // forged; no x-webhook-timestamp header
+    };
+    const r = await post(server, "/api/cashfree-payout/webhook", forgedPayload, {
+      "Content-Type": "application/json",
+      // No x-webhook-timestamp — forces body-signed path, NOT the standard Format A path
+    });
+    assert.equal(r.status, 200, `Expected 200 ACK for forged body-signed event, got ${r.status}`);
+    const body = r.json<{ ok: boolean; received: boolean }>();
+    assert.equal(body.ok, true);
+    // Allow event loop to drain
+    await new Promise(resolve => setImmediate(resolve));
+    const logInsert = savedInserts[savedInserts.length - 1];
+    const logVals = logInsert?.vals as any;
+    // The forged event MUST be recorded as unverified
+    assert.strictEqual(
+      logVals?.signatureVerified,
+      false,
+      `Forged body-signed event must have signatureVerified=false, got ${logVals?.signatureVerified}`,
+    );
+    assert.strictEqual(
+      logVals?.processingResult,
+      "ignored_unverified_info",
+      `Forged event must have processingResult='ignored_unverified_info', got '${logVals?.processingResult}'`,
+    );
+    // No wallet mutations: transferId/cfTransferId must be absent/undefined
+    // (insertLog converts null → undefined via ?? so the key may be absent from vals)
+    assert.ok(
+      logVals?.transferId == null,
+      `Forged event must not record transferId (no lookup attempted), got '${logVals?.transferId}'`,
+    );
+    assert.ok(
+      logVals?.cfTransferId == null,
+      `Forged event must not record cfTransferId (no lookup attempted), got '${logVals?.cfTransferId}'`,
+    );
   });
 
   it("W9 — missing timestamp AND no body signature → 401 missing_timestamp", async () => {
-    // A request with no x-webhook-timestamp header AND no signature field in the body
-    // is a malformed request that doesn't match either Cashfree webhook format.
-    // It must be rejected (not silently accepted).
+    // A request with no x-webhook-timestamp AND no body signature field is malformed.
+    // It matches neither Cashfree Format A (standard) nor the body-signed pattern.
+    // Must be rejected 401; Cashfree will retry but there is no safe way to process it.
     stubPayoutWebhookDb(ENCRYPTED_PAYOUT_SECRET);
     const malformedPayload = {
       event: "transfer_failed",
