@@ -1528,3 +1528,121 @@ export async function notifyAdminsOfStuckCashfreeOrders(
     logger.error({ err }, "Failed to send admin stuck Cashfree order alert emails");
   }
 }
+
+// ── PayU stuck payin order alert ─────────────────────────────────────────────
+// Payment-integrity alert: every active admin is notified (no opt-out),
+// matching the pattern used for credential rotation alerts.
+
+const PAYU_STUCK_ORDER_ALERT_LAST_SENT_KEY = SYSTEM_CONFIG_KEYS.PAYU_STUCK_ORDER_ALERT_LAST_SENT_AT;
+
+function buildStuckPayuOrderHtml(opts: {
+  stuck: number;
+  threshold: number;
+  staleMinutes: number;
+  recovered: number;
+  noCredsSkipped: boolean;
+}): string {
+  const dashboardUrl = `${APP_DOMAIN}/admin/deposits?tab=payu`;
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8" /></head>
+<body style="font-family:sans-serif;background:#f9f9f9;padding:24px;">
+  <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:8px;padding:24px;border:1px solid #e5e7eb;">
+    <h2 style="color:#dc2626;margin-top:0;">🔴 PayU Stuck Orders Alert</h2>
+    <p style="color:#374151;">
+      <strong>${opts.stuck}</strong> PayU payin order${opts.stuck !== 1 ? "s are" : " is"} stuck in a
+      non-SUCCESS status for more than <strong>${opts.staleMinutes} minute${opts.staleMinutes !== 1 ? "s" : ""}</strong>
+      (threshold: ${opts.threshold}).
+    </p>
+    ${opts.recovered > 0 ? `<p style="color:#16a34a;font-size:14px;">✅ ${opts.recovered} order${opts.recovered !== 1 ? "s were" : " was"} automatically recovered in this run.</p>` : ""}
+    ${opts.noCredsSkipped ? `<p style="color:#b45309;font-size:14px;">⚠️ PayU credentials were unavailable — automatic recovery was skipped. The remaining count may be higher than expected.</p>` : ""}
+    <p style="color:#6b7280;font-size:14px;">
+      These orders may indicate a webhook delivery failure. Check the PayU payin orders table and webhook logs immediately.
+    </p>
+    <a href="${dashboardUrl}"
+       style="display:inline-block;background:#dc2626;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:bold;margin-top:8px;">
+      View PayU Orders →
+    </a>
+    <p style="margin-top:24px;color:#9ca3af;font-size:12px;">
+      This alert was sent by RasoKart because the stuck order count exceeded the configured threshold.
+      To adjust the threshold or cooldown, update the system config keys
+      <code>payu_stuck_order_alert_threshold</code> and <code>payu_stuck_order_alert_cooldown_hours</code>.
+    </p>
+  </div>
+</body>
+</html>`;
+}
+
+/**
+ * Notify every active admin when the count of stuck PayU payin orders
+ * crosses the configured threshold. Respects cooldown to avoid alert storms.
+ *
+ * "Stuck" = status INITIATED or PENDING and older than staleMinutes minutes.
+ * Uses getAllActiveAdminEmails() — no opt-out, same as credential rotation alerts.
+ */
+export async function notifyAdminsOfStuckPayuOrders(
+  opts: {
+    stuck: number;
+    threshold: number;
+    staleMinutes: number;
+    cooldownHours: number;
+    recovered: number;
+    noCredsSkipped: boolean;
+  },
+  _sendMail: typeof sendMail = sendMail,
+): Promise<void> {
+  try {
+    const recipients = await getAllActiveAdminEmails();
+    if (recipients.length === 0) {
+      logger.info("No active admin emails found for stuck PayU order alert — skipping");
+      return;
+    }
+
+    // Cooldown check — avoid spamming during prolonged outages
+    const cooldownCutoff = new Date(Date.now() - opts.cooldownHours * 60 * 60 * 1000);
+    const [lastSentRow] = await db
+      .select({ value: systemConfigTable.value })
+      .from(systemConfigTable)
+      .where(eq(systemConfigTable.key, PAYU_STUCK_ORDER_ALERT_LAST_SENT_KEY))
+      .limit(1);
+
+    if (lastSentRow?.value) {
+      const lastSentAt = new Date(lastSentRow.value);
+      if (lastSentAt > cooldownCutoff) {
+        logger.info(
+          { cooldownHours: opts.cooldownHours, lastSentAt: lastSentRow.value },
+          "PayU stuck order alert suppressed — within cooldown window",
+        );
+        return;
+      }
+    }
+
+    const html = buildStuckPayuOrderHtml(opts);
+    const subject = `[RasoKart] 🔴 ${opts.stuck} PayU Payin Order${opts.stuck !== 1 ? "s" : ""} Stuck — Action Required`;
+
+    const results = await Promise.allSettled(
+      recipients.map(email => _sendMail({ to: email, subject, html })),
+    );
+
+    const sent = results.filter(r => r.status === "fulfilled" && (r as PromiseFulfilledResult<boolean>).value).length;
+
+    if (sent > 0) {
+      const now = new Date().toISOString();
+      await db
+        .insert(systemConfigTable)
+        .values({ key: PAYU_STUCK_ORDER_ALERT_LAST_SENT_KEY, value: now })
+        .onConflictDoUpdate({
+          target: systemConfigTable.key,
+          set: { value: now, updatedAt: sql`now()` },
+        });
+    }
+
+    logger.info(
+      { stuck: opts.stuck, threshold: opts.threshold, recovered: opts.recovered, totalAdmins: recipients.length, sent },
+      "Admin stuck PayU order alert emails dispatched",
+    );
+  } catch (err) {
+    logger.error({ err }, "Failed to send admin stuck PayU order alert emails");
+  }
+}

@@ -176,6 +176,16 @@ export const SYSTEM_CONFIG_KEYS = {
   CASHFREE_STUCK_ORDER_ALERT_COOLDOWN_HOURS:   "cashfree_stuck_order_alert_cooldown_hours",
   // runtime-state: ISO timestamp of the last alert email (written by scheduler)
   CASHFREE_STUCK_ORDER_ALERT_LAST_SENT_AT:     "cashfree_stuck_order_alert_last_sent_at",
+  // PayU stuck payin order monitoring
+  // An order is "stuck" when its status is INITIATED or PENDING and older than
+  // PAYU_STUCK_ORDER_STALE_MINUTES minutes (default 30).
+  // The scheduler fires an admin email alert when the remaining count crosses
+  // PAYU_STUCK_ORDER_ALERT_THRESHOLD and the cooldown has elapsed.
+  PAYU_STUCK_ORDER_STALE_MINUTES:          "payu_stuck_order_stale_minutes",
+  PAYU_STUCK_ORDER_ALERT_THRESHOLD:        "payu_stuck_order_alert_threshold",
+  PAYU_STUCK_ORDER_ALERT_COOLDOWN_HOURS:   "payu_stuck_order_alert_cooldown_hours",
+  // runtime-state: ISO timestamp of the last alert email (written by scheduler)
+  PAYU_STUCK_ORDER_ALERT_LAST_SENT_AT:     "payu_stuck_order_alert_last_sent_at",
 } as const;
 
 export const SYSTEM_CONFIG_DEFAULTS = {
@@ -275,6 +285,9 @@ export const SYSTEM_CONFIG_DEFAULTS = {
   [SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_STALE_MINUTES]:        "15",
   [SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_ALERT_THRESHOLD]:      "5",
   [SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_ALERT_COOLDOWN_HOURS]: "4",
+  [SYSTEM_CONFIG_KEYS.PAYU_STUCK_ORDER_STALE_MINUTES]:            "30",
+  [SYSTEM_CONFIG_KEYS.PAYU_STUCK_ORDER_ALERT_THRESHOLD]:          "3",
+  [SYSTEM_CONFIG_KEYS.PAYU_STUCK_ORDER_ALERT_COOLDOWN_HOURS]:     "4",
 } as const;
 
 /**
@@ -317,6 +330,7 @@ export const SYSTEM_CONFIG_NO_DEFAULT_KEYS: ReadonlySet<string> = new Set([
   SYSTEM_CONFIG_KEYS.RAZORPAY_SETTLEMENT_LAST_UTR,
   SYSTEM_CONFIG_KEYS.RAZORPAY_SETTLEMENT_LAST_UPDATED_AT,
   SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_ALERT_LAST_SENT_AT, // runtime-state: written by scheduler; never seeded
+  SYSTEM_CONFIG_KEYS.PAYU_STUCK_ORDER_ALERT_LAST_SENT_AT,    // runtime-state: written by scheduler; never seeded
   // ── credential: must be configured per-environment; no safe empty default ─
   SYSTEM_CONFIG_KEYS.EKQR_API_KEY,
   SYSTEM_CONFIG_KEYS.EKQR_WEBHOOK_SECRET,

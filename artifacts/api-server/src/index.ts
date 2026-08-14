@@ -28,6 +28,7 @@ import { initNotifReminderScheduler, runNotifReminderScan } from "./helpers/noti
 import { initSnoozeCleanupScheduler, runSnoozeCleanup } from "./helpers/snoozeCleanupScheduler";
 import { initPayoutStuckCleanupScheduler, runStuckPayoutCleanup } from "./helpers/payoutStuckCleanupScheduler";
 import { initCashfreeStuckOrderScheduler, runStuckCashfreeOrderScan } from "./helpers/cashfreeStuckOrderScheduler";
+import { initPayuStuckOrderScheduler } from "./helpers/payuStuckOrderRecovery";
 import { initGithubSyncLogCleanupScheduler, runGithubSyncLogCleanup } from "./helpers/githubSyncLogCleanupScheduler";
 import { resolveStaleOutageOnBoot } from "./helpers/smartRouter";
 import { markServerInitialized } from "./lib/startupState";
@@ -198,6 +199,7 @@ async function main() {
   initSnoozeCleanupScheduler();
   initPayoutStuckCleanupScheduler();
   initCashfreeStuckOrderScheduler();
+  initPayuStuckOrderScheduler();
   initGithubSyncLogCleanupScheduler();
   scheduleCallbackRetryWorker();
   initQuietHoursFlushScheduler();
