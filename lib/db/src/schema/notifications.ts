@@ -116,6 +116,17 @@ export const notificationsTable = pgTable("notifications", {
       sql`((metadata->>'dedupeKey'))`,
     )
     .where(sql`type = 'cleanup_failure_repeated'`),
+  // Dedup index: at most one payout_webhook_no_secret alert per admin/payout-admin
+  // user per UTC hour (dedupeKey = "YYYY-MM-DDTHH", the ISO-8601 hour prefix).
+  // onConflictDoNothing() in maybeAlertPayoutWebhookNoSecret() relies on this to
+  // enforce the one-hour cooldown durably across restarts and multiple instances.
+  uniqueIndex("notifications_payout_no_secret_dedup_idx")
+    .on(
+      sql`"user_id"`,
+      sql`"type"`,
+      sql`((metadata->>'dedupeKey'))`,
+    )
+    .where(sql`type = 'payout_webhook_no_secret'`),
 ]);
 
 export type Notification = typeof notificationsTable.$inferSelect;

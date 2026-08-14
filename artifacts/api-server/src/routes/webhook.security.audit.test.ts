@@ -80,6 +80,7 @@ const ENCRYPTED_PAYOUT_SECRET = encryptSecret(PAYOUT_WEBHOOK_SECRET);
 const MERCHANT_A_ID = 7701;
 const MERCHANT_B_ID = 7702;
 const ADMIN_USER_ID = 7800;
+const PAYOUT_SUPER_ADMIN_USER_ID = 7801; // role="payout_super_admin" recipient for no-secret alert
 const MERCHANT_A_USER_ID = 7901;
 const MERCHANT_B_USER_ID = 7902;
 
@@ -274,12 +275,17 @@ describe("W — Payout webhook signature verification", () => {
       { key: SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENV, value: "live" },
     ];
 
-    // Admin user returned when the alert queries active admins
-    const adminRows = [{ id: ADMIN_USER_ID }];
+    // Recipients returned when the alert queries active admin/payout-admin users.
+    // Includes a platform admin (role="admin") and a payout super-admin
+    // (role="payout_super_admin") to verify both role classes are notified.
+    const recipientRows = [
+      { id: ADMIN_USER_ID,               role: "admin" },
+      { id: PAYOUT_SUPER_ADMIN_USER_ID,  role: "payout_super_admin" },
+    ];
 
     (db as any).select = () => ({
       from: (tbl: unknown) => ({
-        where: () => (tbl === usersTable ? adminRows : systemRows),
+        where: () => (tbl === usersTable ? recipientRows : systemRows),
       }),
     });
     // insert should record without error and support .returning() for createBulkNotifications
@@ -375,10 +381,16 @@ describe("W — Payout webhook signature verification", () => {
 
     const notifInsert = savedInserts.find((i) => i.tbl === notificationsTable);
     assert.ok(notifInsert, "Expected a notifications table insert for the no-secret admin alert");
-    const notifVals = notifInsert.vals as unknown as Array<{ userId: number; type: string }>;
-    assert.ok(Array.isArray(notifVals) && notifVals.length > 0, "Expected at least one admin notification row");
-    assert.equal(notifVals[0]?.type, "payout_webhook_no_secret");
-    assert.equal(notifVals[0]?.userId, ADMIN_USER_ID);
+    const notifVals = notifInsert.vals as unknown as Array<{ userId: number; type: string; title: string; body: string; metadata: Record<string, unknown> }>;
+    assert.ok(Array.isArray(notifVals) && notifVals.length >= 2, `Expected ≥2 notification rows (admin + payout_super_admin), got ${notifVals.length}`);
+    // All rows must have the correct type
+    for (const v of notifVals) {
+      assert.equal(v.type, "payout_webhook_no_secret", `Expected type 'payout_webhook_no_secret', got: ${v.type}`);
+    }
+    // dedupeKey must be present in metadata for DB-level cross-instance dedup
+    const meta0 = notifVals[0].metadata ?? {};
+    assert.ok(typeof meta0["dedupeKey"] === "string" && (meta0["dedupeKey"] as string).length === 13,
+      `Expected dedupeKey to be a 13-char UTC-hour string, got: ${JSON.stringify(meta0["dedupeKey"])}`);
   });
 
   it("W8 — LOW_BALANCE_ALERT (body-signed, no header auth) → 200 ACK-only; event NOT authenticated", async () => {
@@ -538,6 +550,44 @@ describe("W — Payout webhook signature verification", () => {
       notifInserts.length, 0,
       `Expected 0 notification inserts when cooldown is active, got ${notifInserts.length}`,
     );
+  });
+
+  it("W7d — payout_super_admin receives alert + dedupeKey enables durable cross-instance dedup", async () => {
+    // Verify two things in one route call:
+    //   1. Payout super-admin users (role="payout_super_admin") receive the alert
+    //      alongside platform admins — they are the personnel who can configure the secret.
+    //   2. Every inserted notification row carries a `dedupeKey` in its metadata.
+    //      The DB unique index (notifications_payout_no_secret_dedup_idx) uses this
+    //      key to enforce the one-hour cooldown durably across process restarts and
+    //      multiple API instances via onConflictDoNothing.
+    resetPayoutNoSecretAlertRateLimit();
+    stubPayoutWebhookDb(null);
+    const ts = String(Math.floor(Date.now() / 1000));
+    const r = await post(server, "/api/cashfree-payout/webhook", PAYLOAD, {
+      "Content-Type": "application/json",
+      "x-webhook-signature": "irrelevant",
+      "x-webhook-timestamp": ts,
+    });
+    assert.equal(r.status, 200, `Expected 200, got ${r.status}`);
+
+    const notifInsert = savedInserts.find((i: any) => i.tbl === notificationsTable);
+    assert.ok(notifInsert, "Expected a notifications insert");
+    const vals = (notifInsert as any).vals as Array<{ userId: number; type: string; metadata: Record<string, unknown> }>;
+
+    // 1. Both admin and payout_super_admin users must be recipients
+    const recipientIds = vals.map((v) => v.userId);
+    assert.ok(recipientIds.includes(ADMIN_USER_ID),
+      `Expected admin user (id=${ADMIN_USER_ID}) in recipients: ${JSON.stringify(recipientIds)}`);
+    assert.ok(recipientIds.includes(PAYOUT_SUPER_ADMIN_USER_ID),
+      `Expected payout_super_admin user (id=${PAYOUT_SUPER_ADMIN_USER_ID}) in recipients: ${JSON.stringify(recipientIds)}`);
+
+    // 2. Every row must have a dedupeKey for DB-level cross-instance deduplication.
+    //    The key is the current UTC hour ("YYYY-MM-DDTHH", 13 chars).
+    for (const v of vals) {
+      const dk = (v.metadata ?? {})["dedupeKey"];
+      assert.ok(typeof dk === "string" && (dk as string).length === 13,
+        `Expected 13-char dedupeKey on each notification row, got: ${JSON.stringify(dk)}`);
+    }
   });
 
 });
