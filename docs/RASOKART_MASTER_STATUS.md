@@ -409,6 +409,7 @@ _None currently pending._
 | ~~#2475 (CLOSED)~~ | PayU webhook | ✅ LIVE — scheduler wired 16851a9a, runtime-confirmed 2026-08-15 | Payment reliability | 20/20 new + 11/11 baseline | ✅ DEPLOYED |
 | ~~#2471 (CLOSED)~~ | EKQR alerts | ✅ Opt-out guard confirmed correct; 7 tests added — 71fd2c2d | Notification reliability | 21/21 PASS | NO (test-only) |
 | ~~#301 (CLOSED)~~ | Callbacks | ✅ LIVE — scheduler wired 73b80784, prod verified df78e6ff, 0 failures / 0 emails / ₹0 impact 2026-08-15 | Security visibility | 14/14 PASS | ✅ DEPLOYED |
+| **#MC-1 (NEW)** | **Merchant Connect** | **Super Admin cannot assign providers to merchants via a complete flow (select → configure encrypted creds → test → set capabilities → activate). `merchant_connections.credentials` is plaintext; no capability flags; no audit log; no test endpoint; no health state; QR providers page is the only partial UI but has no test step, no capabilities, no encryption.** | **Foundational — gates all merchant payment provider onboarding** | **Encryption, capability CRUD, test endpoint, audit log, UI wizard** | **YES** |
 
 ### P1 — High / Financial / Merchant-Facing
 
@@ -451,9 +452,63 @@ CURRENT TASK:  None. Task #301 CLOSED / LIVE / STABLE 2026-08-15.
                Production SHA: df78e6ff (confirmed on VPS).
                No deploy pending. No blocker.
 
-NEXT TASK:     Task #114 — Accurate merchant withdrawals stats (P1, financial)
+NEXT TASK:     Task #MC-1 — Merchant Connect / Provider Assignment (P0)
+               Super Admin → Select Merchant → Select Provider →
+               Configure encrypted credentials → Test Connection →
+               Enable capabilities → Activate for merchant.
 
-THEN:          Task #109 — Warn merchant when last active provider disabled (P1)
+               AUDIT FINDINGS (do not duplicate what exists):
+               ✅ EXISTS: merchant_connections table (schemaGuard:390-400)
+                          id, merchant_id, provider TEXT, credentials TEXT,
+                          monthly_limit, is_active, deactivated_at, timestamps
+               ✅ EXISTS: /api/connections POST/PUT/DELETE (admin can supply merchantId)
+               ✅ EXISTS: provider_integrations — global platform credentials (encrypted)
+               ✅ EXISTS: providers catalog table
+               ✅ EXISTS: qr-providers.tsx — partial UI (merchant+provider picker,
+                          credentials, monthly limit, active toggle) — QR only,
+                          no test step, no capabilities, no encryption
+               ✅ EXISTS: /api/provider-integrations/* — global provider mgmt + audit logs
+               ✅ EXISTS: activation-requests flow (merchant requests → admin approve/reject)
+
+               ❌ MISSING — must build:
+               1. Encrypt merchant_connections.credentials (currently plaintext TEXT)
+                  — use same encryptSecret/decryptSecret as provider_integrations
+               2. Schema additions on merchant_connections:
+                  connection_status (pending|active|suspended|failed)
+                  last_tested_at, last_test_result (pass|fail|untested)
+                  ownership (rasokart_owned|merchant_owned)
+                  capability flags: payin, payout, upi, qr, payment_links,
+                                    refunds, settlement (boolean each)
+                  visibility_enabled, notes
+                  FK: merchant_id → merchants.id (missing)
+                  UNIQUE (merchant_id, provider) constraint (missing)
+               3. /api/connections test-connection endpoint — generic, per merchant+provider
+               4. Audit log inserts on create/update/delete/activate/credential change
+               5. Super Admin wizard UI (new page or modal sequence):
+                  Step 1: Select merchant
+                  Step 2: Select provider (from providers catalog — live/sandbox only)
+                  Step 3: Configure credentials (encrypted at rest, masked in response)
+                         + ownership mode (RasoKart-owned vs merchant-owned)
+                  Step 4: Test Connection → show pass/fail + error detail
+                  Step 5: Enable capabilities (per-provider capability checkboxes)
+                  Step 6: Activate (set is_active=true, status=active)
+               6. Connection health display (last tested, result, status badge)
+               7. Extend existing qr-providers.tsx or replace with generic flow
+                  (avoid duplication — the new wizard must handle QR assignments too)
+               8. Per-merchant capability enforcement in payin/payout/QR routing
+                  (if capability disabled → reject at API level with correct error)
+               9. Merchant-scoped routing: optional — link routing_configs to merchant_id
+                  if smart routing is to be per-merchant (out of scope unless confirmed)
+
+               SCOPE BOUNDARY:
+               — Do NOT touch provider_integrations (global platform credentials — separate)
+               — Do NOT touch smart routing configs (global — separate task if needed)
+               — Do NOT remove qr-providers.tsx until new flow covers QR assignments
+               — merchant_connections is the correct table; do not create a new one
+
+THEN:          Task #114 — Accurate merchant withdrawals stats (P1, financial)
+
+AFTER THAT:    Task #109 — Warn merchant when last active provider disabled (P1)
 
 LATER:         Task #1062 — Seed demo callback logs (P1, demo/onboarding)
                Task #1355 — EKQR payment URL in QR detail modal (P1)
