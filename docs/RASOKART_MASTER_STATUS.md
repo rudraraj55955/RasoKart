@@ -4,9 +4,9 @@ _Read this before starting any task. Update this after every task._
 
 ---
 
-**Last Updated:** 2026-08-15 (IST) — Task #MC-1 IMPLEMENTED / AWAITING PRODUCTION DEPLOY APPROVAL  
+**Last Updated:** 2026-08-15 (IST) — Task #MC-1 + P1 COMPLETE / AWAITING PRODUCTION DEPLOY APPROVAL  
 **Updated By:** Agent (main)  
-**Trigger:** Task #MC-1 — Merchant Connect provider assignment system. Commit `5781dbbe`. Awaiting user approval before deploy.
+**Trigger:** Task #MC-1 P1 — Capability enforcement wired (qrCodes + paymentLinks) + QR assignment UI complete. Commit `e8f3c7a2` (approx). Awaiting user approval before deploy.
 
 ---
 
