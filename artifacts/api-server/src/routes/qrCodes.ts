@@ -340,8 +340,26 @@ router.post("/", qrCodeCreateLimiter, async (req, res) => {
       .from(merchantsTable).where(eq(merchantsTable.id, merchantId)).limit(1),
   ]);
 
-  // ── EKQR path: if merchant has an active EKQR connection and EKQR is globally enabled ──
-  const ekqrConn = connections.find(c => c.provider === "ekqr");
+  // ── Capability filter: strip out connections that are suspended/failed or lack QR capability ──
+  // capabilityQr defaults to true via ALTER TABLE DEFAULT, so all pre-MC connections are allowed.
+  // connectionStatus defaults to 'pending' for new rows; existing rows were set to 'active' by
+  // the schemaGuard credential migration.  Suspended/failed connections must never serve QR.
+  const qrCapableConnections = connections.filter(c =>
+    c.capabilityQr !== false &&
+    (c.connectionStatus === "active" || c.connectionStatus === "pending") &&
+    c.visibilityEnabled !== false
+  );
+
+  if (connections.length > 0 && qrCapableConnections.length === 0) {
+    res.status(403).json({
+      error: "Your payment provider connection does not have QR payment capability enabled. Please contact support.",
+      code: "CAPABILITY_DENIED",
+    });
+    return;
+  }
+
+  // ── EKQR path: if merchant has a QR-capable active EKQR connection and EKQR is globally enabled ──
+  const ekqrConn = qrCapableConnections.find(c => c.provider === "ekqr");
   if (ekqrConn) {
     // Check global EKQR enabled flag, API key, and amount limits
     const ekqrRows = await db.select()
@@ -462,9 +480,9 @@ router.post("/", qrCodeCreateLimiter, async (req, res) => {
     }
   }
 
-  // ── Custom gateway path: merchant has an active connection whose provider
+  // ── Custom gateway path: merchant has a QR-capable active connection whose provider
   // matches an admin-added, enabled custom gateway (provider_integrations) ──
-  const customConn = connections.find(c => c.provider && !["ekqr", "upi_id"].includes(c.provider) && !(c.provider in PROVIDER_VPA_SUFFIX));
+  const customConn = qrCapableConnections.find(c => c.provider && !["ekqr", "upi_id"].includes(c.provider) && !(c.provider in PROVIDER_VPA_SUFFIX));
   if (customConn) {
     const [integration] = await db.select().from(providerIntegrationsTable)
       .where(and(
@@ -522,8 +540,8 @@ router.post("/", qrCodeCreateLimiter, async (req, res) => {
   }
 
   // ── Standard UPI path ────────────────────────────────────────────────────
-  // Priority: upi_id first, then others
-  const sorted = [...connections].sort(a => a.provider === "upi_id" ? -1 : 1);
+  // Priority: upi_id first, then others. Only QR-capable connections are considered.
+  const sorted = [...qrCapableConnections].sort(a => a.provider === "upi_id" ? -1 : 1);
   let vpa: string | null = null;
   let activeConn: typeof connections[0] | undefined;
   for (const conn of sorted) {

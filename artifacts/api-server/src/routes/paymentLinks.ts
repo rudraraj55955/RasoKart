@@ -439,6 +439,25 @@ router.post("/", async (req, res) => {
     .where(and(eq(merchantConnectionsTable.merchantId, merchantId), eq(merchantConnectionsTable.isActive, true)))
     .limit(10);
 
+  // Capability enforcement: once a merchant has any connection in the MC system,
+  // at least one must have capabilityPaymentLinks=true (and be active/pending, not suspended).
+  // Merchants with NO connections are not yet enrolled in MC and pass through unrestricted
+  // (backward-compatible with pre-MC merchants).
+  if (connections.length > 0) {
+    const hasPaymentLinksCapability = connections.some(
+      c => c.capabilityPaymentLinks === true &&
+           (c.connectionStatus === "active" || c.connectionStatus === "pending") &&
+           c.visibilityEnabled !== false
+    );
+    if (!hasPaymentLinksCapability) {
+      res.status(403).json({
+        error: "Payment links are not enabled for your account. Please contact your account manager.",
+        code: "CAPABILITY_DENIED",
+      });
+      return;
+    }
+  }
+
   const sorted = [...connections].sort(a => a.provider === "upi_id" ? -1 : 1);
   let vpa: string | null = null;
   for (const conn of sorted) {
