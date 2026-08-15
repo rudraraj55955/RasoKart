@@ -4565,6 +4565,52 @@ paths:
               schema:
                 $ref: "#/components/schemas/MessageResponse"
 
+  /connections/{id}/test:
+    post:
+      operationId: testMerchantConnection
+      tags: [connections]
+      summary: "Test a provider connection (admin only). Zero financial mutation guaranteed."
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Test result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MerchantConnectionTestResult"
+        "404":
+          description: Connection not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Credentials could not be decrypted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /connections/providers:
+    get:
+      operationId: listConnectionProviders
+      tags: [connections]
+      summary: List available providers for the connection wizard (admin only)
+      responses:
+        "200":
+          description: Provider catalog rows
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Provider"
+
   /plans/me:
     get:
       operationId: getMyPlan
@@ -15260,7 +15306,7 @@ components:
 
     MerchantConnection:
       type: object
-      required: [id, merchantId, provider, monthlyLimit, monthlyUsed, isActive, createdAt]
+      required: [id, merchantId, provider, monthlyLimit, monthlyUsed, isActive, connectionStatus, ownership, lastTestResult, createdAt]
       properties:
         id:
           type: integer
@@ -15270,6 +15316,7 @@ components:
           type: string
         credentials:
           type: ["string", "null"]
+          description: "Always returned as '***' (masked). Never plaintext."
         monthlyLimit:
           type: number
         monthlyUsed:
@@ -15277,6 +15324,35 @@ components:
           description: Total successful deposit amount collected through this merchant in the current calendar month
         isActive:
           type: boolean
+        connectionStatus:
+          type: string
+          enum: [pending, active, suspended, failed]
+        lastTestedAt:
+          type: ["string", "null"]
+        lastTestResult:
+          type: string
+          enum: [pass, fail, untested]
+        ownership:
+          type: string
+          enum: [rasokart_owned, merchant_owned]
+        capabilityPayin:
+          type: boolean
+        capabilityPayout:
+          type: boolean
+        capabilityUpi:
+          type: boolean
+        capabilityQr:
+          type: boolean
+        capabilityPaymentLinks:
+          type: boolean
+        capabilityRefunds:
+          type: boolean
+        capabilitySettlement:
+          type: boolean
+        visibilityEnabled:
+          type: boolean
+        notes:
+          type: ["string", "null"]
         deactivatedAt:
           type: ["string", "null"]
           description: Timestamp when the connection was deactivated. Used to narrow transaction-to-connection mapping to only connections that were active at transaction time.
@@ -15293,10 +15369,54 @@ components:
           type: string
         credentials:
           type: ["string", "null"]
+          description: "Plain-text credentials (JSON string). Encrypted at rest. Pass '***' or omit to leave unchanged."
         monthlyLimit:
           type: number
         isActive:
           type: boolean
+        merchantId:
+          type: integer
+          description: Required when called by admin to assign a connection to a specific merchant
+        connectionStatus:
+          type: string
+          enum: [pending, active, suspended, failed]
+        ownership:
+          type: string
+          enum: [rasokart_owned, merchant_owned]
+        notes:
+          type: ["string", "null"]
+        visibilityEnabled:
+          type: boolean
+        capabilityPayin:
+          type: boolean
+        capabilityPayout:
+          type: boolean
+        capabilityUpi:
+          type: boolean
+        capabilityQr:
+          type: boolean
+        capabilityPaymentLinks:
+          type: boolean
+        capabilityRefunds:
+          type: boolean
+        capabilitySettlement:
+          type: boolean
+
+    MerchantConnectionTestResult:
+      type: object
+      required: [pass, message, testedAt, connectionStatus]
+      properties:
+        pass:
+          type: boolean
+        message:
+          type: string
+        detail:
+          type: ["string", "null"]
+        testedAt:
+          type: string
+        connectionStatus:
+          type: string
+          enum: [pending, active, suspended, failed]
 
     Plan:
       type: object

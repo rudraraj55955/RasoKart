@@ -559,6 +559,7 @@ const ADMIN_NAV = [
       { title: "Payout Gateway", icon: Landmark, href: "/admin/payout-gateway" },
       { title: "Smart Routing", icon: GitMerge, href: "/admin/smart-routing" },
       { title: "Payment Providers", icon: Zap, href: "/admin/providers" },
+      { title: "Merchant Connect", icon: Plug, href: "/admin/merchant-connect" },
       { title: "QR Providers", icon: QrCode, href: "/admin/qr-providers" },
       { title: "Provider Integrations", icon: Layers, href: "/admin/provider-integrations" },
       { title: "Visibility Rules", icon: Eye, href: "/admin/visibility-rules" },

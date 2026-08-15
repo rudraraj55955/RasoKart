@@ -1,4 +1,4 @@
-import { db, up } from "@workspace/db";
+import { db, up, merchantConnectionsTable } from "@workspace/db";
 import { sql, SQL } from "drizzle-orm";
 import { logger } from "./logger";
 
@@ -400,7 +400,72 @@ async function runGuard(executor: GuardExecutor = db): Promise<void> {
       )
     `);
     await exec.execute(sql`CREATE INDEX IF NOT EXISTS merchant_connections_merchant_id_idx ON merchant_connections(merchant_id)`);
+    // ── MC-1: new columns (idempotent ALTER TABLE) ─────────────────────────
+    await exec.execute(sql`ALTER TABLE merchant_connections ADD COLUMN IF NOT EXISTS connection_status TEXT NOT NULL DEFAULT 'active'`);
+    await exec.execute(sql`ALTER TABLE merchant_connections ADD COLUMN IF NOT EXISTS last_tested_at TIMESTAMPTZ`);
+    await exec.execute(sql`ALTER TABLE merchant_connections ADD COLUMN IF NOT EXISTS last_test_result TEXT NOT NULL DEFAULT 'untested'`);
+    await exec.execute(sql`ALTER TABLE merchant_connections ADD COLUMN IF NOT EXISTS ownership TEXT NOT NULL DEFAULT 'rasokart_owned'`);
+    await exec.execute(sql`ALTER TABLE merchant_connections ADD COLUMN IF NOT EXISTS capability_payin BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE merchant_connections ADD COLUMN IF NOT EXISTS capability_payout BOOLEAN NOT NULL DEFAULT FALSE`);
+    await exec.execute(sql`ALTER TABLE merchant_connections ADD COLUMN IF NOT EXISTS capability_upi BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE merchant_connections ADD COLUMN IF NOT EXISTS capability_qr BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE merchant_connections ADD COLUMN IF NOT EXISTS capability_payment_links BOOLEAN NOT NULL DEFAULT FALSE`);
+    await exec.execute(sql`ALTER TABLE merchant_connections ADD COLUMN IF NOT EXISTS capability_refunds BOOLEAN NOT NULL DEFAULT FALSE`);
+    await exec.execute(sql`ALTER TABLE merchant_connections ADD COLUMN IF NOT EXISTS capability_settlement BOOLEAN NOT NULL DEFAULT FALSE`);
+    await exec.execute(sql`ALTER TABLE merchant_connections ADD COLUMN IF NOT EXISTS visibility_enabled BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE merchant_connections ADD COLUMN IF NOT EXISTS notes TEXT`);
+    // ── FK: merchant_id → merchants(id) ───────────────────────────────────
+    await exec.execute(sql`
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.table_constraints
+          WHERE constraint_name = 'merchant_connections_merchant_id_fkey'
+            AND table_name = 'merchant_connections'
+        ) THEN
+          ALTER TABLE merchant_connections
+            ADD CONSTRAINT merchant_connections_merchant_id_fkey
+            FOREIGN KEY (merchant_id) REFERENCES merchants(id) ON DELETE CASCADE;
+        END IF;
+      END $$
+    `);
+    // ── UNIQUE (merchant_id, provider) ─────────────────────────────────────
+    await exec.execute(sql`
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.table_constraints
+          WHERE constraint_name = 'merchant_connections_merchant_provider_unique'
+            AND table_name = 'merchant_connections'
+        ) THEN
+          ALTER TABLE merchant_connections
+            ADD CONSTRAINT merchant_connections_merchant_provider_unique
+            UNIQUE (merchant_id, provider);
+        END IF;
+      END $$
+    `);
     logger.info({ table: "merchant_connections" }, "schema_guard_table_created");
+  });
+
+  // ── merchant_connections: credential encryption migration ─────────────────
+  // Encrypt any plaintext credentials (rows where credentials does NOT start
+  // with 'enc:v1:'). This is idempotent — already-encrypted rows are skipped.
+  // Runs every startup; costs one SELECT and at most N UPDATEs where N is the
+  // count of plaintext rows (expected 0 after the first successful run).
+  await block("merchant_connections_credential_migration", async () => {
+    const { encryptSecret } = await import("../helpers/cryptoUtils");
+    const rows = await db
+      .select({ id: merchantConnectionsTable.id, credentials: merchantConnectionsTable.credentials })
+      .from(merchantConnectionsTable)
+      .where(sql`credentials IS NOT NULL AND credentials != '' AND credentials NOT LIKE 'enc:v1:%'`);
+    if (rows.length === 0) return;
+    logger.info({ count: rows.length }, "merchant_connections: encrypting plaintext credentials");
+    for (const row of rows) {
+      const encrypted = encryptSecret(row.credentials!);
+      await db
+        .update(merchantConnectionsTable)
+        .set({ credentials: encrypted })
+        .where(sql`id = ${row.id}`);
+    }
+    logger.info({ count: rows.length }, "merchant_connections: credential encryption migration complete");
   });
 
   // ── merchant_trusted_ips: per-merchant trusted IP allowlist ─────────────────
