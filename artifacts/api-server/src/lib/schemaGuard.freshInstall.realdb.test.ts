@@ -505,6 +505,10 @@ describe(
 
     after(async () => {
       await new Promise<void>((resolve) => server.close(() => resolve()));
+      // End the pg pool so the Node.js process exits cleanly after all tests
+      // complete.  Without this, the pool's idle connections are open handles
+      // that prevent the test runner from terminating, causing an indefinite hang.
+      await pool.end();
     });
 
     // ── Part A: dropped tables were absent before the guard ran ───────────────
