@@ -4,9 +4,9 @@ _Read this before starting any task. Update this after every task._
 
 ---
 
-**Last Updated:** 2026-08-15 (IST) — Task #301 CLOSED / LIVE / STABLE — production verified  
+**Last Updated:** 2026-08-15 (IST) — Task #MC-1 IMPLEMENTED / AWAITING PRODUCTION DEPLOY APPROVAL  
 **Updated By:** Agent (main)  
-**Trigger:** Task #301 — Deployment confirmed (df78e6ff), startup sweep verified: 0 failures / 0 emails / ₹0 impact
+**Trigger:** Task #MC-1 — Merchant Connect provider assignment system. Commit `5781dbbe`. Awaiting user approval before deploy.
 
 ---
 
