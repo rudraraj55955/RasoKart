@@ -4,9 +4,9 @@ _Read this before starting any task. Update this after every task._
 
 ---
 
-**Last Updated:** 2026-08-15 (IST) — Task #301 CLOSED / DEPLOYED  
+**Last Updated:** 2026-08-15 (IST) — Task #301 CLOSED / LIVE / STABLE — production verified  
 **Updated By:** Agent (main)  
-**Trigger:** Task #301 — Signature failure alert scheduler wired + admin/stats table bug fixed
+**Trigger:** Task #301 — Deployment confirmed (df78e6ff), startup sweep verified: 0 failures / 0 emails / ₹0 impact
 
 ---
 
@@ -37,11 +37,11 @@ DO NOT GUESS. Reconcile: current production SHA + DB/runtime evidence + prior cl
 
 | Field | Value |
 |---|---|
-| **Production SHA** | `16851a9a829631840ececeec4eb38a9c1bcfdebd` |
-| **Previous SHA (immediate rollback)** | `f0c7f8a1` — Master status doc update (pre-wiring) |
+| **Production SHA** | `df78e6ffac671208585d16392b1b1527996b402d` |
+| **Previous SHA (immediate rollback)** | `16851a9a` — PayU scheduler (pre-#301 wiring) |
 | **Safe baseline SHA** | `6e67df67` — Cashfree payout webhook security fix |
 | **Production health** | ✅ ALL GREEN — `healthz/deep` status=ok, schema_guard=pass, all checks true |
-| **Last deploy date/time** | 2026-08-15 ~09:22 UTC (2026-08-15 ~14:52 IST) |
+| **Last deploy date/time** | 2026-08-15 (auto-deploy via GitHub Actions, confirmed by `git log` on VPS) |
 | **Deploy trigger** | GitHub Actions push-to-main → appleboy SSH → PM2 restart |
 | **PM2 process** | `rasokart-api` (ID 4, PID 2221869) — online, 358 MB RSS |
 | **Domain** | `rasokart.com` (nginx → `127.0.0.1:3000`) |
@@ -234,8 +234,9 @@ git revert --no-commit 6e67df67 312b2af4 && git commit -m "revert: cashfree payo
 
 ### 2.21 Task #301 — Signature Failure Spike Alert Scheduler
 - **Module:** Callbacks / signature verification alerts — `checkAndAlertSignatureFailures`
-- **Final Status:** ✅ CLOSED — AWAITING VPS DEPLOYMENT
+- **Final Status:** ✅ CLOSED — LIVE / STABLE
 - **Implementation SHA:** `73b80784`
+- **Production SHA:** `df78e6ffac671208585d16392b1b1527996b402d` — confirmed live on VPS
 - **Rollback SHA:** `16851a9a` — previous production state (PayU scheduler)
 - **Tests:**
   - `signatureFailureAlert.test.ts` — **14/14 PASS** (new)
@@ -244,6 +245,16 @@ git revert --no-commit 6e67df67 312b2af4 && git commit -m "revert: cashfree payo
   - `schema-guard-coverage` — **115/115 PASS** (no schema change)
   - `tsc --noEmit` — 0 implementation errors
 - **Closure date:** 2026-08-15
+- **Production verification (2026-08-15):**
+  - Production SHA on VPS: `df78e6ff` ✅
+  - Configured threshold: `10` (from `system_config` table, correct key) ✅
+  - 24h signature failure count: `0` (no failures in last 24h) ✅
+  - Affected merchants: none ✅
+  - Admin recipients opted in: `admin@rasokart.com` (1) ✅
+  - Merchant recipients opted in: none (0 failures → 0 affected merchants) ✅
+  - Startup sweep emails sent: **0** (count 0 < threshold 10 → returned early at line 228) ✅
+  - Financial impact: **₹0** — no wallet/ledger/transaction/payout table touched on any code path ✅
+  - Blockers: none ✅
 - **Root cause:** `checkAndAlertSignatureFailures()` (317 lines — admin + merchant emails, in-memory cooldown, DB logging) was fully implemented in `signatureFailureAlert.ts` but never imported or called from `index.ts`. No cron was ever registered. Same orphan pattern as Task #2475 (PayU scheduler). Secondary bug: `/api/callbacks/admin/stats` read threshold config from the stale `systemSettingsTable` (always fell back to hardcoded 10) instead of `systemConfigTable` — mismatching the actual alert function.
 - **Fix summary (3 files):**
   1. `signatureFailureAlert.ts` — add `import cron from "node-cron"`, add injectable `_sendMail` param, add `initSignatureFailureAlertScheduler()` (startup sweep + cron every 30 min)
@@ -251,8 +262,7 @@ git revert --no-commit 6e67df67 312b2af4 && git commit -m "revert: cashfree payo
   3. `callbacks.ts` — `/api/callbacks/admin/stats`: replace 2 `systemSettingsTable` queries with 1 `systemConfigTable` query using `SIGNATURE_FAILURE_ALERT_THRESHOLD`; return `alertWindowHours: 24` as constant
 - **Test matrix (14 tests):**
   B1a/b — below threshold: no sendMail, no insert | B2a/b/c — threshold reached: admin email, merchant email, insert logged | B3 — all opted out: zero-recipient guard | B4 — admin-only when merchant opted out | B5 — SMTP failure: insert still recorded | B6 — cooldown suppression | B7 — first-ever call not suppressed | B8 — no affected merchants: admin email still sent | B9/B10/B11 — never throws on DB error, insert error, sendMail throw
-- **Deployment required:** YES — scheduler wiring is a runtime change; the function won't run until PM2 restarts with `73b80784`.
-- **Alert on deploy:** Startup sweep fires immediately on PM2 restart. If signature failures in the last 24h exceed threshold (default 10), an alert will go to opted-in admins and merchants.
+- **Financial mutation:** NONE — scheduler reads only `callbackLogsTable`, `merchantsTable`, `usersTable`, `systemConfigTable`; writes only to `signatureFailureAlertLogsTable` (after emails sent). Zero wallet / ledger / transaction / payout table access on any code path.
 
 ---
 
@@ -398,7 +408,7 @@ _None currently pending._
 |---|---|---|---|---|---|
 | ~~#2475 (CLOSED)~~ | PayU webhook | ✅ LIVE — scheduler wired 16851a9a, runtime-confirmed 2026-08-15 | Payment reliability | 20/20 new + 11/11 baseline | ✅ DEPLOYED |
 | ~~#2471 (CLOSED)~~ | EKQR alerts | ✅ Opt-out guard confirmed correct; 7 tests added — 71fd2c2d | Notification reliability | 21/21 PASS | NO (test-only) |
-| ~~#301 (CLOSED)~~ | Callbacks | ✅ Scheduler wired + admin/stats table bug fixed — 73b80784 | Security visibility | 14/14 PASS | ✅ DEPLOY REQUIRED |
+| ~~#301 (CLOSED)~~ | Callbacks | ✅ LIVE — scheduler wired 73b80784, prod verified df78e6ff, 0 failures / 0 emails / ₹0 impact 2026-08-15 | Security visibility | 14/14 PASS | ✅ DEPLOYED |
 
 ### P1 — High / Financial / Merchant-Facing
 
@@ -437,17 +447,17 @@ _None currently pending._
 ## 8. NEXT ACTION QUEUE
 
 ```
-CURRENT TASK:  None. Task #301 CLOSED 2026-08-15 — SHA 73b80784.
-               DEPLOY REQUIRED: scheduler wiring is a runtime change.
-               Production SHA still 16851a9a until VPS deploy runs.
+CURRENT TASK:  None. Task #301 CLOSED / LIVE / STABLE 2026-08-15.
+               Production SHA: df78e6ff (confirmed on VPS).
+               No deploy pending. No blocker.
 
 NEXT TASK:     Task #114 — Accurate merchant withdrawals stats (P1, financial)
 
 THEN:          Task #109 — Warn merchant when last active provider disabled (P1)
 
-LATER:         Task #114 — Accurate merchant withdrawals stats (P1, financial)
-               Task #1062 — Seed demo callback logs (P1, demo/onboarding)
+LATER:         Task #1062 — Seed demo callback logs (P1, demo/onboarding)
                Task #1355 — EKQR payment URL in QR detail modal (P1)
+               Task #2453 — Configurable warning threshold on EKQR daily cap bar (P1)
                Task #1426 — KYC email notification for admin (P2)
                Task #356  — SMTP test from settings page (P2)
 ```
