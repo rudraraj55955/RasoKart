@@ -837,18 +837,33 @@ async function migrate() {
     -- Must be created before transactions (which has an FK to this table).
     -- Also accessed by the providerLimitScheduler at startup.
     CREATE TABLE IF NOT EXISTS merchant_connections (
-      id SERIAL PRIMARY KEY,
-      merchant_id INTEGER NOT NULL,
-      provider TEXT NOT NULL,
-      credentials TEXT,
-      monthly_limit NUMERIC(18,2) NOT NULL DEFAULT 0,
-      is_active BOOLEAN NOT NULL DEFAULT TRUE,
-      deactivated_at TIMESTAMPTZ,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      id                       SERIAL PRIMARY KEY,
+      merchant_id              INTEGER NOT NULL,
+      provider                 TEXT NOT NULL,
+      credentials              TEXT,
+      monthly_limit            NUMERIC(18,2) NOT NULL DEFAULT 0,
+      is_active                BOOLEAN NOT NULL DEFAULT TRUE,
+      deactivated_at           TIMESTAMPTZ,
+      -- MC-1: 13 capability + status columns (schemaGuard.ts has ALTER TABLE
+      -- guards for existing installs; these ensure fresh-install parity)
+      connection_status        TEXT NOT NULL DEFAULT 'active',
+      last_tested_at           TIMESTAMPTZ,
+      last_test_result         TEXT NOT NULL DEFAULT 'untested',
+      ownership                TEXT NOT NULL DEFAULT 'rasokart_owned',
+      capability_payin         BOOLEAN NOT NULL DEFAULT TRUE,
+      capability_payout        BOOLEAN NOT NULL DEFAULT FALSE,
+      capability_upi           BOOLEAN NOT NULL DEFAULT TRUE,
+      capability_qr            BOOLEAN NOT NULL DEFAULT TRUE,
+      capability_payment_links BOOLEAN NOT NULL DEFAULT FALSE,
+      capability_refunds       BOOLEAN NOT NULL DEFAULT FALSE,
+      capability_settlement    BOOLEAN NOT NULL DEFAULT FALSE,
+      visibility_enabled       BOOLEAN NOT NULL DEFAULT TRUE,
+      notes                    TEXT,
+      created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
     CREATE INDEX IF NOT EXISTS merchant_connections_merchant_id_idx ON merchant_connections(merchant_id);
-    -- Columns added after initial production deploy — self-heal existing DB:
+    -- self-heal for any pre-MC-1 installs that lack deactivated_at:
     ALTER TABLE merchant_connections ADD COLUMN IF NOT EXISTS deactivated_at TIMESTAMPTZ;
 
     -- ── withdrawals ─────────────────────────────────────────────────────────
