@@ -1,3 +1,19 @@
+// ── Pino / process-exit fix ───────────────────────────────────────────────────
+//
+// Must be set BEFORE any import that instantiates pino (including the app and
+// seed modules that import `./lib/logger`).  Pino creates a worker_thread for
+// the pino-pretty transport in non-production environments, and that worker
+// thread keeps the Node.js event loop alive indefinitely — causing the test
+// runner to hang after all tests complete instead of exiting.  Setting
+// NODE_ENV=production before any import makes pino use its built-in JSON sink
+// (no worker thread) so the process exits cleanly once pool.end() drains the
+// pg connections.  The tested routes and schemaGuard behaviour are identical
+// in production mode; the only functional difference is log formatting.
+//
+// ⚠ This must remain the very first executable statement in the file — any
+//   import appearing above it is evaluated before the assignment runs.
+process.env["NODE_ENV"] = "production";
+
 /**
  * schemaGuard.freshInstall.realdb.test.ts
  *
@@ -504,6 +520,11 @@ describe(
     });
 
     after(async () => {
+      // Destroy all open keep-alive connections before closing the server.
+      // Without this, server.close() waits indefinitely for HTTP/1.1 keep-alive
+      // connections to time out (default: never), which prevents the callback
+      // from firing. closeAllConnections() is available in Node.js 18.2+.
+      server.closeAllConnections();
       await new Promise<void>((resolve) => server.close(() => resolve()));
       // End the pg pool so the Node.js process exits cleanly after all tests
       // complete.  Without this, the pool's idle connections are open handles
