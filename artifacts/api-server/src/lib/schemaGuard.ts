@@ -1793,6 +1793,19 @@ async function runGuard(executor: GuardExecutor = db): Promise<void> {
     logger.info({ index: "notifications_cleanup_failure_repeated_dedup_idx" }, "schema_guard_index_created");
   });
 
+  // ── notifications: payout_webhook_no_secret dedup index ──────────────────
+  // Enforces the one-hour cooldown for no-secret payout webhook alerts durably
+  // across process restarts and multiple API instances.
+  // dedupeKey = ISO-8601 UTC hour prefix ("YYYY-MM-DDTHH").
+  await block("notifications_payout_no_secret_index", async () => {
+    await exec.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS notifications_payout_no_secret_dedup_idx
+        ON notifications(user_id, type, ((metadata->>'dedupeKey')))
+        WHERE type = 'payout_webhook_no_secret'
+    `);
+    logger.info({ index: "notifications_payout_no_secret_dedup_idx" }, "schema_guard_index_created");
+  });
+
   // ── policy_acceptances ────────────────────────────────────────────────────
   await block("policy_acceptances", async () => {
     await exec.execute(sql`
