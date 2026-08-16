@@ -38,6 +38,7 @@ import {
   Globe, Shield, Clock, Plus, Pencil, Trash2, ToggleLeft, ToggleRight,
 } from "lucide-react";
 import { toast } from "sonner";
+import { getToken } from "@/lib/auth";
 
 // ── Shared types ──────────────────────────────────────────────────────────────
 
@@ -159,7 +160,7 @@ const CREDENTIAL_HINTS: Record<string, { fields: { name: string; hint: string }[
 // ── API helpers ───────────────────────────────────────────────────────────────
 
 function apiHeaders(): Record<string, string> {
-  const token = localStorage.getItem("auth_token");
+  const token = getToken();
   return { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) };
 }
 
