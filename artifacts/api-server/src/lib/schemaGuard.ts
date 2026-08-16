@@ -1,4 +1,4 @@
-import { db, up, merchantConnectionsTable } from "@workspace/db";
+import { db, up } from "@workspace/db";
 import { sql, SQL } from "drizzle-orm";
 import { logger } from "./logger";
 
@@ -450,20 +450,26 @@ async function runGuard(executor: GuardExecutor = db): Promise<void> {
   // with 'enc:v1:'). This is idempotent — already-encrypted rows are skipped.
   // Runs every startup; costs one SELECT and at most N UPDATEs where N is the
   // count of plaintext rows (expected 0 after the first successful run).
+  //
+  // IMPORTANT: must use exec (not db) so this runs on the same connection as
+  // the surrounding guard.  Using the global db pool here causes a lock
+  // conflict when runSchemaGuardWith() is called inside a transaction — the
+  // transaction holds ACCESS EXCLUSIVE on merchant_connections (just created
+  // above) and a separate pool connection needs ACCESS SHARE → indefinite wait.
   await block("merchant_connections_credential_migration", async () => {
     const { encryptSecret } = await import("../helpers/cryptoUtils");
-    const rows = await db
-      .select({ id: merchantConnectionsTable.id, credentials: merchantConnectionsTable.credentials })
-      .from(merchantConnectionsTable)
-      .where(sql`credentials IS NOT NULL AND credentials != '' AND credentials NOT LIKE 'enc:v1:%'`);
+    const result = await exec.execute(sql`
+      SELECT id, credentials FROM merchant_connections
+      WHERE credentials IS NOT NULL
+        AND credentials != ''
+        AND credentials NOT LIKE 'enc:v1:%'
+    `);
+    const rows = result.rows as { id: number; credentials: string }[];
     if (rows.length === 0) return;
     logger.info({ count: rows.length }, "merchant_connections: encrypting plaintext credentials");
     for (const row of rows) {
-      const encrypted = encryptSecret(row.credentials!);
-      await db
-        .update(merchantConnectionsTable)
-        .set({ credentials: encrypted })
-        .where(sql`id = ${row.id}`);
+      const encrypted = encryptSecret(row.credentials);
+      await exec.execute(sql`UPDATE merchant_connections SET credentials = ${encrypted} WHERE id = ${row.id}`);
     }
     logger.info({ count: rows.length }, "merchant_connections: credential encryption migration complete");
   });
@@ -2285,8 +2291,16 @@ async function runGuard(executor: GuardExecutor = db): Promise<void> {
   // Delegated to the canonical migration file (lib/db/src/migrations/add-iam-rbac.ts).
   // That file owns the DDL and its exported rollback() for emergency use.
   // Both up() and rollback() are idempotent (CREATE/DROP IF EXISTS).
+  //
+  // IMPORTANT: pass exec (not db) so up() runs on the same connection.
+  // GuardExecutor and DrizzleExecutor are structurally identical:
+  //   { execute: (query: SQL) => Promise<{ rows: unknown[] }> }
+  // Using the global db pool here causes a lock wait when this is called from
+  // within a transaction: up() adds FK constraints referencing users(id) which
+  // need a SHARE lock, conflicting with the transaction's ACCESS EXCLUSIVE on
+  // users from the earlier ALTER TABLE ADD COLUMN step.
   await block("iam_tables", async () => {
-    await up(db);
+    await up(exec);
     logger.info({ tables: ["permissions", "role_permissions", "user_permissions", "iam_migration_log"] }, "schema_guard_table_created");
   });
 
