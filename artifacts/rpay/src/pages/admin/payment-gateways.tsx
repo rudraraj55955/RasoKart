@@ -244,6 +244,8 @@ function PayuPanel() {
   const [verifying, setVerifying]         = useState(false);
   const [verifyResult, setVerifyResult]   = useState<any>(null);
   const [initialized, setInitialized]     = useState(false);
+  const [showLiveConfirm, setShowLiveConfirm] = useState(false);
+  const [pendingLiveEnv, setPendingLiveEnv]   = useState<"uat" | "live">("live");
 
   const loadConfig = () => {
     setLoading(true);
@@ -333,6 +335,16 @@ function PayuPanel() {
       toast.error(err.message ?? "Failed to save settings");
     } finally { setSaving(false); }
   };
+
+  function handleSettingsSave(envOverride?: "uat" | "live") {
+    const targetEnv = envOverride ?? activeEnv;
+    if (enabled && targetEnv === "live") {
+      setPendingLiveEnv(targetEnv);
+      setShowLiveConfirm(true);
+      return;
+    }
+    saveSettings(envOverride);
+  }
 
   const testHash = async () => {
     setTesting(true);
@@ -778,13 +790,13 @@ function PayuPanel() {
           </p>
         </div>
 
-        <Button onClick={() => saveSettings()} disabled={saving} size="sm">
+        <Button onClick={() => handleSettingsSave()} disabled={saving} size="sm">
           {saving ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Saving…</> : <><Save className="w-3.5 h-3.5 mr-1.5" />Save Settings</>}
         </Button>
 
         {activeEnv === "live" && allStepsPass && (
           <Button
-            onClick={() => saveSettings("live")}
+            onClick={() => handleSettingsSave("live")}
             disabled={saving}
             size="sm"
             className="ml-2 bg-emerald-600 hover:bg-emerald-700 text-white"
@@ -810,6 +822,42 @@ function PayuPanel() {
           <span>Refund, settlement, and payout are NOT active — these require separate provider activation. Do not present these as working features.</span>
         </div>
       </div>
+
+      {/* Live-mode enable confirmation dialog */}
+      <AlertDialog open={showLiveConfirm} onOpenChange={(v) => { if (!v) setShowLiveConfirm(false); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-400" />
+              Enable PayU in Live Mode?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-left">
+                <p>
+                  You are about to enable the <strong className="text-foreground">PayU Payment Gateway</strong> in{" "}
+                  <strong className="text-violet-400">Live mode</strong>. This will immediately start processing real payments.
+                </p>
+                <p>Make sure your Live Key and Live Salt have been saved and your integration is ready for production traffic.</p>
+                <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+                  <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  <span>
+                    Live mode charges real money. Verify your PayU merchant account is fully activated before confirming.
+                  </span>
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowLiveConfirm(false)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => { setShowLiveConfirm(false); saveSettings(pendingLiveEnv); }}
+              className="bg-violet-600 text-white hover:bg-violet-700"
+            >
+              Enable Live Mode
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -2615,6 +2663,7 @@ function CustomGatewayConfigPanel({ integration }: { integration: ProviderIntegr
   const [showApiSecret, setShowApiSecret] = useState(false);
   const [showWebhookSecret, setShowWebhookSecret] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [showLiveConfirm, setShowLiveConfirm] = useState(false);
 
   const { guardSave, dialog: disableGuardDialog } = useDisableGatewayGuard(
     integration.providerKey,
@@ -2665,6 +2714,10 @@ function CustomGatewayConfigPanel({ integration }: { integration: ProviderIntegr
   }
 
   function handleSave() {
+    if (enabled && environment === "live") {
+      setShowLiveConfirm(true);
+      return;
+    }
     const willDisable = computeWillDisable(integration.isEnabled, enabled);
     guardSave(willDisable, doSave);
   }
@@ -2844,6 +2897,46 @@ function CustomGatewayConfigPanel({ integration }: { integration: ProviderIntegr
           </div>
         )}
       </div>
+
+      {/* Live-mode enable confirmation dialog */}
+      <AlertDialog open={showLiveConfirm} onOpenChange={(v) => { if (!v) setShowLiveConfirm(false); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-400" />
+              Enable {integration.displayNamePublic} in Live Mode?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-left">
+                <p>
+                  You are about to enable <strong className="text-foreground">{integration.displayNamePublic}</strong> in{" "}
+                  <strong className="text-violet-400">Live / Production mode</strong>. This will immediately start processing real payments.
+                </p>
+                <p>Make sure your credentials have been tested and this integration is ready for production traffic.</p>
+                <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+                  <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  <span>
+                    Live mode charges real money. Double-check your API Key and Secret before confirming.
+                  </span>
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowLiveConfirm(false)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setShowLiveConfirm(false);
+                const willDisable = computeWillDisable(integration.isEnabled, enabled);
+                guardSave(willDisable, doSave);
+              }}
+              className="bg-violet-600 text-white hover:bg-violet-700"
+            >
+              Enable Live Mode
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {disableGuardDialog}
     </div>
