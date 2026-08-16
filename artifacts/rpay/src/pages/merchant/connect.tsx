@@ -231,9 +231,9 @@ async function portalFetch(path: string, init?: RequestInit): Promise<Response> 
 }
 
 // ── Portal provider slugs — providers that use the Connector Engine ────────────
-// All adapters are currently fail-closed (PARTNER_API_REQUIRED).
-// This set drives the "Portal Automation" section in the connect page.
-const PORTAL_PROVIDER_SLUGS = new Set(["pinelabs_one"]);
+// Razorpay: API Key + Secret — real adapter, no CAPTCHA, fully operational.
+// Pine Labs ONE: fail-closed (PARTNER_API_REQUIRED — awaiting partner API agreement).
+const PORTAL_PROVIDER_SLUGS = new Set(["pinelabs_one", "razorpay"]);
 
 // ── API hooks ─────────────────────────────────────────────────────────────────
 
@@ -340,12 +340,21 @@ function usePortalSessions() {
   });
 }
 
-async function initiatePortalSession(providerSlug: string): Promise<{ status: string; message: string | null }> {
+async function initiatePortalSession(
+  providerSlug: string,
+  credentials?: { loginMethod: string; identifier: string; password?: string },
+): Promise<{ status: string; message: string | null; nextStep: string | null; helpUrl: string | null }> {
   const res = await portalFetch(`/api/merchant/portal-sessions/${providerSlug}/initiate`, {
     method: "POST",
+    body: credentials ? JSON.stringify(credentials) : undefined,
   });
-  const body = await res.json().catch(() => ({ status: "FAILED", message: null }));
-  return { status: body.status ?? "FAILED", message: body.message ?? null };
+  const body = await res.json().catch(() => ({ status: "FAILED", message: null, nextStep: null, helpUrl: null }));
+  return {
+    status:   body.status   ?? "FAILED",
+    message:  body.message  ?? null,
+    nextStep: body.nextStep ?? null,
+    helpUrl:  body.helpUrl  ?? null,
+  };
 }
 
 interface HistoryEntry {
@@ -1407,6 +1416,346 @@ function PortalProviderCard({
   );
 }
 
+// ── Razorpay Portal Card — API Key authentication ─────────────────────────────
+// Allows a merchant to connect their own Razorpay account using API Key + Secret.
+// Credentials are encrypted server-side immediately on submit; never stored or
+// returned in plaintext. Raw values are wiped from component state after connect.
+
+interface PortalTransaction {
+  id: number;
+  externalId: string;
+  amount: number;
+  currency: string;
+  normalizedStatus: string | null;
+  paymentMethod: string | null;
+  txTimestamp: string | null;
+  fetchedAt: string;
+}
+
+function RazorpayPortalCard({
+  provider,
+  session,
+}: {
+  provider: any;
+  session: MerchantPortalSession | null;
+}) {
+  const qc = useQueryClient();
+  const [keyId, setKeyId]         = useState("");
+  const [keySecret, setKeySecret] = useState("");
+  const [showSecret, setShowSecret] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  const [syncing, setSyncing]       = useState(false);
+
+  const status      = session?.status ?? null;
+  const isConnected = status === "CONNECTED";
+  const isFailed    = status === "FAILED";
+  const needsConnect =
+    !status || status === "DISCONNECTED" || status === "EXPIRED" || isFailed;
+
+  const providerName = wlName(provider.slug, provider.name);
+  const cmeta = CATEGORY_META[provider.category] ?? {
+    label: provider.category,
+    color: "bg-muted text-muted-foreground border-border",
+  };
+
+  // Recent transactions — only fetched when connected
+  const { data: txData } = useQuery<PortalTransaction[]>({
+    queryKey: ["merchant", "portal-transactions", "razorpay"],
+    queryFn: async () => {
+      const res = await portalFetch(
+        "/api/merchant/portal-sessions/razorpay/transactions?limit=5",
+      );
+      if (!res.ok) return [];
+      const body = await res.json();
+      return (body.transactions ?? []) as PortalTransaction[];
+    },
+    enabled: isConnected,
+    staleTime: 60_000,
+  });
+
+  async function handleConnect() {
+    if (!keyId.trim()) {
+      toast.error("API Key ID is required.");
+      return;
+    }
+    if (!keySecret.trim()) {
+      toast.error("API Key Secret is required.");
+      return;
+    }
+    setConnecting(true);
+    try {
+      const result = await initiatePortalSession("razorpay", {
+        loginMethod: "api_key",
+        identifier:  keyId.trim(),
+        password:    keySecret.trim(),
+      });
+      if (result.status === "CONNECTED") {
+        toast.success("Razorpay account connected. Transactions will sync shortly.");
+        // Wipe from state immediately after successful connect
+        setKeyId("");
+        setKeySecret("");
+        qc.invalidateQueries({ queryKey: PORTAL_SESSIONS_QUERY_KEY });
+      } else {
+        const msg = result.message ?? "Connection failed. Check your API credentials.";
+        toast.error(msg);
+        qc.invalidateQueries({ queryKey: PORTAL_SESSIONS_QUERY_KEY });
+      }
+    } catch {
+      toast.error("Connection failed. Please try again.");
+    } finally {
+      setConnecting(false);
+    }
+  }
+
+  async function handleSync() {
+    setSyncing(true);
+    try {
+      const res = await portalFetch(
+        "/api/merchant/portal-sessions/razorpay/sync",
+        { method: "POST" },
+      );
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(body.error ?? "Sync failed.");
+      } else {
+        const n = body.synced ?? 0;
+        toast.success(`Sync complete — ${n} new transaction${n === 1 ? "" : "s"} fetched.`);
+        qc.invalidateQueries({ queryKey: ["merchant", "portal-transactions", "razorpay"] });
+        qc.invalidateQueries({ queryKey: PORTAL_SESSIONS_QUERY_KEY });
+      }
+    } catch {
+      toast.error("Sync failed. Please try again.");
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  async function handleDisconnect() {
+    try {
+      const res = await portalFetch(
+        "/api/merchant/portal-sessions/razorpay/disconnect",
+        { method: "POST" },
+      );
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        toast.error(body.error ?? "Disconnect failed.");
+      } else {
+        toast.success("Razorpay account disconnected.");
+        qc.invalidateQueries({ queryKey: PORTAL_SESSIONS_QUERY_KEY });
+        qc.invalidateQueries({ queryKey: ["merchant", "portal-transactions", "razorpay"] });
+      }
+    } catch {
+      toast.error("Disconnect failed. Please try again.");
+    }
+  }
+
+  return (
+    <Card className="border-border/60 bg-card">
+      <CardHeader className="pb-2">
+        <div className="flex items-start gap-3">
+          <div className="w-14 h-14 rounded-xl bg-background border border-border/60 flex items-center justify-center shrink-0">
+            <ProviderIcon slug={provider.slug} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <CardTitle className="text-base truncate">{providerName}</CardTitle>
+            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+              <Badge
+                variant="outline"
+                className={`text-xs ${cmeta.color}`}
+              >
+                {cmeta.label}
+              </Badge>
+              {isConnected && (
+                <Badge
+                  variant="outline"
+                  className="text-xs border-emerald-500/40 text-emerald-400 flex items-center gap-1"
+                >
+                  <CheckCircle2 className="w-3 h-3" /> Connected
+                </Badge>
+              )}
+              {isFailed && (
+                <Badge
+                  variant="outline"
+                  className="text-xs border-red-500/40 text-red-400 flex items-center gap-1"
+                >
+                  <XCircle className="w-3 h-3" /> Failed
+                </Badge>
+              )}
+            </div>
+          </div>
+        </div>
+      </CardHeader>
+
+      <CardContent className="space-y-3">
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          {PROVIDER_DESC[provider.slug] ??
+            "Connect your Razorpay merchant account to sync transaction history and monitor settlement status inside RasoKart."}
+        </p>
+
+        {/* ── CONNECTED state ──────────────────────────────────────────── */}
+        {isConnected && (
+          <div className="space-y-3">
+            <div className="p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20 space-y-1">
+              <p className="text-xs font-semibold text-emerald-400 flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Account Connected
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {session?.connectedAt
+                  ? `Connected on ${new Date(session.connectedAt).toLocaleDateString("en-IN")}`
+                  : "Your Razorpay account is connected and monitored."}
+              </p>
+            </div>
+
+            {/* Recent synced transactions */}
+            {txData && txData.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground">Recent transactions</p>
+                {txData.map(tx => (
+                  <div
+                    key={tx.id}
+                    className="flex items-center justify-between text-xs py-1 border-b border-border/30 last:border-0"
+                  >
+                    <span className="text-muted-foreground font-mono truncate max-w-[120px]">
+                      {tx.externalId}
+                    </span>
+                    <span className="font-medium tabular-nums">
+                      ₹{((tx.amount ?? 0) / 100).toLocaleString("en-IN", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </span>
+                    <span
+                      className={`capitalize font-medium ${
+                        tx.normalizedStatus === "SUCCESS"
+                          ? "text-emerald-400"
+                          : tx.normalizedStatus === "FAILED"
+                          ? "text-red-400"
+                          : "text-amber-400"
+                      }`}
+                    >
+                      {tx.normalizedStatus?.toLowerCase() ?? "unknown"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {txData && txData.length === 0 && (
+              <p className="text-xs text-muted-foreground text-center py-2">
+                No transactions yet. Click "Sync Now" to fetch the last 30 days.
+              </p>
+            )}
+
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="flex-1 gap-1.5"
+                onClick={handleSync}
+                disabled={syncing}
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${syncing ? "animate-spin" : ""}`} />
+                {syncing ? "Syncing…" : "Sync Now"}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="gap-1.5 text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                onClick={handleDisconnect}
+              >
+                <Unlink className="w-3.5 h-3.5" />
+                Disconnect
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* ── NOT CONNECTED / credential form ──────────────────────────── */}
+        {needsConnect && (
+          <div className="space-y-3">
+            {isFailed && session?.lastStatusMessage && (
+              <div className="p-2.5 rounded-lg bg-red-500/5 border border-red-500/20">
+                <p className="text-xs text-red-400 flex items-start gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  {session.lastStatusMessage}
+                </p>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <div>
+                <label className="text-xs text-muted-foreground block mb-1">API Key ID</label>
+                <Input
+                  className="h-8 text-xs font-mono"
+                  placeholder="rzp_live_xxxxxxxxxxxx"
+                  value={keyId}
+                  onChange={e => setKeyId(e.target.value)}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground block mb-1">API Key Secret</label>
+                <div className="relative">
+                  <Input
+                    className="h-8 text-xs font-mono pr-12"
+                    placeholder="••••••••••••••••"
+                    type={showSecret ? "text" : "password"}
+                    value={keySecret}
+                    onChange={e => setKeySecret(e.target.value)}
+                    autoComplete="new-password"
+                    spellCheck={false}
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground"
+                    onClick={() => setShowSecret(v => !v)}
+                    tabIndex={-1}
+                  >
+                    {showSecret ? "Hide" : "Show"}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Get your keys from{" "}
+              <a
+                href="https://dashboard.razorpay.com/app/keys"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary underline-offset-2 hover:underline"
+              >
+                Razorpay Dashboard → Settings → API Keys
+              </a>
+              . Keys are encrypted with AES-256 on the server and never returned to the browser.
+            </p>
+
+            <Button
+              size="sm"
+              className="w-full gap-1.5"
+              onClick={handleConnect}
+              disabled={connecting || !keyId.trim() || !keySecret.trim()}
+            >
+              {connecting ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  Validating credentials…
+                </>
+              ) : (
+                <>
+                  <Link2 className="w-3.5 h-3.5" />
+                  Connect Razorpay Account
+                </>
+              )}
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── Category E (Unsupported) card ─────────────────────────────────────────────
 
 function UnsupportedCard({ provider }: { provider: any }) {
@@ -1737,25 +2086,33 @@ export default function MerchantConnect() {
             </div>
           )}
 
-          {/* Portal Automation — Partner API Required */}
+          {/* Provider Account Connect (Portal Automation) */}
           {portalProviders.length > 0 && (
             <div className="space-y-3">
               <div>
                 <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
-                  <Key className="w-3.5 h-3.5" /> Portal Automation
+                  <Key className="w-3.5 h-3.5" /> Provider Account Connect
                 </h2>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Providers that support automated portal session management (requires official partner API access).
+                  Connect your existing provider accounts to sync transaction history and monitor settlement status.
                 </p>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {portalProviders.map(p => (
-                  <PortalProviderCard
-                    key={p.slug}
-                    provider={p}
-                    session={portalSessionMap.get(p.slug) ?? null}
-                  />
-                ))}
+                {portalProviders.map(p =>
+                  p.slug === "razorpay" ? (
+                    <RazorpayPortalCard
+                      key={p.slug}
+                      provider={p}
+                      session={portalSessionMap.get(p.slug) ?? null}
+                    />
+                  ) : (
+                    <PortalProviderCard
+                      key={p.slug}
+                      provider={p}
+                      session={portalSessionMap.get(p.slug) ?? null}
+                    />
+                  )
+                )}
               </div>
             </div>
           )}

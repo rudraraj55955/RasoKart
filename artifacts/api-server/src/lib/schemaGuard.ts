@@ -2978,6 +2978,38 @@ async function runGuard(executor: GuardExecutor = db): Promise<void> {
     logger.info({ table: "merchant_portal_sessions" }, "schema_guard_table_created");
   });
 
+  // ── merchant_portal_transactions ─────────────────────────────────────────────
+  // Read-only transactions fetched from provider portals via the Connector Engine.
+  // Duplicate protection: UNIQUE (merchant_id, provider_slug, external_id).
+  await block("merchant_portal_transactions", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS merchant_portal_transactions (
+        id                   SERIAL PRIMARY KEY,
+        merchant_id          INTEGER NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
+        provider_slug        TEXT NOT NULL,
+        external_id          TEXT NOT NULL,
+        external_order_id    TEXT,
+        amount               INTEGER NOT NULL,
+        currency             TEXT NOT NULL DEFAULT 'INR',
+        status               TEXT NOT NULL,
+        normalized_status    TEXT,
+        payment_method       TEXT,
+        utr                  TEXT,
+        tx_timestamp         TIMESTAMPTZ,
+        raw_payload          TEXT,
+        fetched_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        dry_run              BOOLEAN NOT NULL DEFAULT TRUE,
+        auto_credited        BOOLEAN NOT NULL DEFAULT FALSE,
+        wallet_ledger_id     INTEGER,
+        created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (merchant_id, provider_slug, external_id)
+      )
+    `);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS merchant_portal_txns_merchant_idx ON merchant_portal_transactions(merchant_id, provider_slug)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS merchant_portal_txns_ts_idx ON merchant_portal_transactions(tx_timestamp DESC NULLS LAST)`);
+    logger.info({ table: "merchant_portal_transactions" }, "schema_guard_table_created");
+  });
+
   _guardStatus = "pass";
   logger.info("schema_guard_completed");
 }

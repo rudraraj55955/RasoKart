@@ -8,21 +8,28 @@
  * Isolation: every SQL query filters on WHERE merchant_id = req.user.merchantId.
  * No cross-tenant leakage is possible.
  *
- * All provider adapters are currently fail-closed (PARTNER_API_REQUIRED).
- * This route is the complete tenant infrastructure — ready for live providers.
+ * CREDENTIAL SECURITY:
+ *   - Credentials (API keys, passwords) are accepted over HTTPS in the request body.
+ *   - They are encrypted server-side with AES-256-GCM before being passed to adapters.
+ *   - Raw credential values are never logged, returned to the frontend, or written to disk.
+ *   - Only the encrypted session token is persisted (in encrypted_session column).
+ *
+ * ADAPTERS:
+ *   - Razorpay (razorpay): API Key + Secret — no CAPTCHA, no OTP, no browser sessions.
+ *   - Pine Labs ONE (pinelabs_one): fail-closed (PARTNER_API_REQUIRED).
  */
 
 import { Router } from "express";
 import { eq, and, desc } from "drizzle-orm";
 import { db } from "@workspace/db";
-import { merchantPortalSessionsTable } from "@workspace/db";
+import { merchantPortalSessionsTable, merchantPortalTransactionsTable } from "@workspace/db";
 import { requireAuth } from "../middlewares/auth";
 import { isPortalProvider, getAdapter } from "../helpers/connectorEngine/engine";
 import { getRegisteredSlugs } from "../helpers/connectorEngine/adapters/registry";
+import { encryptSecret } from "../helpers/cryptoUtils";
 import { logger } from "../lib/logger";
-import rateLimit from "express-rate-limit";
-import { DbRateLimitStore } from "../lib/rateLimitStore";
 import { makeRateLimiter, safeIpKey } from "../helpers/makeRateLimiter";
+import { DbRateLimitStore } from "../lib/rateLimitStore";
 
 const router = Router();
 
@@ -57,6 +64,15 @@ const submitStepLimit = makeRateLimiter({
   message: { error: "Too many OTP/step submissions. Please wait 10 minutes." },
   keyGenerator: (req: any) =>
     `mps-step:${safeIpKey(req)}:${req.user?.merchantId ?? "anon"}`,
+});
+
+const syncLimit = makeRateLimiter({
+  windowMs: 60 * 60 * 1000,
+  limit: 10,
+  store: new DbRateLimitStore(),
+  message: { error: "Too many sync requests. Please wait before syncing again." },
+  keyGenerator: (req: any) =>
+    `mps-sync:${safeIpKey(req)}:${req.user?.merchantId ?? "anon"}`,
 });
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -107,10 +123,15 @@ router.get("/providers", async (req: any, res) => {
       sessions.map((s) => [s.providerSlug, publicSession(s)]),
     );
 
-    const providers = slugs.map((slug: string) => ({
-      slug,
-      session: sessionBySlug.get(slug) ?? null,
-    }));
+    const providers = slugs.map((slug: string) => {
+      const adapter = getAdapter(slug);
+      return {
+        slug,
+        displayName: adapter?.displayName ?? slug,
+        supportedLoginMethods: adapter?.supportedLoginMethods ?? [],
+        session: sessionBySlug.get(slug) ?? null,
+      };
+    });
 
     res.json({ providers });
   } catch (err: any) {
@@ -121,7 +142,12 @@ router.get("/providers", async (req: any, res) => {
 
 // ── POST /api/merchant/portal-sessions/:provider/initiate ─────────────────────
 // Start (or restart) a portal session for the merchant's own provider account.
-// All adapters are currently fail-closed — returns 503 with PARTNER_API_REQUIRED.
+//
+// Request body:
+//   { loginMethod?: string, identifier?: string, password?: string }
+//
+// Credentials are accepted over HTTPS and encrypted server-side immediately.
+// Raw values are never logged, never persisted in plaintext, never returned.
 
 router.post("/:provider/initiate", initiateLimit, async (req: any, res) => {
   const providerSlug = req.params["provider"] as string;
@@ -142,7 +168,6 @@ router.post("/:provider/initiate", initiateLimit, async (req: any, res) => {
     // Supported login methods — if empty the adapter is fully fail-closed.
     const methods = adapter.supportedLoginMethods;
     if (methods.length === 0) {
-      // Record a FAILED session so the UI can show the blocked status.
       await db
         .insert(merchantPortalSessionsTable)
         .values({
@@ -183,20 +208,46 @@ router.post("/:provider/initiate", initiateLimit, async (req: any, res) => {
       return;
     }
 
-    // Adapters with supported methods: pass a placeholder initiate call.
-    // (All current adapters have 0 methods — this path is for future live adapters.)
+    // ── Read and validate credentials from request body ───────────────────────
+    const { loginMethod, identifier, password } = req.body ?? {};
+
+    const requestedMethodKey = loginMethod ?? methods[0].key;
+    const method = methods.find((m: any) => m.key === requestedMethodKey);
+    if (!method) {
+      res.status(400).json({ error: `Unsupported login method '${requestedMethodKey}' for this provider.` });
+      return;
+    }
+
+    if (method.requiresPassword && !password) {
+      res.status(400).json({ error: "Password / API Key Secret is required for this login method." });
+      return;
+    }
+
+    // ── Server-side AES-256-GCM encryption ───────────────────────────────────
+    // Raw credential strings are encrypted before leaving this scope.
+    // They are never logged at any point in this function.
+    const encryptedIdentifier = identifier ? encryptSecret(String(identifier)) : "";
+    const encryptedPassword   = password   ? encryptSecret(String(password))   : undefined;
+
+    // ── Dispatch to adapter ───────────────────────────────────────────────────
     const result = await adapter.initiateSession({
-      loginMethod: methods[0].key,
-      encryptedIdentifier: "", // merchant must supply via a follow-up submit-step
+      loginMethod: method.key,
+      encryptedIdentifier,
+      encryptedPassword,
     });
 
+    // ── Persist session state (encrypted token + status) ─────────────────────
+    const isConnected = result.status === "CONNECTED";
     await db
       .insert(merchantPortalSessionsTable)
       .values({
         merchantId,
         providerSlug,
         status: result.status,
+        encryptedSession: result.encryptedSessionToken ?? null,
         lastStatusMessage: result.failReason ?? result.nextStepPrompt ?? null,
+        connectedAt: isConnected ? new Date() : undefined,
+        stepFailureCount: 0,
         updatedAt: new Date(),
       })
       .onConflictDoUpdate({
@@ -206,7 +257,10 @@ router.post("/:provider/initiate", initiateLimit, async (req: any, res) => {
         ],
         set: {
           status: result.status,
+          encryptedSession: result.encryptedSessionToken ?? null,
           lastStatusMessage: result.failReason ?? result.nextStepPrompt ?? null,
+          connectedAt: isConnected ? new Date() : undefined,
+          stepFailureCount: 0,
           updatedAt: new Date(),
         },
       });
@@ -233,7 +287,8 @@ router.post("/:provider/initiate", initiateLimit, async (req: any, res) => {
 });
 
 // ── POST /api/merchant/portal-sessions/:provider/submit-step ──────────────────
-// Submit a step credential (OTP / password). Fail-closed for current adapters.
+// Submit a step credential (OTP / password / CAPTCHA) after initiateSession
+// returned AWAITING_OTP / AWAITING_PASSWORD / AWAITING_CAPTCHA.
 
 router.post("/:provider/submit-step", submitStepLimit, async (req: any, res) => {
   const providerSlug = req.params["provider"] as string;
@@ -285,17 +340,18 @@ router.post("/:provider/submit-step", submitStepLimit, async (req: any, res) => 
       encryptedPassword: encryptedPassword ?? undefined,
     });
 
+    const isConnected = result.status === "CONNECTED";
     await db
       .update(merchantPortalSessionsTable)
       .set({
         status: result.status,
+        encryptedSession: result.encryptedSessionToken ?? session.encryptedSession,
         lastStatusMessage: result.failReason ?? result.nextStepPrompt ?? null,
         stepFailureCount:
           result.status === "FAILED"
             ? (session.stepFailureCount ?? 0) + 1
             : 0,
-        connectedAt:
-          result.status === "CONNECTED" ? new Date() : session.connectedAt,
+        connectedAt: isConnected ? new Date() : session.connectedAt,
         updatedAt: new Date(),
       })
       .where(
@@ -317,6 +373,164 @@ router.post("/:provider/submit-step", submitStepLimit, async (req: any, res) => 
       "merchant_portal_submit_step_failed",
     );
     res.status(500).json({ error: "Failed to submit step" });
+  }
+});
+
+// ── POST /api/merchant/portal-sessions/:provider/sync ─────────────────────────
+// Fetch the last 30 days of transactions from the provider and store them.
+// Duplicate-safe: re-syncing the same window is idempotent (ON CONFLICT DO NOTHING).
+// dry_run=true (schema default) — transactions are recorded but NOT credited to wallet.
+
+router.post("/:provider/sync", syncLimit, async (req: any, res) => {
+  const providerSlug = req.params["provider"] as string;
+  const merchantId = getMerchantId(req);
+
+  try {
+    if (!isPortalProvider(providerSlug)) {
+      res.status(404).json({ error: `Provider '${providerSlug}' is not a portal provider` });
+      return;
+    }
+
+    const [session] = await db
+      .select()
+      .from(merchantPortalSessionsTable)
+      .where(
+        and(
+          eq(merchantPortalSessionsTable.merchantId, merchantId),
+          eq(merchantPortalSessionsTable.providerSlug, providerSlug),
+        ),
+      )
+      .limit(1);
+
+    if (!session || session.status !== "CONNECTED" || !session.encryptedSession) {
+      res.status(400).json({
+        error: "No active connected session for this provider. Connect first.",
+      });
+      return;
+    }
+
+    const adapter = getAdapter(providerSlug);
+    if (!adapter) {
+      res.status(503).json({ error: "No adapter registered for this provider." });
+      return;
+    }
+
+    // Fetch the last 30 days of transactions from the provider.
+    const to   = new Date();
+    const from = new Date(to.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    const fetchResult = await adapter.fetchTransactions({
+      encryptedSessionToken: session.encryptedSession,
+      from,
+      to,
+      pageSize: 100,
+    });
+
+    let synced  = 0;
+    let skipped = 0;
+
+    for (const tx of fetchResult.transactions) {
+      const inserted = await db
+        .insert(merchantPortalTransactionsTable)
+        .values({
+          merchantId,
+          providerSlug,
+          externalId:       tx.providerTxId,
+          externalOrderId:  null,
+          amount:           tx.amount,
+          currency:         tx.currency,
+          status:           tx.providerStatus ?? tx.status,
+          normalizedStatus: tx.status,
+          paymentMethod:    null,
+          utr:              tx.utr ?? null,
+          txTimestamp:      tx.txTimestamp ?? null,
+          rawPayload:       tx.rawPayload ? JSON.stringify(tx.rawPayload) : null,
+          fetchedAt:        new Date(),
+          dryRun:           session.dryRun ?? true,
+          autoCredited:     false,
+        })
+        .onConflictDoNothing()
+        .returning({ id: merchantPortalTransactionsTable.id });
+
+      if (inserted.length > 0) {
+        synced++;
+      } else {
+        skipped++;
+      }
+    }
+
+    // Touch session.updatedAt so UI reflects the last sync time.
+    await db
+      .update(merchantPortalSessionsTable)
+      .set({ updatedAt: new Date() })
+      .where(
+        and(
+          eq(merchantPortalSessionsTable.merchantId, merchantId),
+          eq(merchantPortalSessionsTable.providerSlug, providerSlug),
+        ),
+      );
+
+    logger.info(
+      { merchantId, providerSlug, synced, skipped, hasMore: fetchResult.hasMore },
+      "merchant_portal_sync_complete",
+    );
+
+    res.json({
+      synced,
+      skipped,
+      total:   fetchResult.transactions.length,
+      hasMore: fetchResult.hasMore,
+    });
+  } catch (err: any) {
+    logger.error({ err: err.message, merchantId, providerSlug }, "merchant_portal_sync_failed");
+    res.status(500).json({ error: "Sync failed. Please try again." });
+  }
+});
+
+// ── GET /api/merchant/portal-sessions/:provider/transactions ──────────────────
+// List stored portal transactions for this merchant + provider (paginated).
+// rawPayload is excluded from the response for size and to prevent accidental PII exposure.
+
+router.get("/:provider/transactions", async (req: any, res) => {
+  const providerSlug = req.params["provider"] as string;
+  const merchantId   = getMerchantId(req);
+  const limit = Math.min(parseInt((req.query["limit"] as string) ?? "50", 10) || 50, 100);
+
+  try {
+    const rows = await db
+      .select({
+        id:              merchantPortalTransactionsTable.id,
+        externalId:      merchantPortalTransactionsTable.externalId,
+        externalOrderId: merchantPortalTransactionsTable.externalOrderId,
+        amount:          merchantPortalTransactionsTable.amount,
+        currency:        merchantPortalTransactionsTable.currency,
+        status:          merchantPortalTransactionsTable.status,
+        normalizedStatus: merchantPortalTransactionsTable.normalizedStatus,
+        paymentMethod:   merchantPortalTransactionsTable.paymentMethod,
+        utr:             merchantPortalTransactionsTable.utr,
+        txTimestamp:     merchantPortalTransactionsTable.txTimestamp,
+        fetchedAt:       merchantPortalTransactionsTable.fetchedAt,
+        dryRun:          merchantPortalTransactionsTable.dryRun,
+        autoCredited:    merchantPortalTransactionsTable.autoCredited,
+        createdAt:       merchantPortalTransactionsTable.createdAt,
+      })
+      .from(merchantPortalTransactionsTable)
+      .where(
+        and(
+          eq(merchantPortalTransactionsTable.merchantId, merchantId),
+          eq(merchantPortalTransactionsTable.providerSlug, providerSlug),
+        ),
+      )
+      .orderBy(desc(merchantPortalTransactionsTable.txTimestamp))
+      .limit(limit);
+
+    res.json({ transactions: rows });
+  } catch (err: any) {
+    logger.error(
+      { err: err.message, merchantId, providerSlug },
+      "merchant_portal_transactions_failed",
+    );
+    res.status(500).json({ error: "Failed to fetch transactions" });
   }
 });
 
@@ -379,11 +593,11 @@ router.post("/:provider/disconnect", async (req: any, res) => {
     await db
       .update(merchantPortalSessionsTable)
       .set({
-        status: "DISCONNECTED",
-        encryptedSession: null,
-        endedAt: new Date(),
-        endReason: "MERCHANT_REQUEST",
-        updatedAt: new Date(),
+        status:           "DISCONNECTED",
+        encryptedSession: null,   // credentials wiped immediately on disconnect
+        endedAt:          new Date(),
+        endReason:        "MERCHANT_REQUEST",
+        updatedAt:        new Date(),
       })
       .where(
         and(

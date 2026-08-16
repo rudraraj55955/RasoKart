@@ -106,3 +106,4 @@ export * from "./portalDiscovery";
 export * from "./portalTransactions";
 export * from "./portalWalletCredits";
 export * from "./merchantPortalSessions";
+export * from "./merchantPortalTransactions";
