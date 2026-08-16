@@ -145,6 +145,11 @@ export const PERMISSIONS = {
   SABPAISA_REFUNDS_VIEW:            "sabpaisa_refunds_view",
   SABPAISA_REFUNDS_MANAGE:          "sabpaisa_refunds_manage",
 
+  // ── Granular Pine Labs ops (Super Admin only — platform policy) ──────────
+  // All strictly SA-only; non-SA users cannot receive these via per-user override.
+  ADMIN_PINELABS:                   "admin_pinelabs",
+  PINELABS_SETTINGS_MANAGE:         "pinelabs_settings_manage",
+
   // ── Customer (payment link / checkout consumers) ───────────────────────
   // Customers are not portal users — they interact only through public
   // checkout flows and payment links. They have zero portal permissions by
@@ -212,6 +217,9 @@ export const SUPER_ADMIN_ONLY_PERMISSIONS: Set<string> = new Set([
   PERMISSIONS.SABPAISA_RECONCILIATION_MANAGE,
   PERMISSIONS.SABPAISA_REFUNDS_VIEW,
   PERMISSIONS.SABPAISA_REFUNDS_MANAGE,
+  // Granular Pine Labs ops — strictly SA-only; platform security policy
+  PERMISSIONS.ADMIN_PINELABS,
+  PERMISSIONS.PINELABS_SETTINGS_MANAGE,
 ]);
 
 /**

@@ -143,6 +143,18 @@ router.put("/integrations/:key", requireAdmin, async (req, res, next) => {
   try {
     const user = (req as any).user;
     const key = req.params["key"] as string;
+
+    // Pine Labs credential updates are restricted to Super Admin only.
+    // admin_pinelabs is in SUPER_ADMIN_ONLY_PERMISSIONS so regular admins
+    // never hold it and cannot receive an ALLOW override.
+    if (key === "pinelabs" && !user.isSuperAdmin) {
+      res.status(403).json({
+        error: "Permission denied",
+        permissionRequired: ["pinelabs_settings_manage"],
+        mode: "OR",
+      });
+      return;
+    }
     const { environment, isEnabled, webhookUrl, notes, displayNamePublic, productType, apiKey, apiSecret, webhookSecret, clientId } = req.body as {
       environment?: string;
       isEnabled?: boolean;

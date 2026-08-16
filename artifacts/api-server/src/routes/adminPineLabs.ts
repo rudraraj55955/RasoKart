@@ -15,12 +15,16 @@
 import { Router } from "express";
 import { eq } from "drizzle-orm";
 import { db, providerIntegrationsTable } from "@workspace/db";
-import { requireAuth, requireAdmin } from "../middlewares/auth";
+import { requireAuth, requireSuperAdmin } from "../middlewares/auth";
 import { decryptSecret } from "../helpers/cryptoUtils";
 import { verifyPineLabsUatCredentials } from "../helpers/pineLabsVerify";
 
 const router = Router();
-router.use(requireAuth, requireAdmin);
+// Pine Labs credential test is strictly Super Admin-only.  requireSuperAdmin uses
+// a direct isSuperAdmin flag check that cannot be bypassed via per-user IAM
+// ALLOW overrides — unlike requirePermission, which evaluates the IAM resolver
+// and can be escalated by a SA granting the key to a regular admin.
+router.use(requireAuth, requireSuperAdmin);
 
 /**
  * Translate the raw `environment` string stored in provider_integrations into
