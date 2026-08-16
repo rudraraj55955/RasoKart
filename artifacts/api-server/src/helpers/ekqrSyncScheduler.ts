@@ -240,8 +240,54 @@ export function initEkqrSyncScheduler(): void {
   syncTask = cron.schedule("*/5 * * * *", async () => {
     try {
       await runEkqrSync("scheduled");
+      // Reset consecutive failure counter on success
+      await db
+        .insert(systemConfigTable)
+        .values({ key: SYSTEM_CONFIG_KEYS.EKQR_SYNC_CONSECUTIVE_FAILURES, value: "0" })
+        .onConflictDoUpdate({
+          target: systemConfigTable.key,
+          set: { value: "0", updatedAt: sql`now()` },
+        });
     } catch (err) {
       logger.error({ err }, "EKQR sync scheduler job failed");
+
+      // Track consecutive failures for the alert
+      try {
+        const [row] = await db
+          .select({ value: systemConfigTable.value })
+          .from(systemConfigTable)
+          .where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.EKQR_SYNC_CONSECUTIVE_FAILURES))
+          .limit(1);
+
+        const prev = parseInt(row?.value ?? "0", 10);
+        const next = isNaN(prev) ? 1 : prev + 1;
+
+        await db
+          .insert(systemConfigTable)
+          .values({ key: SYSTEM_CONFIG_KEYS.EKQR_SYNC_CONSECUTIVE_FAILURES, value: String(next) })
+          .onConflictDoUpdate({
+            target: systemConfigTable.key,
+            set: { value: String(next), updatedAt: sql`now()` },
+          });
+
+        // Alert on 3rd consecutive failure (and every 3rd thereafter)
+        if (next >= 3 && next % 3 === 0) {
+          logger.error(
+            { consecutiveFailures: next },
+            "EKQR sync scheduler: consecutive failure threshold reached — notifying admins"
+          );
+          notifyAdminsOfStuckEkqrQrCodes({
+            stuck: 0,
+            threshold: 0,
+            staleMinutes: 0,
+            cooldownHours: 4,
+          }).catch((notifyErr) => {
+            logger.error({ notifyErr }, "EKQR sync: failed to send consecutive-failure alert");
+          });
+        }
+      } catch (trackErr) {
+        logger.error({ trackErr }, "EKQR sync: failed to track consecutive failure count");
+      }
     }
   });
 

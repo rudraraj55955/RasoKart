@@ -55,6 +55,7 @@ import onboardingRouter from "./onboarding";
 import adminOnboardingRouter from "./adminOnboarding";
 import secureIdSettingsRouter from "./secureIdSettings";
 import merchantKycRouter from "./merchantKyc";
+import merchantEnrollmentsRouter from "./merchantEnrollments";
 import adminMerchantKycRouter from "./adminMerchantKyc";
 import merchantKycSettingsRouter from "./merchantKycSettings";
 import payoutMerchantRouter from "./payoutMerchant";
@@ -196,6 +197,9 @@ router.use("/onboarding", onboardingRouter);
 router.use("/admin/onboarding", adminOnboardingRouter);
 router.use("/admin/secure-id-settings", secureIdSettingsRouter);
 router.use("/merchant-kyc", merchantKycRouter);
+
+// Merchant self-service provider enrollment (Category D providers, audit log, rate-limited)
+router.use("/merchant/enrollments", merchantEnrollmentsRouter);
 router.use("/admin/merchant-kyc-settings", merchantKycSettingsRouter);
 router.use("/admin/merchant-kyc", adminMerchantKycRouter);
 

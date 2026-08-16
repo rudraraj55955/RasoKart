@@ -47,6 +47,7 @@ export const SYSTEM_CONFIG_KEYS = {
   EKQR_SYNC_LAST_RUN_AT: "ekqr_sync_last_run_at",
   EKQR_SYNC_LAST_SYNCED: "ekqr_sync_last_synced",
   EKQR_SYNC_LAST_STUCK: "ekqr_sync_last_stuck",
+  EKQR_SYNC_CONSECUTIVE_FAILURES: "ekqr_sync_consecutive_failures",
   UPIGATEWAY_PAYIN_ENABLED: "upigateway_payin_enabled",
   UPIGATEWAY_ENV: "upigateway_env",
   UPIGATEWAY_BASE_URL: "upigateway_base_url",
@@ -317,6 +318,7 @@ export const SYSTEM_CONFIG_NO_DEFAULT_KEYS: ReadonlySet<string> = new Set([
   SYSTEM_CONFIG_KEYS.EKQR_SYNC_LAST_RUN_AT,
   SYSTEM_CONFIG_KEYS.EKQR_SYNC_LAST_SYNCED,
   SYSTEM_CONFIG_KEYS.EKQR_SYNC_LAST_STUCK,
+  SYSTEM_CONFIG_KEYS.EKQR_SYNC_CONSECUTIVE_FAILURES, // runtime-state: reset on success, incremented on exception
   SYSTEM_CONFIG_KEYS.FAILOVER_ALERT_SNOOZED_UNTIL,  // runtime-state: set by acknowledge route; never seeded
   SYSTEM_CONFIG_KEYS.PAYIN_CHAIN_EXHAUSTED_SINCE,   // set when chain exhausted; cleared on recovery
   SYSTEM_CONFIG_KEYS.UPIGATEWAY_CAP_ALERT_LAST_SENT_DATE, // runtime-state: date last EKQR cap-full alert was sent (once per UTC day)

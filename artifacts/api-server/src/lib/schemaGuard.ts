@@ -2757,6 +2757,39 @@ async function runGuard(executor: GuardExecutor = db): Promise<void> {
     );
   }
 
+  // ── merchant_provider_enrollments ─────────────────────────────────────────
+  await block("merchant_provider_enrollments", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS merchant_provider_enrollments (
+        id                  SERIAL PRIMARY KEY,
+        merchant_id         INTEGER NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
+        provider_slug       TEXT NOT NULL,
+        enrollment_status   TEXT NOT NULL DEFAULT 'pending_kyc',
+        encrypted_api_key   TEXT,
+        encrypted_api_secret TEXT,
+        encrypted_webhook_secret TEXT,
+        masked_identifier   TEXT,
+        onboarding_url      TEXT,
+        connected_at        TIMESTAMPTZ,
+        last_verified_at    TIMESTAMPTZ,
+        disconnected_at     TIMESTAMPTZ,
+        disconnected_by     TEXT,
+        failure_reason      TEXT,
+        created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS merchant_provider_enrollments_uniq
+        ON merchant_provider_enrollments(merchant_id, provider_slug)
+    `);
+    await exec.execute(sql`
+      CREATE INDEX IF NOT EXISTS merchant_provider_enrollments_merchant_id_idx
+        ON merchant_provider_enrollments(merchant_id)
+    `);
+    logger.info({ table: "merchant_provider_enrollments" }, "schema_guard_table_created");
+  });
+
   _guardStatus = "pass";
   logger.info("schema_guard_completed");
 }

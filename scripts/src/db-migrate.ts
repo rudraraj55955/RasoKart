@@ -1758,6 +1758,32 @@ async function migrate() {
       ON user_permissions(user_id);
   `);
 
+  // ── Section N: merchant_provider_enrollments ─────────────────────────────
+  await runSection("merchant_provider_enrollments", sql`
+    CREATE TABLE IF NOT EXISTS merchant_provider_enrollments (
+      id                       SERIAL PRIMARY KEY,
+      merchant_id              INTEGER NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
+      provider_slug            TEXT NOT NULL,
+      enrollment_status        TEXT NOT NULL DEFAULT 'pending_kyc',
+      encrypted_api_key        TEXT,
+      encrypted_api_secret     TEXT,
+      encrypted_webhook_secret TEXT,
+      masked_identifier        TEXT,
+      onboarding_url           TEXT,
+      connected_at             TIMESTAMPTZ,
+      last_verified_at         TIMESTAMPTZ,
+      disconnected_at          TIMESTAMPTZ,
+      disconnected_by          TEXT,
+      failure_reason           TEXT,
+      created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS merchant_provider_enrollments_uniq
+      ON merchant_provider_enrollments(merchant_id, provider_slug);
+    CREATE INDEX IF NOT EXISTS merchant_provider_enrollments_merchant_id_idx
+      ON merchant_provider_enrollments(merchant_id);
+  `);
+
   console.log("DB migrations complete.");
   process.exit(0);
 }

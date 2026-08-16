@@ -78,6 +78,7 @@ export * from "./platformWalletLedger";
 export * from "./taxLiabilityLedger";
 export * from "./otpSmsSettings";
 export * from "./smsSendLogs";
+export * from "./merchantProviderEnrollments";
 export * from "./secureIdSettings";
 export * from "./merchantKycVerifications";
 export * from "./kycVerificationLogs";
