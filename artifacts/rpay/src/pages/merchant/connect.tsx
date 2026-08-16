@@ -101,25 +101,28 @@ interface Enrollment {
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const PROVIDER_WHITE_LABEL: Record<string, string> = {
-  upi_id:        "RasoKart UPI",
-  google_pay:    "RasoKart UPI",
-  phonepe:       "RasoKart Collect",
-  paytm:         "RasoKart Wallet",
-  bharatpe:      "RasoKart Merchant",
-  freecharge:    "RasoKart Pay",
-  amazon_pay:    "RasoKart Digital",
-  mobikwik:      "Mobile Wallet",
-  sbi_yono:      "Bank UPI",
-  hdfc_smarthub: "Bank SmartQR",
-  icici_eazypay: "Bank QR",
-  axis_pay:      "Bank QR",
-  kotak_smart:   "Bank Smart Collect",
-  razorpay:      "RasoKart Gateway",
-  cashfree:      "RasoKart Payments",
-  payu:          "RasoKart Gateway Plus",
-  ekqr:          "RasoKart QR Gateway",
-  pinelabs:      "RasoKart Plural",
-  pinelabs_one:  "Pine Labs ONE",
+  upi_id:          "RasoKart UPI",
+  google_pay:      "RasoKart UPI",
+  phonepe:         "RasoKart Collect",
+  paytm:           "RasoKart Wallet",
+  // paytm_merchant is the portal_session_connector — always shown with its real
+  // name so merchants can distinguish it from the legacy paytm enrollment card.
+  paytm_merchant:  "Paytm Business Merchant Connector",
+  bharatpe:        "RasoKart Merchant",
+  freecharge:      "RasoKart Pay",
+  amazon_pay:      "RasoKart Digital",
+  mobikwik:        "Mobile Wallet",
+  sbi_yono:        "Bank UPI",
+  hdfc_smarthub:   "Bank SmartQR",
+  icici_eazypay:   "Bank QR",
+  axis_pay:        "Bank QR",
+  kotak_smart:     "Bank Smart Collect",
+  razorpay:        "RasoKart Gateway",
+  cashfree:        "RasoKart Payments",
+  payu:            "RasoKart Gateway Plus",
+  ekqr:            "RasoKart QR Gateway",
+  pinelabs:        "RasoKart Plural",
+  pinelabs_one:    "Pine Labs ONE",
 };
 
 const PROVIDER_DESC: Record<string, string> = {
@@ -501,31 +504,29 @@ function EnrollFlowDialog({
           Choose how you want to connect <span className="font-medium text-foreground">{providerName}</span>:
         </p>
 
-        {/* Option 1: Mobile Number + OTP */}
-        <button
-          className="w-full text-left p-4 rounded-lg border border-border/60 hover:border-sky-500/40 hover:bg-sky-500/5 transition-colors group"
-          onClick={() => setStep("mobile_otp")}
-        >
-          <div className="flex items-start gap-3">
-            <div className="w-9 h-9 rounded-lg bg-sky-500/10 flex items-center justify-center shrink-0 group-hover:bg-sky-500/20 transition-colors">
-              <Smartphone className="w-4 h-4 text-sky-400" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <p className="text-sm font-semibold text-foreground">Connect with Mobile Number + OTP</p>
-                {!mobileOtpSupported && (
-                  <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border/60">
-                    Check status
-                  </span>
-                )}
+        {/* Option 1: Mobile Number + OTP — only shown when the provider supports it.
+            When mobileOtpSupported is false (e.g. paytm), the dedicated
+            paytm_merchant portal card handles Mobile+OTP instead. Hiding the
+            button here prevents the confusing "not supported" dead-end. */}
+        {mobileOtpSupported && (
+          <button
+            className="w-full text-left p-4 rounded-lg border border-border/60 hover:border-sky-500/40 hover:bg-sky-500/5 transition-colors group"
+            onClick={() => setStep("mobile_otp")}
+          >
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-lg bg-sky-500/10 flex items-center justify-center shrink-0 group-hover:bg-sky-500/20 transition-colors">
+                <Smartphone className="w-4 h-4 text-sky-400" />
               </div>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Authenticate using your registered mobile number via the provider's OTP system
-              </p>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-foreground">Connect with Mobile Number + OTP</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Authenticate using your registered mobile number via the provider's OTP system
+                </p>
+              </div>
+              <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-sky-400 mt-0.5 shrink-0 transition-colors" />
             </div>
-            <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-sky-400 mt-0.5 shrink-0 transition-colors" />
-          </div>
-        </button>
+          </button>
+        )}
 
         {/* Option 2: Email ID + OTP (only shown when provider portal supports email+OTP login) */}
         {emailOtpAvailable && (
@@ -1985,7 +1986,7 @@ function PaytmPortalCard({
       <CardHeader className="pb-2">
         <div className="flex items-start gap-3">
           <div className="w-14 h-14 rounded-xl bg-background border border-border/60 flex items-center justify-center shrink-0">
-            <ProviderIcon slug="paytm" />
+            <ProviderIcon slug="paytm_merchant" />
           </div>
           <div className="flex-1 min-w-0">
             <CardTitle className="text-base truncate">{providerName}</CardTitle>

@@ -828,12 +828,15 @@ export async function seed() {
 
   // ── Idempotent upsert for Paytm Business (portal session connector) ─────────
   // Paytm Business (business.paytm.com) — portal_session_connector using
-  // registered mobile + OTP login. Status: sandbox — browser automation adapter
-  // is registered and operational for the portal session flow.
+  // registered mobile + OTP login via browser automation. Status: live so that
+  // merchants can see the "Paytm Business Merchant Connector" card on the Connect
+  // page. The adapter is fully operational; dry_run=true and auto_credited=false
+  // are enforced at all times. Changing status to "live" makes resolveVisible()
+  // return true for all merchants (no per-merchant visibility override needed).
   await db.insert(providersTable).values({
-    name: "Paytm Business", slug: "paytm_merchant", category: "upi", status: "sandbox",
-    description: "Paytm Business portal — mobile OTP portal session connector (read-only transaction sync)", sortOrder: 20,
-  }).onConflictDoUpdate({ target: providersTable.slug, set: { name: "Paytm Business", category: "upi", status: "sandbox", sortOrder: 20 } });
+    name: "Paytm Business Merchant Connector", slug: "paytm_merchant", category: "upi", status: "live",
+    description: "Connect your Paytm Business account with Mobile Number + OTP to sync transaction history (read-only)", sortOrder: 20,
+  }).onConflictDoUpdate({ target: providersTable.slug, set: { name: "Paytm Business Merchant Connector", category: "upi", status: "live", description: "Connect your Paytm Business account with Mobile Number + OTP to sync transaction history (read-only)", sortOrder: 20 } });
 
   // ── Idempotent upsert for Pine Labs provider_integrations row ─────────────
   // Pine Labs is a gateway-category platform integration; it is not UPI/bank so
