@@ -500,6 +500,28 @@ async function migrate() {
     -- ── merchants: add verification_status column ───────────────────────────────
     ALTER TABLE merchants ADD COLUMN IF NOT EXISTS verification_status TEXT NOT NULL DEFAULT 'pending';
 
+    -- ── merchants: registration columns (mirrors schemaGuard "merchants_registration") ──
+    ALTER TABLE merchants ADD COLUMN IF NOT EXISTS registration_stage TEXT NOT NULL DEFAULT 'REGISTERED';
+    ALTER TABLE merchants ADD COLUMN IF NOT EXISTS business_type TEXT;
+    ALTER TABLE merchants ADD COLUMN IF NOT EXISTS pan_number TEXT;
+
+    -- ── merchants: force-approve columns (mirrors schemaGuard "merchants_force_approve") ──
+    ALTER TABLE merchants ADD COLUMN IF NOT EXISTS force_approved_at TIMESTAMPTZ;
+    ALTER TABLE merchants ADD COLUMN IF NOT EXISTS force_approved_by_admin_id INTEGER;
+    ALTER TABLE merchants ADD COLUMN IF NOT EXISTS force_approved_by_email TEXT;
+    ALTER TABLE merchants ADD COLUMN IF NOT EXISTS force_approve_reason TEXT;
+    ALTER TABLE merchants ADD COLUMN IF NOT EXISTS force_approve_kyc_status TEXT;
+
+    -- ── merchants: timezone column (mirrors schemaGuard "merchants_timezone") ──
+    ALTER TABLE merchants ADD COLUMN IF NOT EXISTS timezone TEXT;
+
+    -- ── merchants: environment column (mirrors schemaGuard "merchants_environment") ──
+    ALTER TABLE merchants ADD COLUMN IF NOT EXISTS environment TEXT NOT NULL DEFAULT 'production';
+    UPDATE merchants
+    SET environment = 'demo'
+    WHERE email IN ('merchant@demo.com','merchant2@demo.com','merchant3@demo.com','payout_test@demo.com')
+      AND environment = 'production';
+
     -- ── users: notification preference columns ───────────────────────────────────
     ALTER TABLE users ADD COLUMN IF NOT EXISTS weekly_delivery_digest_emails BOOLEAN NOT NULL DEFAULT TRUE;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS ekqr_sync_alert_emails BOOLEAN NOT NULL DEFAULT TRUE;

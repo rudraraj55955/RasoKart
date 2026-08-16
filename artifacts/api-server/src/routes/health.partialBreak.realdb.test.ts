@@ -27,6 +27,7 @@ import { inArray } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 import { DEMO_CREDENTIALS } from "@workspace/demo-credentials";
 import app from "../app";
+import { prepareHealthzDeepTestEnv } from "../lib/testHelpers/ensureDemoUsers";
 
 const BROKEN_HASH = "$2b$10$tamperedhashtamperedhashtamperedhashtamperedhashtampe";
 
@@ -86,6 +87,8 @@ describe(
         allCredentials.length >= TAMPER_COUNT + 1,
         `DEMO_CREDENTIALS must have at least ${TAMPER_COUNT + 1} entries for the partial-break test to be meaningful (got ${allCredentials.length})`,
       );
+
+      await prepareHealthzDeepTestEnv();
 
       server = http.createServer(app);
       await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -176,6 +179,8 @@ describe(
         allCredentials.length >= 2,
         "DEMO_CREDENTIALS must have at least 2 entries for the all-but-one test (got 1)",
       );
+
+      await prepareHealthzDeepTestEnv();
 
       server = http.createServer(app);
       await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));

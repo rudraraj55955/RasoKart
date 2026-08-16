@@ -4,8 +4,9 @@
  * Verifies the complete stack end-to-end using a stateful in-memory DB mock:
  *
  *   RT1 — set secret via PUT → bad sig → 401 (signature enforced)
- *   RT2 — clear secret via PUT (webhookSecret:"") → any payload → 200
- *          (upsertOrDelete deletes the row; no-secret branch skips verification)
+ *   RT2 — clear secret via PUT (webhookSecret:"") → any payload → 401
+ *          (upsertOrDelete deletes the row; the handler fails closed when
+ *          neither webhook secret nor client secret is configured)
  *   RT3 — re-set secret via PUT → correctly-signed request → 200
  *          (verification re-enabled; correctly signed with stored encrypted value)
  *   RT4 — re-set secret via PUT → bad sig → 401 (re-set secret enforced)
@@ -18,10 +19,8 @@
  *
  * Note on encryption: PUT /api/system-config/cashfree encrypts the webhook
  * secret via encryptSecret() before storing.  The cashfreeWebhook.ts handler
- * currently reads the stored value directly without calling decryptSecret().
- * RT3 therefore signs with the raw stored (encrypted) value from configStore
- * so that it matches exactly what the handler uses as its HMAC key.
- * (See task #2634 for the follow-up that adds decryptSecret() to the handler.)
+ * decrypts the stored value via decryptSecret() before HMAC verification, so
+ * RT3 signs with the plain secret.
  *
  * Run:
  *   cd artifacts/api-server
@@ -388,7 +387,7 @@ describe("RT — Cashfree Payin webhook-secret round-trip via config API", () =>
     );
   });
 
-  it("RT2 — clear secret via PUT (webhookSecret:'') → webhook accepts without signature (200)", async () => {
+  it("RT2 — clear secret via PUT (webhookSecret:'') → webhook rejected 401 (fail-closed, no signing credential)", async () => {
     configStore = new Map([
       [SYSTEM_CONFIG_KEYS.CASHFREE_ENABLED, "true"],
     ]);
@@ -429,10 +428,10 @@ describe("RT — Cashfree Payin webhook-secret round-trip via config API", () =>
       "configStore must NOT hold CASHFREE_WEBHOOK_SECRET after clear",
     );
 
-    // ── Step 4: any payload with garbage sig → 200 (no-secret → skip verify) ─
-    // The handler reads webhookSecret = secretRow?.value ?? "". When the row is
-    // absent the value is "" which is falsy, so the if(webhookSecret) block is
-    // skipped entirely and the request passes through to acknowledgement.
+    // ── Step 4: any payload → 401 (fail-closed: no signing credential) ────
+    // The handler loads BOTH cashfree_webhook_secret and cashfree_client_secret
+    // and rejects with 401 "Webhook signing not configured" when neither is
+    // present. It must never fall through to the credit path unauthenticated.
     const ts = String(Math.floor(Date.now() / 1000));
     const webhookResp = await post(server, "/api/payment/cashfree-webhook", PAYIN_PAYLOAD, {
       "Content-Type": "application/json",
@@ -441,11 +440,14 @@ describe("RT — Cashfree Payin webhook-secret round-trip via config API", () =>
     });
     assert.equal(
       webhookResp.status,
-      200,
-      `No-secret branch must return 200; got ${webhookResp.status}. Body: ${webhookResp.body}`,
+      401,
+      `No signing credential must return 401 (fail-closed); got ${webhookResp.status}. Body: ${webhookResp.body}`,
     );
-    const whBody = webhookResp.json<{ success: boolean }>();
-    assert.equal(whBody.success, true, "success must be true when no secret configured");
+    const whBody = webhookResp.json<{ error: string }>();
+    assert.ok(
+      whBody.error?.toLowerCase().includes("not configured"),
+      `Expected "not configured" error when no signing credential exists; got: ${whBody.error}`,
+    );
   });
 
   it("RT3 — re-set secret via PUT → correctly-signed request → 200 (verification re-enabled)", async () => {
@@ -494,16 +496,12 @@ describe("RT — Cashfree Payin webhook-secret round-trip via config API", () =>
 
     // ── Step 4: webhook with correctly-signed request → 200 ──────────────
     // The PUT handler stores encryptSecret(RESET_SECRET) as the raw value.
-    // cashfreeWebhook.ts reads this raw stored value and passes it directly
-    // to verifyCashfreeWebhookSignature() without decryption.
-    // To produce a valid signature we must sign with the same raw stored value.
-    //
-    // (Follow-up task #2634 will add decryptSecret() to the handler, at which
-    // point the correct signing key becomes the plain RESET_SECRET again.)
+    // cashfreeWebhook.ts decrypts it via decryptSecret() before HMAC (task
+    // #2634 landed), so the correct signing key is the plain RESET_SECRET.
     const storedSecretValue = configStore.get(SYSTEM_CONFIG_KEYS.CASHFREE_WEBHOOK_SECRET)!;
     assert.ok(storedSecretValue, "Stored secret value must be non-empty after re-set");
 
-    const correctHeaders = signPayinWebhook(PAYIN_BODY_STR, storedSecretValue);
+    const correctHeaders = signPayinWebhook(PAYIN_BODY_STR, RESET_SECRET);
     const webhookResp = await post(server, "/api/payment/cashfree-webhook", PAYIN_PAYLOAD, correctHeaders);
     assert.equal(
       webhookResp.status,

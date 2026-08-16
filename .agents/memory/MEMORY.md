@@ -84,4 +84,5 @@
 - [Cashfree payout webhook secret decryption](cashfree-payout-webhook-decrypt.md) — system_config stores secrets encrypted (enc:v1:); webhook route must call decryptSecret() before HMAC — using raw encrypted blob as key causes every signature to fail silently.
 - [VPS SSH key format](vps-ssh-key-format.md) — VPS_SSH_KEY and VPS_SSH_KEY_B64 are malformed (spaces, wrong line wrapping); use VPS_SSH_KEY_B64URL decoded with `tr '_-' '/+' | base64 -d` to get a valid OpenSSH key.
 - [IAM already live in production](iam-production-state.md) — IAM/RBAC migration ran on 2026-07-19T19:32:27Z (cutoff same timestamp); 71 permissions, 497 role_permission rows, all 7 roles seeded; verify-iam-migration passes 16/16; healthz/deep all green.
+- [healthz/deep realdb test prerequisites](healthz-deep-test-prereqs.md) — deep health 503s in unit tests unless initialized flag + schema guard pass + demo users exist; use prepareHealthzDeepTestEnv().
 - [Auth stable baseline](auth-stable-baseline.md) — full auth system locked at SHA 40807c21; 15-point regression checklist (all PASS); do not modify auth files without explicit approval + regression run.
