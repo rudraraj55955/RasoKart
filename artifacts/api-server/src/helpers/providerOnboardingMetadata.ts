@@ -82,6 +82,21 @@ export interface ProviderOnboardingInfo {
    * Kept null/absent when mobileOtpSupported is true (future use).
    */
   mobileOtpNote?: string;
+  /**
+   * Whether this provider's portal supports Email ID + OTP as a login method.
+   * This is purely documentary — it does NOT mean email+OTP can be used to
+   * create a reusable RasoKart session. Set to true only when the provider's
+   * merchant portal explicitly offers email+OTP as a sign-in option.
+   * Currently only Pine Labs uses email+OTP (in addition to mobile+OTP).
+   */
+  emailOtpLoginAvailable?: boolean;
+  /**
+   * Shown to merchants when they select "Connect with Email ID + OTP".
+   * Required when emailOtpLoginAvailable is true. Must explain whether
+   * email+OTP creates a usable RasoKart session, and what to use instead
+   * if it does not.
+   */
+  emailOtpNote?: string;
   /** The login methods a merchant uses when signing in to the provider portal */
   loginMethods?: string[];
   /** URL of the existing-merchant business dashboard / API-keys page */
@@ -466,6 +481,77 @@ export const PROVIDER_ONBOARDING_METADATA: Record<string, ProviderOnboardingInfo
     finalStatus: "PROVIDER UNSUPPORTED — SAFELY DISABLED",
   },
 
+  pinelabs: {
+    slug: "pinelabs",
+    category: "D",
+    categoryReason:
+      "Pine Labs merchant portal uses both mobile OTP and email OTP for login. Pine Labs Plural " +
+      "payment gateway API is credentials-based (Merchant ID + Secret Key). Pine Labs does not " +
+      "expose a public API allowing a third-party to initiate OTP flows and receive a reusable " +
+      "merchant session/token. Category D: credential submission is the correct integration path.",
+
+    existingConnectionSupported: true,
+    existingConnectionNote:
+      "Pine Labs does not provide a third-party API for initiating merchant portal login or " +
+      "receiving authorized session tokens. To connect, log into the Pine Labs merchant portal, " +
+      "navigate to Integration Settings, and copy your Merchant ID, Access Code, and Secret Key.",
+    loginMethods: [
+      "Mobile number + OTP (Pine Labs portal — not intercepted by RasoKart)",
+      "Email ID + OTP (Pine Labs portal — not intercepted by RasoKart)",
+    ],
+    merchantPortalUrl: "https://merchant.pinelabs.com",
+    portalDisplayName: "Pine Labs Merchant Portal",
+    credentialFields: [
+      {
+        slot: "merchantId",
+        label: "Merchant ID (MID)",
+        hint: "Pine Labs merchant portal → Integration Settings → Merchant ID",
+        required: true,
+        isIdentifier: true,
+      },
+      {
+        slot: "apiKey",
+        label: "Access Code",
+        hint: "Pine Labs merchant portal → Integration Settings → Access Code",
+        required: true,
+      },
+      {
+        slot: "apiSecret",
+        label: "Secret Key",
+        hint: "Pine Labs merchant portal → Integration Settings → Secret Key / Encryption Key (keep this secret)",
+        required: true,
+      },
+    ],
+
+    // Mobile + OTP — audit result: NOT SUPPORTED FOR SESSION CONNECTION
+    // Pine Labs portal uses mobile+OTP for merchant login, but does not expose
+    // a public API that lets a third-party initiate OTP or receive a session token.
+    mobileOtpSupported: false,
+    mobileOtpNote:
+      "Email/Mobile OTP is available for Pine Labs portal login, but direct RasoKart session " +
+      "connection is not officially supported. Use Pine Labs-issued API credentials.",
+
+    // Email + OTP — audit result: NOT SUPPORTED FOR SESSION CONNECTION
+    // Pine Labs portal also supports email+OTP login, but same constraint applies:
+    // no public API for third-party session creation via email+OTP.
+    emailOtpLoginAvailable: true,
+    emailOtpNote:
+      "Email/Mobile OTP is available for Pine Labs portal login, but direct RasoKart session " +
+      "connection is not officially supported. Use Pine Labs-issued API credentials.",
+
+    signupUrl: "https://www.pinelabs.com/payment-gateway",
+    kycDocuments: [
+      "GST Registration Certificate",
+      "PAN Card (Business)",
+      "Cancelled cheque / Bank statement",
+      "Certificate of Incorporation or Partnership Deed",
+      "Aadhaar of Authorised Signatory",
+    ],
+    onboardingTimeline: "3–7 business days after document submission",
+    supportsSelfSubmit: true,
+    finalStatus: "PROVIDER READY — MERCHANT KYC/CREDENTIALS REQUIRED",
+  },
+
   ekqr: {
     slug: "ekqr",
     category: "A",
@@ -501,5 +587,8 @@ export function toPublicOnboardingInfo(info: ProviderOnboardingInfo) {
     // Mobile OTP support status — false for all current providers
     mobileOtpSupported: info.mobileOtpSupported ?? false,
     mobileOtpNote: info.mobileOtpNote ?? null,
+    // Email OTP login availability (portal login only; does not mean session connection is supported)
+    emailOtpLoginAvailable: info.emailOtpLoginAvailable ?? false,
+    emailOtpNote: info.emailOtpNote ?? null,
   };
 }

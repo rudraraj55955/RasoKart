@@ -72,6 +72,9 @@ interface OnboardingInfo {
   // Mobile OTP support — false for all current providers
   mobileOtpSupported: boolean;
   mobileOtpNote: string | null;
+  // Email OTP login — true only for providers whose portal offers email+OTP (e.g. Pine Labs)
+  emailOtpLoginAvailable: boolean;
+  emailOtpNote: string | null;
 }
 
 interface Enrollment {
@@ -115,6 +118,7 @@ const PROVIDER_WHITE_LABEL: Record<string, string> = {
   cashfree:      "RasoKart Payments",
   payu:          "RasoKart Gateway Plus",
   ekqr:          "RasoKart QR Gateway",
+  pinelabs:      "RasoKart Plural",
 };
 
 const PROVIDER_DESC: Record<string, string> = {
@@ -123,6 +127,7 @@ const PROVIDER_DESC: Record<string, string> = {
   bharatpe:      "Zero MDR UPI collections via BharatPe QR",
   amazon_pay:    "UPI merchant checkout via Amazon Pay for Business",
   mobikwik:      "Mobile wallet payment gateway via MobiKwik Business",
+  pinelabs:      "Cards, UPI, wallets, and EMI via Pine Labs Plural gateway",
   ekqr:          "Dynamic QR and auto-credit deposits — managed by RasoKart",
   freecharge:    "Not available — deprecated provider",
   sbi_yono:      "Not available — regulated banking product",
@@ -186,6 +191,7 @@ function ProviderIcon({ slug }: { slug: string }) {
     sbi_yono:      "🏦", hdfc_smarthub: "🏦", icici_eazypay: "🏦",
     axis_pay:      "🏦", kotak_smart: "🏦",
     ekqr:          "⚡", razorpay: "🔷", cashfree: "💰", payu: "💸",
+    pinelabs:      "🌲",
   };
   return <span className="text-xl leading-none">{icons[slug] ?? "💳"}</span>;
 }
@@ -303,8 +309,9 @@ interface HistoryEntry {
 // ── Step types ────────────────────────────────────────────────────────────────
 
 type FlowStep =
-  | "choice"           // initial: choose Mobile OTP, Existing Creds, or New Account
+  | "choice"           // initial: choose Mobile OTP, Email OTP, Existing Creds, or New Account
   | "mobile_otp"       // mobile+OTP — show support status (unsupported for all current providers)
+  | "email_otp"        // email+OTP  — show support status (unsupported for all current providers)
   | "existing_info"    // explain how to get credentials + login methods
   | "credentials"      // form with provider-specific field labels
   | "new_account";     // KYC docs + signup link
@@ -332,6 +339,7 @@ function EnrollFlowDialog({
   const initiateEnrollment = useInitiateEnrollment();
   const submitCredentials = useSubmitCredentials();
   const info = enrollment?.onboardingInfo;
+  const emailOtpAvailable = info?.emailOtpLoginAvailable ?? false;
 
   // Reset on open
   useEffect(() => {
@@ -455,7 +463,33 @@ function EnrollFlowDialog({
           </div>
         </button>
 
-        {/* Option 2: Provider-issued credentials */}
+        {/* Option 2: Email ID + OTP (only shown when provider portal supports email+OTP login) */}
+        {emailOtpAvailable && (
+          <button
+            className="w-full text-left p-4 rounded-lg border border-border/60 hover:border-violet-500/40 hover:bg-violet-500/5 transition-colors group"
+            onClick={() => setStep("email_otp")}
+          >
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-lg bg-violet-500/10 flex items-center justify-center shrink-0 group-hover:bg-violet-500/20 transition-colors">
+                <span className="text-sm">✉️</span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-semibold text-foreground">Connect with Email ID + OTP</p>
+                  <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border/60">
+                    Check status
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Authenticate using your registered email address via the provider's OTP system
+                </p>
+              </div>
+              <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-violet-400 mt-0.5 shrink-0 transition-colors" />
+            </div>
+          </button>
+        )}
+
+        {/* Option 3: Provider-issued credentials */}
         <button
           className="w-full text-left p-4 rounded-lg border border-border/60 hover:border-primary/40 hover:bg-primary/5 transition-colors group"
           onClick={() => setStep("existing_info")}
@@ -571,6 +605,62 @@ function EnrollFlowDialog({
             </div>
           </>
         )}
+      </div>
+    );
+  }
+
+  // ── Step: email_otp ───────────────────────────────────────────────────────
+  function renderEmailOtp() {
+    const emailOtpNote = info?.emailOtpNote ?? null;
+
+    return (
+      <div className="space-y-4 py-2">
+        {/* Breadcrumb */}
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <span className="text-muted-foreground/60">Connection options</span>
+          <ChevronRight className="w-3 h-3" />
+          <span className="text-foreground font-medium">Connect with Email ID + OTP</span>
+        </div>
+
+        {/* Unsupported notice — Pine Labs and all current providers */}
+        <div className="p-4 rounded-lg bg-amber-500/5 border border-amber-500/20 space-y-2">
+          <p className="text-sm font-semibold text-amber-400 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            Email + OTP session connection is not supported
+          </p>
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            {emailOtpNote ??
+              "Email + OTP is available for this provider's portal login, but direct RasoKart " +
+              "session connection is not officially supported. Use provider-issued API credentials."}
+          </p>
+        </div>
+
+        {/* Context */}
+        <div className="p-3.5 rounded-lg bg-muted/30 border border-border/50 space-y-1.5">
+          <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+            <Info className="w-3.5 h-3.5 text-muted-foreground" />
+            Why Email + OTP isn't available for third-party platforms
+          </p>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            While this provider's merchant portal accepts email ID + OTP for login, the provider
+            does not expose a public API that allows a third-party platform like RasoKart to
+            initiate that OTP flow or receive an authorized, reusable merchant session token.
+          </p>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            To connect, use the <span className="font-medium text-foreground">provider-issued API credentials</span> path
+            — these are specifically designed for third-party payment platform integrations.
+          </p>
+        </div>
+
+        {/* Safety statement */}
+        <div className="flex items-start gap-2 p-3 rounded-lg bg-muted/20 border border-border/40">
+          <Lock className="w-3.5 h-3.5 text-muted-foreground mt-0.5 shrink-0" />
+          <p className="text-xs text-muted-foreground">
+            RasoKart never initiates OTP flows, reads emails, intercepts codes, or automates
+            provider portal login. All provider authentication happens on the provider's own
+            website or app — we only store the API credentials you submit here.
+          </p>
+        </div>
       </div>
     );
   }
@@ -820,13 +910,26 @@ function EnrollFlowDialog({
           <Button variant="outline" onClick={() => setStep("choice")} className="gap-1.5">
             <ArrowLeft className="w-3.5 h-3.5" /> Back
           </Button>
-          {/* If unsupported, suggest the credentials path as the primary action */}
           {!(info?.mobileOtpSupported) && (
             <Button onClick={() => setStep("existing_info")} className="gap-2">
               Use Provider Credentials
               <ArrowRight className="w-4 h-4" />
             </Button>
           )}
+        </>
+      );
+    }
+
+    if (step === "email_otp") {
+      return (
+        <>
+          <Button variant="outline" onClick={() => setStep("choice")} className="gap-1.5">
+            <ArrowLeft className="w-3.5 h-3.5" /> Back
+          </Button>
+          <Button onClick={() => setStep("existing_info")} className="gap-2">
+            Use Provider Credentials
+            <ArrowRight className="w-4 h-4" />
+          </Button>
         </>
       );
     }
@@ -909,6 +1012,7 @@ function EnrollFlowDialog({
           <DialogDescription>
             {step === "choice" && "How would you like to connect this provider?"}
             {step === "mobile_otp" && "Connect using your registered mobile number + OTP"}
+            {step === "email_otp" && "Connect using your registered email ID + OTP"}
             {step === "existing_info" && "Submit provider-issued API credentials"}
             {step === "credentials" && "Enter the API credentials you obtained from the provider portal"}
             {step === "new_account" && "Apply for a new merchant account"}
@@ -926,6 +1030,7 @@ function EnrollFlowDialog({
 
         {step === "choice" && renderChoice()}
         {step === "mobile_otp" && renderMobileOtp()}
+        {step === "email_otp" && renderEmailOtp()}
         {step === "existing_info" && renderExistingInfo()}
         {step === "credentials" && renderCredentials()}
         {step === "new_account" && renderNewAccount()}

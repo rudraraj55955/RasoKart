@@ -790,6 +790,7 @@ export async function seed() {
       { name: "Cashfree Payments",    slug: "cashfree",        category: "gateway", status: "live",        description: "Cashfree multi-mode payment gateway",                        sortOrder: 15 },
       { name: "PayU",                 slug: "payu",            category: "gateway", status: "live",        description: "PayU merchant payment gateway",                              sortOrder: 16 },
       { name: "EKQR / UPI Gateway",   slug: "ekqr",            category: "gateway", status: "sandbox",     description: "EKQR UPI payment gateway — dynamic QR & auto-credit deposits", sortOrder: 17 },
+      { name: "Pine Labs",            slug: "pinelabs",        category: "gateway", status: "sandbox",     description: "Pine Labs Plural payment gateway — cards, UPI, wallets, EMI",  sortOrder: 18 },
     ];
     for (const p of PROVIDERS) {
       await db.insert(providersTable).values(p).onConflictDoUpdate({ target: providersTable.slug, set: { name: p.name, status: p.status, sortOrder: p.sortOrder } });
@@ -802,6 +803,12 @@ export async function seed() {
     name: "EKQR / UPI Gateway", slug: "ekqr", category: "gateway", status: "sandbox",
     description: "EKQR UPI payment gateway — dynamic QR & auto-credit deposits", sortOrder: 17,
   }).onConflictDoUpdate({ target: providersTable.slug, set: { name: "EKQR / UPI Gateway", status: "sandbox", sortOrder: 17 } });
+
+  // ── Idempotent upsert for Pine Labs (ensures it exists even on already-seeded DBs) ─
+  await db.insert(providersTable).values({
+    name: "Pine Labs", slug: "pinelabs", category: "gateway", status: "sandbox",
+    description: "Pine Labs Plural payment gateway — cards, UPI, wallets, EMI", sortOrder: 18,
+  }).onConflictDoUpdate({ target: providersTable.slug, set: { name: "Pine Labs", status: "sandbox", sortOrder: 18 } });
 
   // Note: provider_integrations UPI columns (is_custom, *_encrypted, etc) are
   // now guaranteed by ensureSchemaGuard() above — see lib/schemaGuard.ts.
