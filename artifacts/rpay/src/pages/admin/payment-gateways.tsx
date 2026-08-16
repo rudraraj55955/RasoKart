@@ -1023,6 +1023,8 @@ function PineLabsPanel() {
   const [showSecretKey, setShowSecretKey] = useState(false);
   const [initialized, setInitialized] = useState(false);
   const [liveCredError, setLiveCredError] = useState<string | null>(null);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ pass: boolean; message: string; detail: string } | null>(null);
 
   useEffect(() => {
     if (integration && !initialized) {
@@ -1038,6 +1040,7 @@ function PineLabsPanel() {
       onSuccess: () => {
         toast.success("Pine Labs settings saved");
         setMerchantId(""); setAccessCode(""); setSecretKey("");
+        setTestResult(null);
         qc.invalidateQueries({ queryKey: getListProviderIntegrationsQueryKey() });
       },
       onError: (err: Error) => toast.error((err as any)?.message ?? "Failed to save settings"),
@@ -1048,9 +1051,9 @@ function PineLabsPanel() {
     setLiveCredError(null);
     // Guard: live + enabled requires all three credentials to be present
     if (enabled && environment === "live") {
-      const midOk     = (integration as any)?.clientIdSet || merchantId.trim().length > 0;
-      const accessOk  = integration?.apiKeySet || accessCode.trim().length > 0;
-      const secretOk  = integration?.apiSecretSet || secretKey.trim().length > 0;
+      const midOk    = (integration as any)?.clientIdSet || merchantId.trim().length > 0;
+      const accessOk = integration?.apiKeySet || accessCode.trim().length > 0;
+      const secretOk = integration?.apiSecretSet || secretKey.trim().length > 0;
       if (!midOk || !accessOk || !secretOk) {
         setLiveCredError(
           "Cannot enable Pine Labs in Live mode — Merchant ID, Access Code, and Secret Key must all be saved first."
@@ -1064,6 +1067,28 @@ function PineLabsPanel() {
     if (secretKey.trim()) body["apiSecret"] = secretKey.trim();
     saveConfig({ key: "pinelabs", data: body as any });
   }
+
+  const testCredentials = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const r = await fetch("/api/admin/pinelabs/test-credentials", {
+        method: "POST",
+        headers: authHeader(),
+      });
+      const d = await r.json();
+      setTestResult(d);
+      if (d.pass) {
+        toast.success("Pine Labs credentials verified");
+      } else {
+        toast.error(d.message ?? "Credential test failed");
+      }
+    } catch {
+      setTestResult({ pass: false, message: "Request failed", detail: "Could not reach the server. Check your connection and try again." });
+    } finally {
+      setTesting(false);
+    }
+  };
 
   if (isLoading) return (
     <div className="flex items-center gap-2 text-sm text-muted-foreground py-8">
@@ -1239,6 +1264,52 @@ function PineLabsPanel() {
           <li>Retrieve credentials from Pine Labs Merchant Portal → Integration Settings</li>
         </ul>
       </div>
+
+      {/* Test Credentials — visible only when all three are saved */}
+      {(intg.clientIdSet && integration.apiKeySet && integration.apiSecretSet) && (
+        <div className="border border-border/40 rounded-lg p-4 space-y-3">
+          <div>
+            <p className="text-sm font-medium flex items-center gap-2">
+              <FlaskConical className="w-3.5 h-3.5 text-sky-400" />Test Credentials
+            </p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              Probes the Pine Labs UAT API with your saved credentials — no payment is triggered.
+            </p>
+          </div>
+
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={testCredentials}
+            disabled={testing}
+            className="h-8 text-xs"
+          >
+            {testing
+              ? <><Loader2 className="w-3 h-3 mr-1.5 animate-spin" />Testing…</>
+              : <><FlaskConical className="w-3 h-3 mr-1.5" />Test Credentials</>}
+          </Button>
+
+          {testResult && (
+            <div className={`rounded-md border p-3 space-y-1 ${
+              testResult.pass
+                ? "border-emerald-500/30 bg-emerald-500/5"
+                : "border-red-500/30 bg-red-500/5"
+            }`}>
+              <div className="flex items-center gap-2">
+                {testResult.pass
+                  ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  : <XCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />}
+                <p className={`text-xs font-medium ${testResult.pass ? "text-emerald-300" : "text-red-300"}`}>
+                  {testResult.message}
+                </p>
+              </div>
+              {testResult.detail && (
+                <p className="text-[11px] text-muted-foreground pl-5 leading-relaxed">{testResult.detail}</p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       <Button size="sm" onClick={handleSave} disabled={saving} className="h-8 text-xs">
         {saving

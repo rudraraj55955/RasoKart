@@ -102,6 +102,7 @@ import iamRouter from "./iam";
 import adminAgentsRouter from "./adminAgents";
 import agentActivateRouter from "./agentActivate";
 import adminCashfreePayinReconRouter from "./adminCashfreePayinRecon";
+import adminPineLabsRouter from "./adminPineLabs";
 import { devHelperRouter } from "./devHelper";
 import platformConnectionsRouter from "./platformConnections";
 
@@ -244,6 +245,9 @@ router.use("/payment", payuWebhookRouter);
 router.use("/merchant", payuOrdersRouter);
 // Admin PayU config, credentials, orders — Super Admin only
 router.use("/admin/payu", adminPayuRouter);
+
+// Admin Pine Labs credential test
+router.use("/admin/pinelabs", adminPineLabsRouter);
 
 // Social provider admin toggles (Super Admin CRUD)
 router.use("/auth/social-providers", socialProvidersRouter);
