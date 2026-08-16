@@ -173,6 +173,31 @@ router.put("/integrations/:key", requireAdmin, async (req, res, next) => {
     if (clientId !== undefined) updateSet.clientIdEncrypted = clientId.trim() ? encryptSecret(clientId.trim()) : null;
     updateSet.updatedByEmail = user.email;
 
+    // Pine Labs live-mode credential guard
+    if (key === "pinelabs") {
+      const resultingEnabled = isEnabled !== undefined ? isEnabled : existing.isEnabled;
+      const resultingEnv = (environment !== undefined ? environment : existing.environment) ?? "test";
+      if (resultingEnabled && resultingEnv === "live") {
+        // Compute the resulting credential state after this update.
+        // If a credential field is explicitly supplied (even as ""), only that value counts —
+        // don't fall back to the existing saved value, because the update will overwrite it.
+        // Only fields that are absent from the request (undefined) should inherit the existing value.
+        const midOk    = clientId   !== undefined ? clientId.trim().length   > 0 : !!existing.clientIdEncrypted;
+        const accessOk = apiKey     !== undefined ? apiKey.trim().length     > 0 : !!existing.apiKeyEncrypted;
+        const secretOk = apiSecret  !== undefined ? apiSecret.trim().length  > 0 : !!existing.apiSecretEncrypted;
+        if (!midOk || !accessOk || !secretOk) {
+          const missing: string[] = [];
+          if (!midOk) missing.push("Merchant ID (MID)");
+          if (!accessOk) missing.push("Access Code");
+          if (!secretOk) missing.push("Secret Key");
+          res.status(400).json({
+            error: `Cannot enable Pine Labs in Live mode — the following credentials are missing: ${missing.join(", ")}. Save all credentials before switching to Live.`,
+          });
+          return;
+        }
+      }
+    }
+
     const [updated] = await db.update(providerIntegrationsTable)
       .set(updateSet as any)
       .where(eq(providerIntegrationsTable.providerKey, key))

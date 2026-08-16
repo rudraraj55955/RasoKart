@@ -1022,6 +1022,7 @@ function PineLabsPanel() {
   const [showAccessCode, setShowAccessCode] = useState(false);
   const [showSecretKey, setShowSecretKey] = useState(false);
   const [initialized, setInitialized] = useState(false);
+  const [liveCredError, setLiveCredError] = useState<string | null>(null);
 
   useEffect(() => {
     if (integration && !initialized) {
@@ -1044,6 +1045,19 @@ function PineLabsPanel() {
   } as any);
 
   function handleSave() {
+    setLiveCredError(null);
+    // Guard: live + enabled requires all three credentials to be present
+    if (enabled && environment === "live") {
+      const midOk     = (integration as any)?.clientIdSet || merchantId.trim().length > 0;
+      const accessOk  = integration?.apiKeySet || accessCode.trim().length > 0;
+      const secretOk  = integration?.apiSecretSet || secretKey.trim().length > 0;
+      if (!midOk || !accessOk || !secretOk) {
+        setLiveCredError(
+          "Cannot enable Pine Labs in Live mode — Merchant ID, Access Code, and Secret Key must all be saved first."
+        );
+        return;
+      }
+    }
     const body: Record<string, unknown> = { isEnabled: enabled, environment };
     if (merchantId.trim()) body["clientId"] = merchantId.trim();
     if (accessCode.trim()) body["apiKey"] = accessCode.trim();
@@ -1111,7 +1125,7 @@ function PineLabsPanel() {
       </div>
 
       {/* Credentials */}
-      <div className="border border-border/40 rounded-lg p-4 space-y-4">
+      <div className={`border rounded-lg p-4 space-y-4 ${liveCredError ? "border-red-500/50" : "border-border/40"}`}>
         <div>
           <p className="text-sm font-medium">Credentials</p>
           <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -1121,66 +1135,95 @@ function PineLabsPanel() {
         </div>
 
         {/* Merchant ID */}
-        <div className="space-y-1.5">
-          <Label className="text-xs">Merchant ID (MID)</Label>
-          <div className="rounded-md border border-border/60 px-3 py-1.5 bg-muted/10 min-h-[32px] flex items-center">
-            {intg.clientIdSet
-              ? <span className="text-xs text-muted-foreground font-mono">{intg.clientIdMasked} (saved)</span>
-              : <span className="text-xs text-zinc-500 flex items-center gap-1"><XCircle className="w-3 h-3" />Not configured</span>}
-          </div>
-          <Input
-            placeholder="Enter Merchant ID (MID) to update"
-            value={merchantId}
-            onChange={e => setMerchantId(e.target.value)}
-            className="h-8 text-xs font-mono"
-          />
-        </div>
+        {(() => {
+          const missing = liveCredError && !intg.clientIdSet && !merchantId.trim();
+          return (
+            <div className="space-y-1.5">
+              <Label className={`text-xs ${missing ? "text-red-400" : ""}`}>
+                Merchant ID (MID){missing && <span className="ml-1 text-red-400">· required for Live mode</span>}
+              </Label>
+              <div className={`rounded-md border px-3 py-1.5 bg-muted/10 min-h-[32px] flex items-center ${missing ? "border-red-500/60" : "border-border/60"}`}>
+                {intg.clientIdSet
+                  ? <span className="text-xs text-muted-foreground font-mono">{intg.clientIdMasked} (saved)</span>
+                  : <span className="text-xs text-zinc-500 flex items-center gap-1"><XCircle className="w-3 h-3" />Not configured</span>}
+              </div>
+              <Input
+                placeholder="Enter Merchant ID (MID) to update"
+                value={merchantId}
+                onChange={e => { setMerchantId(e.target.value); setLiveCredError(null); }}
+                className={`h-8 text-xs font-mono ${missing ? "border-red-500/60 focus-visible:ring-red-500/30" : ""}`}
+              />
+            </div>
+          );
+        })()}
 
         {/* Access Code */}
-        <div className="space-y-1.5">
-          <Label className="text-xs">Access Code</Label>
-          <div className="rounded-md border border-border/60 px-3 py-1.5 bg-muted/10 min-h-[32px] flex items-center">
-            {integration.apiKeySet
-              ? <span className="text-xs text-muted-foreground font-mono">{integration.apiKeyMasked} (saved)</span>
-              : <span className="text-xs text-zinc-500 flex items-center gap-1"><XCircle className="w-3 h-3" />Not configured</span>}
-          </div>
-          <div className="relative">
-            <Input
-              placeholder="Enter new Access Code to update"
-              value={accessCode}
-              onChange={e => setAccessCode(e.target.value)}
-              type={showAccessCode ? "text" : "password"}
-              className="h-8 text-xs font-mono pr-8"
-            />
-            <button type="button" onClick={() => setShowAccessCode(v => !v)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-              {showAccessCode ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-            </button>
-          </div>
-        </div>
+        {(() => {
+          const missing = liveCredError && !integration.apiKeySet && !accessCode.trim();
+          return (
+            <div className="space-y-1.5">
+              <Label className={`text-xs ${missing ? "text-red-400" : ""}`}>
+                Access Code{missing && <span className="ml-1 text-red-400">· required for Live mode</span>}
+              </Label>
+              <div className={`rounded-md border px-3 py-1.5 bg-muted/10 min-h-[32px] flex items-center ${missing ? "border-red-500/60" : "border-border/60"}`}>
+                {integration.apiKeySet
+                  ? <span className="text-xs text-muted-foreground font-mono">{integration.apiKeyMasked} (saved)</span>
+                  : <span className="text-xs text-zinc-500 flex items-center gap-1"><XCircle className="w-3 h-3" />Not configured</span>}
+              </div>
+              <div className="relative">
+                <Input
+                  placeholder="Enter new Access Code to update"
+                  value={accessCode}
+                  onChange={e => { setAccessCode(e.target.value); setLiveCredError(null); }}
+                  type={showAccessCode ? "text" : "password"}
+                  className={`h-8 text-xs font-mono pr-8 ${missing ? "border-red-500/60 focus-visible:ring-red-500/30" : ""}`}
+                />
+                <button type="button" onClick={() => setShowAccessCode(v => !v)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  {showAccessCode ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Secret Key */}
-        <div className="space-y-1.5">
-          <Label className="text-xs">Secret Key</Label>
-          <div className="rounded-md border border-border/60 px-3 py-1.5 bg-muted/10 min-h-[32px] flex items-center">
-            {integration.apiSecretSet
-              ? <span className="text-xs text-muted-foreground font-mono">••••••••••• (saved)</span>
-              : <span className="text-xs text-zinc-500 flex items-center gap-1"><XCircle className="w-3 h-3" />Not configured</span>}
+        {(() => {
+          const missing = liveCredError && !integration.apiSecretSet && !secretKey.trim();
+          return (
+            <div className="space-y-1.5">
+              <Label className={`text-xs ${missing ? "text-red-400" : ""}`}>
+                Secret Key{missing && <span className="ml-1 text-red-400">· required for Live mode</span>}
+              </Label>
+              <div className={`rounded-md border px-3 py-1.5 bg-muted/10 min-h-[32px] flex items-center ${missing ? "border-red-500/60" : "border-border/60"}`}>
+                {integration.apiSecretSet
+                  ? <span className="text-xs text-muted-foreground font-mono">••••••••••• (saved)</span>
+                  : <span className="text-xs text-zinc-500 flex items-center gap-1"><XCircle className="w-3 h-3" />Not configured</span>}
+              </div>
+              <div className="relative">
+                <Input
+                  placeholder="Enter new Secret Key to update"
+                  value={secretKey}
+                  onChange={e => { setSecretKey(e.target.value); setLiveCredError(null); }}
+                  type={showSecretKey ? "text" : "password"}
+                  className={`h-8 text-xs font-mono pr-8 ${missing ? "border-red-500/60 focus-visible:ring-red-500/30" : ""}`}
+                />
+                <button type="button" onClick={() => setShowSecretKey(v => !v)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  {showSecretKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Inline error when live+enabled+missing creds */}
+        {liveCredError && (
+          <div className="flex items-start gap-2 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2.5">
+            <AlertCircle className="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" />
+            <p className="text-xs text-red-300">{liveCredError}</p>
           </div>
-          <div className="relative">
-            <Input
-              placeholder="Enter new Secret Key to update"
-              value={secretKey}
-              onChange={e => setSecretKey(e.target.value)}
-              type={showSecretKey ? "text" : "password"}
-              className="h-8 text-xs font-mono pr-8"
-            />
-            <button type="button" onClick={() => setShowSecretKey(v => !v)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-              {showSecretKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-            </button>
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Onboarding notes */}
