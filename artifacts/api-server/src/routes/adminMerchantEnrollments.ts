@@ -25,6 +25,7 @@ import { logger } from "../lib/logger";
 import { notifyMerchantOfEnrollmentStatusChange } from "../helpers/adminNotifyEmail";
 import { decryptSecret } from "../helpers/cryptoUtils";
 import { getProviderOnboardingInfo } from "../helpers/providerOnboardingMetadata";
+import { verifyPineLabsUatCredentials } from "../helpers/pineLabsVerify";
 
 const router = Router();
 router.use(requireAuth, requireAdmin, requireSuperAdmin);
@@ -349,7 +350,7 @@ router.post("/:merchantId/enrollments/:providerSlug/test", async (req, res) => {
       return;
     }
 
-    const testResult = runEnrollmentCredentialTest(providerSlug, enrollment);
+    const testResult = await runEnrollmentCredentialTest(providerSlug, enrollment);
     const testedAt = new Date();
 
     // On pass, record verification timestamp (read-only otherwise)
@@ -401,17 +402,20 @@ router.post("/:merchantId/enrollments/:providerSlug/test", async (req, res) => {
 /**
  * Run a credential sanity test for a merchant enrollment.
  *
- * Category D providers (phonepe, paytm, bharatpe, amazon_pay, mobikwik) expose
- * no public sandbox ping without a partnership agreement, so the test is a
+ * For Pine Labs (pinelabs) a live call is made to the Pine Labs Plural UAT API
+ * to confirm the Merchant ID + Access Code + Secret Key are accepted.
+ *
+ * For other Category D providers (phonepe, paytm, bharatpe, amazon_pay, mobikwik)
+ * that expose no public sandbox ping without a partnership agreement, the test is a
  * decryption + presence + format check — the strongest verification available
  * without violating provider ToS. Contract:
  *   - ZERO financial transactions, ZERO wallet/ledger mutations
  *   - NEVER includes credential values in the result
  */
-function runEnrollmentCredentialTest(
+async function runEnrollmentCredentialTest(
   providerSlug: string,
   enrollment: typeof merchantProviderEnrollmentsTable.$inferSelect
-): { pass: boolean; message: string; detail?: string } {
+): Promise<{ pass: boolean; message: string; detail?: string }> {
   const info = getProviderOnboardingInfo(providerSlug);
   if (info && info.category === "E") {
     return { pass: false, message: "This provider is unsupported and cannot be tested", detail: info.finalStatus };
@@ -420,6 +424,17 @@ function runEnrollmentCredentialTest(
     return { pass: false, message: "This provider is admin-managed — merchant credential testing does not apply" };
   }
 
+  // ── Pine Labs: live UAT API ping ────────────────────────────────────────────
+  // Pine Labs Plural exposes a public UAT inquiry endpoint that requires valid
+  // Merchant ID + Access Code + HMAC-SHA256 signature using the Secret Key.
+  // An invalid MID/Access Code/Secret Key produces an explicit auth error from
+  // the UAT API; a valid credential set with no matching order produces a
+  // non-auth error — which is the "pass" case.
+  if (providerSlug === "pinelabs") {
+    return testPineLabsCredentials(enrollment);
+  }
+
+  // ── Generic Category D: decryption + presence + format checks ─────────────
   const failures: string[] = [];
 
   // API key: required for all Category D enrollments
@@ -460,6 +475,64 @@ function runEnrollmentCredentialTest(
     detail:
       "Provider offers no public sandbox ping without a partnership agreement — this verifies the strongest checks available (decryption, presence, format).",
   };
+}
+
+/**
+ * Pine Labs credential test — decrypts credentials and delegates to
+ * verifyPineLabsUatCredentials (helpers/pineLabsVerify.ts) for the live
+ * HTTP call. See that file for the full pass/fail contract.
+ *
+ * Zero financial mutations. Credential values NEVER returned.
+ */
+async function testPineLabsCredentials(
+  enrollment: typeof merchantProviderEnrollmentsTable.$inferSelect
+): Promise<{ pass: boolean; message: string; detail?: string }> {
+  // ── Presence checks ────────────────────────────────────────────────────────
+  const mid = enrollment.maskedIdentifier?.trim() ?? "";
+  if (!mid) {
+    return {
+      pass: false,
+      message: "Credential test failed",
+      detail: "Merchant ID (MID) is missing — ask the merchant to re-submit",
+    };
+  }
+
+  const missing: string[] = [];
+  if (!enrollment.encryptedApiKey?.trim())    missing.push("Access Code");
+  if (!enrollment.encryptedApiSecret?.trim()) missing.push("Secret Key");
+  if (missing.length > 0) {
+    return {
+      pass: false,
+      message: "Credential test failed",
+      detail: `${missing.join(" and ")} ${missing.length === 1 ? "is" : "are"} missing — ask the merchant to re-submit`,
+    };
+  }
+
+  // ── Decryption ─────────────────────────────────────────────────────────────
+  const accessCodeDec = decryptSecret(enrollment.encryptedApiKey!);
+  const secretKeyDec  = decryptSecret(enrollment.encryptedApiSecret!);
+
+  if (!accessCodeDec.ok) {
+    return { pass: false, message: "Credential test failed", detail: "Access Code could not be decrypted — ask the merchant to re-submit" };
+  }
+  if (!secretKeyDec.ok) {
+    return { pass: false, message: "Credential test failed", detail: "Secret Key could not be decrypted — ask the merchant to re-submit" };
+  }
+
+  const accessCode = accessCodeDec.value.trim();
+  const secretKey  = secretKeyDec.value.trim();
+
+  if (accessCode.length < 8) {
+    return { pass: false, message: "Credential test failed", detail: "Access Code looks too short to be valid" };
+  }
+  if (secretKey.length < 8) {
+    return { pass: false, message: "Credential test failed", detail: "Secret Key looks too short to be valid" };
+  }
+
+  // ── Live UAT API verification ──────────────────────────────────────────────
+  // Delegates to helpers/pineLabsVerify.ts which implements the strict
+  // fail-closed contract (only documented pass codes accepted).
+  return verifyPineLabsUatCredentials(mid, accessCode, secretKey);
 }
 
 export default router;

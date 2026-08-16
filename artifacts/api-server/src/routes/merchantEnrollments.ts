@@ -354,16 +354,7 @@ router.put("/:providerSlug/credentials", enrollRateLimiter, async (req, res) => 
 
     const [updated] = await db
       .update(merchantProviderEnrollmentsTable)
-      .set({
-        enrollmentStatus: "disconnected",
-        // Securely clear all credential fields
-        encryptedApiKey:        null,
-        encryptedApiSecret:     null,
-        encryptedWebhookSecret: null,
-        disconnectedAt: new Date(),
-        disconnectedBy: "merchant",
-        updatedAt: new Date(),
-      })
+      .set(updateSet)
       .where(
         and(
           eq(merchantProviderEnrollmentsTable.merchantId, merchantId),
@@ -471,15 +462,14 @@ router.get("/:providerSlug/status", async (req, res) => {
   }
 });
 
-// ── DELETE /api/merchant/enrollments/:providerSlug ────────────────────────────
-// Revoke / disconnect. Clears encrypted credential fields and sets status to
-// "disconnected". Non-secret audit log written.
-router.delete("/:providerSlug", async (req, res) => {
+// ── GET /api/merchant/enrollments/:providerSlug/history ───────────────────────
+// Returns the audit log timeline for a specific provider enrollment.
+// Only surfaces non-secret events: status changes, credential submissions, disconnects.
+router.get("/:providerSlug/history", async (req, res) => {
   const merchantId = requireMerchant(req, res);
   if (!merchantId) return;
 
   const providerSlug = req.params["providerSlug"] as string;
-
 
   const relevantActions = [
     "admin_enrollment_status_change",
