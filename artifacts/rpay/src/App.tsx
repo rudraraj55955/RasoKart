@@ -113,6 +113,7 @@ import AdminFeatureControl from "@/pages/admin/feature-control";
 import AdminAccountDetails from "@/pages/admin/account-details";
 import AdminQrProviders from "@/pages/admin/qr-providers";
 import AdminMerchantConnect from "@/pages/admin/merchant-connect";
+import AdminMerchantEnrollments from "@/pages/admin/merchant-enrollments";
 import AdminProviders from "@/pages/admin/providers";
 import AdminVisibilityRules from "@/pages/admin/visibility-rules";
 import AdminMerchantAccess from "@/pages/admin/merchant-access";
@@ -530,6 +531,7 @@ function Router() {
       <Route path="/admin/account-details"><AdminRoute component={AdminAccountDetails} /></Route>
       <Route path="/admin/qr-providers"><AdminRoute component={AdminQrProviders} /></Route>
       <Route path="/admin/merchant-connect"><AdminRoute component={AdminMerchantConnect} /></Route>
+      <Route path="/admin/merchant-enrollments"><AdminRoute component={AdminMerchantEnrollments} /></Route>
       <Route path="/admin/providers"><AdminRoute component={AdminProviders} /></Route>
       <Route path="/admin/visibility-rules"><AdminRoute component={AdminVisibilityRules} /></Route>
       <Route path="/admin/merchant-access"><AdminRoute component={AdminMerchantAccess} /></Route>

@@ -1753,3 +1753,126 @@ export async function notifyAdminsOfEkqrSchedulerConsecutiveFailure(
     logger.error({ err }, "Failed to send EKQR scheduler consecutive-failure alert emails");
   }
 }
+
+// ---------------------------------------------------------------------------
+// Merchant enrollment status change email (sent to the MERCHANT, not admins)
+// ---------------------------------------------------------------------------
+
+const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
+  phonepe:    "PhonePe Business",
+  paytm:      "Paytm Business",
+  bharatpe:   "BharatPe",
+  amazon_pay: "Amazon Pay for Business",
+  mobikwik:   "MobiKwik Business",
+};
+
+export function buildMerchantEnrollmentStatusHtml(opts: {
+  merchantBusinessName: string;
+  providerSlug: string;
+  newStatus: "active" | "suspended";
+  reason: string | null;
+  adminEmail: string;
+}): string {
+  const { merchantBusinessName, providerSlug, newStatus, reason, adminEmail } = opts;
+  const providerName = PROVIDER_DISPLAY_NAMES[providerSlug] ?? providerSlug;
+  const connectLink = `${APP_DOMAIN}/merchant/connect`;
+
+  const isActive = newStatus === "active";
+  const headerBg = isActive ? "#14532d" : "#7f1d1d";
+  const headerSubColor = isActive ? "#bbf7d0" : "#fca5a5";
+  const statusColor = isActive ? "#4ade80" : "#f87171";
+  const statusLabel = isActive ? "Active — payments are now live" : "Suspended";
+  const statusEmoji = isActive ? "✅" : "⚠️";
+
+  const reasonRow = reason
+    ? `<tr style="background: #111;">
+         <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px; width: 40%;">Reason</td>
+         <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; color: #d1d5db;">${reason}</td>
+       </tr>`
+    : "";
+
+  const bodyText = isActive
+    ? `Your API credentials for <strong>${providerName}</strong> have been reviewed and your integration is now <strong>live</strong>. Payments through this provider will start processing immediately.`
+    : `Your API credentials for <strong>${providerName}</strong> have been suspended by the RasoKart team. Please review the reason below and re-submit credentials or contact support if you need assistance.`;
+
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; background: #0f0f0f; color: #e5e5e5; margin: 0; padding: 24px;">
+  <div style="max-width: 600px; margin: 0 auto; background: #1a1a1a; border-radius: 8px; overflow: hidden; border: 1px solid #2a2a2a;">
+    <div style="background: ${headerBg}; padding: 20px 24px;">
+      <h1 style="margin: 0; font-size: 20px; color: #fff; letter-spacing: 0.5px;">RasoKart — Provider Integration ${isActive ? "Activated" : "Suspended"}</h1>
+      <p style="margin: 4px 0 0; color: ${headerSubColor}; font-size: 13px;">${providerName} credential review complete</p>
+    </div>
+    <div style="padding: 24px;">
+      <p style="margin: 0 0 16px; color: ${statusColor}; font-size: 14px; font-weight: 600;">
+        ${statusEmoji} ${merchantBusinessName}: ${statusLabel}
+      </p>
+      <p style="margin: 0 0 20px; color: #a1a1aa; font-size: 13px;">
+        ${bodyText}
+      </p>
+
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
+        <tr style="background: #111;">
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px; width: 40%;">Provider</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; font-weight: 600;">${providerName}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">New Status</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; color: ${statusColor}; font-weight: 600; text-transform: capitalize;">${newStatus}</td>
+        </tr>
+        ${reasonRow}
+      </table>
+
+      <div style="text-align: center; margin-bottom: 20px;">
+        <a href="${connectLink}"
+           style="display: inline-block; background: #7c3aed; color: #fff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-size: 14px; font-weight: 600; letter-spacing: 0.3px;">
+          View Provider Integrations
+        </a>
+      </div>
+
+      <p style="margin: 0; color: #71717a; font-size: 12px;">
+        If you have questions, please contact the RasoKart support team. Reference: ${adminEmail}<br>
+        <span style="color: #818cf8;">${connectLink}</span>
+      </p>
+    </div>
+    <div style="padding: 14px 24px; background: #111; border-top: 1px solid #2a2a2a;">
+      <p style="margin: 0; color: #52525b; font-size: 11px;">
+        This notification was sent by RasoKart regarding your provider integration status.
+      </p>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+export async function notifyMerchantOfEnrollmentStatusChange(opts: {
+  merchantId: number;
+  merchantEmail: string;
+  merchantBusinessName: string;
+  providerSlug: string;
+  newStatus: "active" | "suspended";
+  reason: string | null;
+  adminEmail: string;
+}): Promise<void> {
+  try {
+    const html = buildMerchantEnrollmentStatusHtml(opts);
+    const providerName = PROVIDER_DISPLAY_NAMES[opts.providerSlug] ?? opts.providerSlug;
+    const subject = opts.newStatus === "active"
+      ? `[RasoKart] ✅ Your ${providerName} integration is now live`
+      : `[RasoKart] ⚠️ Your ${providerName} integration has been suspended`;
+
+    const sent = await sendMail({ to: opts.merchantEmail, subject, html });
+
+    logger.info(
+      { merchantId: opts.merchantId, merchantEmail: opts.merchantEmail, providerSlug: opts.providerSlug, newStatus: opts.newStatus, sent },
+      "Merchant enrollment status change email dispatched"
+    );
+  } catch (err) {
+    logger.error(
+      { err, merchantId: opts.merchantId, providerSlug: opts.providerSlug },
+      "Failed to send merchant enrollment status change email"
+    );
+  }
+}

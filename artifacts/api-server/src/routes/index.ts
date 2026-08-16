@@ -61,6 +61,7 @@ import merchantKycSettingsRouter from "./merchantKycSettings";
 import payoutMerchantRouter from "./payoutMerchant";
 import payoutMerchantKycRouter from "./payoutMerchantKyc";
 import adminPayoutMerchantsRouter from "./adminPayoutMerchants";
+import adminMerchantEnrollmentsRouter from "./adminMerchantEnrollments";
 import adminPayoutSettingsRouter from "./adminPayoutSettings";
 import payoutAdminRouter from "./payoutAdmin";
 import agentRoutesRouter from "./agentRoutes";
@@ -209,6 +210,7 @@ router.use("/payout-merchant", payoutMerchantSignupRouter);
 router.use("/payout-merchant/kyc", payoutMerchantKycRouter);
 router.use("/payout-merchant", payoutMerchantRouter);
 router.use("/admin/payout-merchants", adminPayoutMerchantsRouter);
+router.use("/admin/merchant-enrollments", adminMerchantEnrollmentsRouter);
 router.use("/admin/payout-settings", adminPayoutSettingsRouter);
 
 // Payout admin portal — payout admins managing payout ops
