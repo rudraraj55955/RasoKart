@@ -790,7 +790,7 @@ export async function seed() {
       { name: "Cashfree Payments",    slug: "cashfree",        category: "gateway", status: "live",        description: "Cashfree multi-mode payment gateway",                        sortOrder: 15 },
       { name: "PayU",                 slug: "payu",            category: "gateway", status: "live",        description: "PayU merchant payment gateway",                              sortOrder: 16 },
       { name: "EKQR / UPI Gateway",   slug: "ekqr",            category: "gateway", status: "sandbox",     description: "EKQR UPI payment gateway — dynamic QR & auto-credit deposits", sortOrder: 17 },
-      { name: "Pine Labs",            slug: "pinelabs",        category: "gateway", status: "sandbox",     description: "Pine Labs Plural payment gateway — cards, UPI, wallets, EMI",  sortOrder: 18 },
+      { name: "Pine Labs Plural",      slug: "pinelabs",        category: "gateway", status: "sandbox",     description: "Pine Labs Plural payment gateway — cards, UPI, wallets, EMI",  sortOrder: 18 },
     ];
     for (const p of PROVIDERS) {
       await db.insert(providersTable).values(p).onConflictDoUpdate({ target: providersTable.slug, set: { name: p.name, status: p.status, sortOrder: p.sortOrder } });
@@ -804,11 +804,23 @@ export async function seed() {
     description: "EKQR UPI payment gateway — dynamic QR & auto-credit deposits", sortOrder: 17,
   }).onConflictDoUpdate({ target: providersTable.slug, set: { name: "EKQR / UPI Gateway", status: "sandbox", sortOrder: 17 } });
 
-  // ── Idempotent upsert for Pine Labs (ensures it exists even on already-seeded DBs) ─
+  // ── Idempotent upsert for Pine Labs Plural PG ────────────────────────────────
+  // Renamed from "Pine Labs" to "Pine Labs Plural" to clearly distinguish from
+  // the separate Pine Labs ONE POS/QR merchant product (pinelabs_one).
   await db.insert(providersTable).values({
-    name: "Pine Labs", slug: "pinelabs", category: "gateway", status: "sandbox",
+    name: "Pine Labs Plural", slug: "pinelabs", category: "gateway", status: "sandbox",
     description: "Pine Labs Plural payment gateway — cards, UPI, wallets, EMI", sortOrder: 18,
-  }).onConflictDoUpdate({ target: providersTable.slug, set: { name: "Pine Labs", sortOrder: 18 } });
+  }).onConflictDoUpdate({ target: providersTable.slug, set: { name: "Pine Labs Plural", sortOrder: 18 } });
+
+  // ── Idempotent upsert for Pine Labs ONE (POS/QR merchant account) ────────────
+  // Pine Labs ONE (one.pinelabs.com) is a separate product from Pine Labs Plural PG.
+  // It is a POS/QR merchant account platform. No public third-party API exists;
+  // official Pine Labs partner/enterprise API access is required.
+  // Status: coming_soon until official partner agreement is in place.
+  await db.insert(providersTable).values({
+    name: "Pine Labs ONE", slug: "pinelabs_one", category: "pos", status: "coming_soon",
+    description: "Pine Labs ONE — POS/QR merchant account monitoring (official partner API access required)", sortOrder: 19,
+  }).onConflictDoUpdate({ target: providersTable.slug, set: { name: "Pine Labs ONE", status: "coming_soon", sortOrder: 19 } });
 
   // ── Idempotent upsert for Pine Labs provider_integrations row ─────────────
   // Pine Labs is a gateway-category platform integration; it is not UPI/bank so

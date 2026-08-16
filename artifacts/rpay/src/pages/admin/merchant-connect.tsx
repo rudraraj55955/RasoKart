@@ -146,10 +146,16 @@ const CREDENTIAL_HINTS: Record<string, { fields: { name: string; hint: string }[
                          { name: "key_secret", hint: "Key Secret from Razorpay Dashboard → API Keys" }] },
   payu:      { fields: [{ name: "key",        hint: "Merchant Key from PayU Dashboard" },
                          { name: "salt",       hint: "Salt from PayU Dashboard" }] },
-  pinelabs:  { fields: [{ name: "merchant_id",  hint: "MID from Pine Labs Plural Console" },
-                         { name: "access_code", hint: "Access Code from Pine Labs Plural Console" },
-                         { name: "working_key", hint: "Working Key from Pine Labs Plural Console" }],
-               note: "All three fields are required. Found under Settings → API Keys in the Plural merchant portal." },
+  pinelabs:  { fields: [{ name: "merchant_id",  hint: "MID from Pine Labs Plural Console → Settings → API Keys" },
+                         { name: "access_code", hint: "Access Code from Pine Labs Plural Console → Settings → API Keys" },
+                         { name: "working_key", hint: "Working Key from Pine Labs Plural Console → Settings → API Keys" }],
+               note: "Pine Labs Plural PG credentials — all three required. Managed via Payment Gateways, not Merchant Connect." },
+  // Pine Labs ONE — POS/QR merchant account. No API keys; partner access required.
+  pinelabs_one: { fields: [
+                   { name: "merchant_id", hint: "Merchant ID from Pine Labs ONE portal (one.pinelabs.com)" },
+                   { name: "store_id",    hint: "Store ID from Pine Labs ONE portal → Stores section" },
+                 ],
+                 note: "⚠ Official Pine Labs ONE partner/enterprise API access required. No public API currently available. Contact Pine Labs at developer.pinelabs.com to apply for partner access before configuring this connector." },
   ekqr:      { fields: [{ name: "api_key",    hint: "API Key / Merchant ID from EKQR dashboard" }] },
   phonepe:   { fields: [{ name: "merchant_id", hint: "PhonePe Business MID" },
                          { name: "api_key",    hint: "PhonePe API Key" }] },
@@ -525,7 +531,19 @@ function RasoKartConnections() {
 
                   {/* Actions */}
                   <div className="flex items-center gap-1.5 shrink-0">
-                    {!conn ? (
+                    {p.slug === "pinelabs_one" && !conn ? (
+                      /* Pine Labs ONE: no public API — partner access required */
+                      <a
+                        href="https://developer.pinelabs.com"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-amber-400/80 hover:text-amber-300 transition-colors"
+                        title="Apply for Pine Labs ONE partner API access"
+                      >
+                        <AlertTriangle className="w-3 h-3" />
+                        Partner API Required
+                      </a>
+                    ) : !conn ? (
                       <Button size="sm" variant="outline" onClick={() => openCreate(p)} className="gap-1 text-xs h-7">
                         <Plus className="w-3 h-3" /> Connect
                       </Button>

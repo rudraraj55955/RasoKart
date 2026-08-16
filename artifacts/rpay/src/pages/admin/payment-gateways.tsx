@@ -3470,7 +3470,7 @@ export default function AdminPaymentGateways() {
                   <Zap className="w-3 h-3 mr-1.5" />UPI Gateway
                 </TabsTrigger>
                 <TabsTrigger value="pinelabs" className="text-xs px-3">
-                  <CreditCard className="w-3 h-3 mr-1.5" />Pine Labs
+                  <CreditCard className="w-3 h-3 mr-1.5" />Plural PG
                 </TabsTrigger>
                 {customIntegrations.map((integration: ProviderIntegration) => (
                   <TabsTrigger key={integration.providerKey} value={integration.providerKey} className="text-xs px-3">

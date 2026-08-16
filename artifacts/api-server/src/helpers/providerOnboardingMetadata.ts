@@ -552,6 +552,53 @@ export const PROVIDER_ONBOARDING_METADATA: Record<string, ProviderOnboardingInfo
     finalStatus: "PROVIDER READY — MERCHANT KYC/CREDENTIALS REQUIRED",
   },
 
+  // ── Pine Labs ONE ────────────────────────────────────────────────────────────
+  // Separate product from Pine Labs Plural PG.
+  // Pine Labs ONE (one.pinelabs.com) is a POS/QR merchant account portal.
+  // OFFICIAL PARTNER/ENTERPRISE API ACCESS REQUIRED.
+  // Phase 4 audit result: no public third-party API exists for programmatic access.
+  pinelabs_one: {
+    slug: "pinelabs_one",
+    category: "D",
+    categoryReason:
+      "Pine Labs ONE (one.pinelabs.com) is a POS/QR merchant account platform entirely " +
+      "separate from the Pine Labs Plural payment gateway (pinepg.in). Pine Labs ONE does " +
+      "not provide a public API allowing third-party platforms to access merchant accounts. " +
+      "Portal login uses mobile/email OTP — automating this without official API is not " +
+      "a supported integration pattern. Category D: official Pine Labs partner/enterprise " +
+      "API agreement is required before any integration is technically possible.",
+
+    existingConnectionSupported: false,
+    existingConnectionNote:
+      "Pine Labs ONE does not expose a public third-party integration API. " +
+      "To enable this connector, apply for official partner API access through the Pine Labs " +
+      "partner program at developer.pinelabs.com or contact Pine Labs enterprise support. " +
+      "Do not attempt to automate OTP-based portal login — this is not an authorised method.",
+    loginMethods: [
+      "Registered mobile number + OTP (Pine Labs ONE portal — not automatable via RasoKart API)",
+      "Registered email ID + OTP (Pine Labs ONE portal — not automatable via RasoKart API)",
+    ],
+    merchantPortalUrl: "https://one.pinelabs.com",
+    portalDisplayName: "Pine Labs ONE Merchant Portal",
+    credentialFields: [],  // No credential fields until official partner API is granted
+
+    // Pine Labs ONE does use mobile OTP for portal login, but there is no API
+    // for third-party initiation of that OTP or session acquisition.
+    mobileOtpSupported: false,
+    mobileOtpNote:
+      "Pine Labs ONE portal uses mobile OTP for merchant login, but no public API exists " +
+      "to initiate OTP or receive a session token on the merchant's behalf. " +
+      "Official Pine Labs partner API required.",
+
+    emailOtpLoginAvailable: false,
+
+    signupUrl: "https://developer.pinelabs.com",
+    kycDocuments: [],  // N/A — existing merchant account product
+    onboardingTimeline: "Requires official Pine Labs partner program enrollment (timeline per Pine Labs)",
+    supportsSelfSubmit: false,
+    finalStatus: "OFFICIAL PINE LABS ONE PARTNER/ENTERPRISE API ACCESS REQUIRED — CONNECTOR SHELL READY",
+  },
+
   ekqr: {
     slug: "ekqr",
     category: "A",

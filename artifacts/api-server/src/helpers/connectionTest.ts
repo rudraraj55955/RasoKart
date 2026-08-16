@@ -136,11 +136,27 @@ export async function runProviderTest(
       if (!hasMid || !hasAccess || !hasSecret) {
         return {
           pass: false,
-          message: "Pine Labs credentials must include Merchant ID, Access Code, and Working Key",
+          message: "Pine Labs Plural credentials must include Merchant ID, Access Code, and Working Key",
           detail: `Keys present: ${Object.keys(creds).join(", ") || "none"}`,
         };
       }
-      return { pass: true, message: "Pine Labs credentials format is valid (MID + Access Code + Working Key present)" };
+      return { pass: true, message: "Pine Labs Plural credentials format is valid (MID + Access Code + Working Key present)" };
+    }
+
+    case "pinelabs_one": {
+      // Pine Labs ONE (one.pinelabs.com) is a POS/QR merchant account portal.
+      // It does NOT provide a public third-party API for programmatic account access.
+      // Accessing it via OTP-based portal login automation is not an official integration.
+      // Official Pine Labs partner/enterprise API agreement is required.
+      return {
+        pass: false,
+        message: "Official Pine Labs ONE partner/API access required",
+        detail:
+          "Pine Labs ONE (one.pinelabs.com) does not provide a public API for third-party " +
+          "account monitoring. To enable this connector, apply for official partner API access " +
+          "at developer.pinelabs.com or contact Pine Labs enterprise support. " +
+          "No real-money transactions are initiated by this test.",
+      };
     }
 
     default:

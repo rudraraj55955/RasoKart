@@ -119,6 +119,7 @@ const PROVIDER_WHITE_LABEL: Record<string, string> = {
   payu:          "RasoKart Gateway Plus",
   ekqr:          "RasoKart QR Gateway",
   pinelabs:      "RasoKart Plural",
+  pinelabs_one:  "Pine Labs ONE",
 };
 
 const PROVIDER_DESC: Record<string, string> = {
@@ -128,6 +129,7 @@ const PROVIDER_DESC: Record<string, string> = {
   amazon_pay:    "UPI merchant checkout via Amazon Pay for Business",
   mobikwik:      "Mobile wallet payment gateway via MobiKwik Business",
   pinelabs:      "Cards, UPI, wallets, and EMI via Pine Labs Plural gateway",
+  pinelabs_one:  "Pine Labs ONE POS/QR merchant account monitoring (official partner access required)",
   ekqr:          "Dynamic QR and auto-credit deposits — managed by RasoKart",
   freecharge:    "Not available — deprecated provider",
   sbi_yono:      "Not available — regulated banking product",
@@ -141,6 +143,7 @@ const CATEGORY_META: Record<string, { label: string; color: string }> = {
   upi:     { label: "UPI",     color: "bg-violet-500/10 text-violet-400 border-violet-500/20" },
   bank:    { label: "Bank",    color: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
   gateway: { label: "Gateway", color: "bg-orange-500/10 text-orange-400 border-orange-500/20" },
+  pos:     { label: "POS / QR", color: "bg-cyan-500/10 text-cyan-400 border-cyan-500/20" },
 };
 
 const STATUS_META: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
@@ -192,6 +195,7 @@ function ProviderIcon({ slug }: { slug: string }) {
     axis_pay:      "🏦", kotak_smart: "🏦",
     ekqr:          "⚡", razorpay: "🔷", cashfree: "💰", payu: "💸",
     pinelabs:      "🌲",
+    pinelabs_one:  "🖥️",
   };
   return <span className="text-xl leading-none">{icons[slug] ?? "💳"}</span>;
 }

@@ -18,7 +18,7 @@
 
 import { Router } from "express";
 import { db, platformConnectionsTable, auditLogsTable, providersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, ne } from "drizzle-orm";
 import { requireAuth, requireSuperAdmin } from "../middlewares/auth";
 import { encryptSecret, decryptSecret } from "../helpers/cryptoUtils";
 import { runProviderTest } from "../helpers/connectionTest";
@@ -82,7 +82,13 @@ router.get("/", async (_req, res) => {
 // All providers including coming_soon — SA may want to pre-configure them.
 
 router.get("/providers", async (_req, res) => {
-  const rows = await db.select().from(providersTable).orderBy(providersTable.sortOrder);
+  // Exclude the "pinelabs" Plural Payment Gateway slug — its credentials live in
+  // provider_integrations (managed via Super Admin → Gateways → Payment Gateways),
+  // NOT in platform_connections. The merchant-connect "RasoKart Connections" tab
+  // shows "pinelabs_one" (Pine Labs ONE POS/QR merchant) instead.
+  const rows = await db.select().from(providersTable)
+    .where(ne(providersTable.slug, "pinelabs"))
+    .orderBy(providersTable.sortOrder);
   res.json(rows);
 });
 
