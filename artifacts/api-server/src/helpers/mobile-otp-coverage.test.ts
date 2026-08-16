@@ -30,7 +30,7 @@ import assert from "node:assert/strict";
 
 import {
   PROVIDER_ONBOARDING_METADATA,
-} from "./providerOnboardingMetadata.ts";
+} from "./providerOnboardingMetadata";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
