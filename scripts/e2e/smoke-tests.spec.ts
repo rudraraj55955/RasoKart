@@ -85,9 +85,11 @@ test("Admin dashboard loads after auth", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (err) => errors.push(err.message));
   await page.goto(`${BASE}/admin/dashboard`);
-  await page.waitForURL(`${BASE}/admin/dashboard`, { timeout: 15_000 });
-  // Should not redirect to login
-  expect(page.url()).toContain("/admin/dashboard");
+  // Use toHaveURL (polls URL) rather than waitForURL (waits for navigation
+  // event) — the SPA auth-guard may briefly redirect during token validation
+  // before settling back on the dashboard, so a navigation-event-based wait
+  // can time out even though the page arrives at the correct URL.
+  await expect(page).toHaveURL(`${BASE}/admin/dashboard`, { timeout: 15_000 });
   // Sidebar or mobile header should be present
   await expect(
     page.locator('[data-sidebar="sidebar"], header').first(),
@@ -113,7 +115,9 @@ test("Admin merchants list returns array", async ({ request }) => {
   });
   expect(res.status()).toBe(200);
   const body = await res.json();
-  expect(Array.isArray(body)).toBe(true);
+  // endpoint returns a paginated envelope { data: [...], ... }
+  const merchants = Array.isArray(body) ? body : body.data;
+  expect(Array.isArray(merchants)).toBe(true);
 });
 
 // ── Merchant authenticated routes ──────────────────────────────────────────
@@ -124,8 +128,7 @@ test("Merchant dashboard loads after auth", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (err) => errors.push(err.message));
   await page.goto(`${BASE}/merchant/dashboard`);
-  await page.waitForURL(`${BASE}/merchant/dashboard`, { timeout: 15_000 });
-  expect(page.url()).toContain("/merchant/dashboard");
+  await expect(page).toHaveURL(`${BASE}/merchant/dashboard`, { timeout: 15_000 });
   await expect(
     page.locator('[data-sidebar="sidebar"], header').first(),
   ).toBeVisible({ timeout: 10_000 });
@@ -158,7 +161,7 @@ test("Admin dashboard – no duplicate portal label on mobile", async ({ browser
   page.on("pageerror", (err) => errors.push(err.message));
 
   await page.goto(`${BASE}/admin/dashboard`);
-  await page.waitForURL(`${BASE}/admin/dashboard`, { timeout: 15_000 });
+  await expect(page).toHaveURL(`${BASE}/admin/dashboard`, { timeout: 15_000 });
 
   // With sidebar closed, count visible elements containing "Admin Console"
   const portalLabelLocator = page.locator("text=Admin Console");
@@ -198,7 +201,7 @@ test("Merchant dashboard – no duplicate portal label on mobile", async ({ brow
   page.on("pageerror", (err) => errors.push(err.message));
 
   await page.goto(`${BASE}/merchant/dashboard`);
-  await page.waitForURL(`${BASE}/merchant/dashboard`, { timeout: 15_000 });
+  await expect(page).toHaveURL(`${BASE}/merchant/dashboard`, { timeout: 15_000 });
 
   const portalLabelLocator = page.locator("text=Merchant Portal");
   const visibleCount = await portalLabelLocator.evaluateAll((els: Element[]) =>
