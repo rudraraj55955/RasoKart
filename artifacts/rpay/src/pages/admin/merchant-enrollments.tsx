@@ -31,7 +31,7 @@ import {
 import {
   CheckCircle2, Clock, AlertTriangle, XCircle, RefreshCw, Loader2,
   Key, ShieldCheck, ShieldOff, Search, ChevronLeft, ChevronRight,
-  UserCheck,
+  UserCheck, FlaskConical,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -119,6 +119,24 @@ function usePendingCount() {
     queryKey: ["admin", "merchant-enrollments", "pending-count"],
     queryFn: () => apiFetch<{ count: number }>("/api/admin/merchant-enrollments/pending-count"),
     staleTime: 60_000,
+  });
+}
+
+interface TestCredentialsResult {
+  pass: boolean;
+  message: string;
+  detail?: string;
+  testedAt: string;
+}
+
+function useTestCredentials() {
+  return useMutation({
+    mutationFn: async (payload: { merchantId: number; providerSlug: string }) => {
+      return apiFetch<TestCredentialsResult>(
+        `/api/admin/merchant-enrollments/${payload.merchantId}/enrollments/${payload.providerSlug}/test`,
+        { method: "POST" }
+      );
+    },
   });
 }
 
@@ -269,10 +287,30 @@ export default function AdminMerchantEnrollments() {
   const [page, setPage] = useState(1);
   const [searchText, setSearchText] = useState("");
   const [confirmState, setConfirmState] = useState<ConfirmDialogState | null>(null);
+  const [testResults, setTestResults] = useState<Record<number, TestCredentialsResult>>({});
+  const [testingId, setTestingId] = useState<number | null>(null);
 
   const { data, isLoading, isFetching, refetch } = useEnrollments(statusFilter, page);
   const { data: pendingCountData } = usePendingCount();
   const updateStatus = useUpdateEnrollmentStatus();
+  const testCredentials = useTestCredentials();
+
+  async function handleTestCredentials(enrollment: AdminEnrollment) {
+    setTestingId(enrollment.id);
+    try {
+      const result = await testCredentials.mutateAsync({
+        merchantId: enrollment.merchantId,
+        providerSlug: enrollment.providerSlug,
+      });
+      setTestResults((prev) => ({ ...prev, [enrollment.id]: result }));
+      if (result.pass) toast.success("Credential test passed");
+      else toast.error(`Credential test failed: ${result.message}`);
+    } catch (err: any) {
+      toast.error(err.message ?? "Failed to test credentials");
+    } finally {
+      setTestingId(null);
+    }
+  }
 
   const pendingCount = pendingCountData?.count ?? 0;
 
@@ -449,6 +487,22 @@ export default function AdminMerchantEnrollments() {
                       {/* Actions */}
                       <TableCell className="py-3 text-right">
                         <div className="flex items-center justify-end gap-2">
+                          {(enrollment.enrollmentStatus === "credentials_submitted" ||
+                            enrollment.enrollmentStatus === "active" ||
+                            enrollment.enrollmentStatus === "suspended") && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs border-sky-500/50 text-sky-400 hover:bg-sky-500/10 hover:text-sky-300"
+                              disabled={testingId === enrollment.id}
+                              onClick={() => handleTestCredentials(enrollment)}
+                            >
+                              {testingId === enrollment.id
+                                ? <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                                : <FlaskConical className="w-3 h-3 mr-1" />}
+                              Test Credentials
+                            </Button>
+                          )}
                           {(enrollment.enrollmentStatus === "credentials_submitted" || enrollment.enrollmentStatus === "suspended") && (
                             <Button
                               size="sm"
@@ -474,6 +528,25 @@ export default function AdminMerchantEnrollments() {
                             <span className="text-xs text-zinc-600">No actions available</span>
                           )}
                         </div>
+                        {testResults[enrollment.id] && (
+                          <div
+                            className={`mt-1.5 inline-flex flex-col items-end gap-0.5 text-right ${
+                              testResults[enrollment.id]!.pass ? "text-emerald-400" : "text-rose-400"
+                            }`}
+                          >
+                            <span className="inline-flex items-center gap-1 text-xs font-medium">
+                              {testResults[enrollment.id]!.pass
+                                ? <CheckCircle2 className="w-3 h-3" />
+                                : <XCircle className="w-3 h-3" />}
+                              {testResults[enrollment.id]!.pass ? "Test passed" : "Test failed"} — {testResults[enrollment.id]!.message}
+                            </span>
+                            {testResults[enrollment.id]!.detail && (
+                              <span className="text-[10px] text-zinc-500 max-w-[280px]">
+                                {testResults[enrollment.id]!.detail}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}

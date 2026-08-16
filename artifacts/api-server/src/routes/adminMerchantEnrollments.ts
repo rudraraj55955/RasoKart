@@ -23,6 +23,8 @@ import { eq, and, desc, count, inArray } from "drizzle-orm";
 import { requireAuth, requireAdmin, requireSuperAdmin } from "../middlewares/auth";
 import { logger } from "../lib/logger";
 import { notifyMerchantOfEnrollmentStatusChange } from "../helpers/adminNotifyEmail";
+import { decryptSecret } from "../helpers/cryptoUtils";
+import { getProviderOnboardingInfo } from "../helpers/providerOnboardingMetadata";
 
 const router = Router();
 router.use(requireAuth, requireAdmin, requireSuperAdmin);
@@ -306,5 +308,158 @@ router.put("/:merchantId/enrollments/:providerSlug/status", async (req, res) => 
     res.status(500).json({ error: "Failed to update enrollment status" });
   }
 });
+
+// ── POST /api/admin/merchant-enrollments/:merchantId/enrollments/:providerSlug/test ──
+// Lightweight credential test for a merchant enrollment (Category D providers).
+// Mirrors the connection-test contract from /api/connections/:id/test:
+//   - Decrypts credentials server-side; NEVER returns them
+//   - Runs a read-only, zero-financial-mutation check
+//   - Records lastVerifiedAt on pass, writes an audit log
+//   - Returns { pass, message, detail?, testedAt }
+// Activation is still permitted even if the test fails (admin override).
+router.post("/:merchantId/enrollments/:providerSlug/test", async (req, res) => {
+  const admin = (req as any).user;
+
+  const merchantId = parseInt(req.params["merchantId"] as string);
+  const providerSlug = req.params["providerSlug"] as string;
+
+  if (!merchantId || isNaN(merchantId)) {
+    res.status(400).json({ error: "Invalid merchantId" });
+    return;
+  }
+  if (!providerSlug) {
+    res.status(400).json({ error: "providerSlug is required" });
+    return;
+  }
+
+  try {
+    const [enrollment] = await db
+      .select()
+      .from(merchantProviderEnrollmentsTable)
+      .where(
+        and(
+          eq(merchantProviderEnrollmentsTable.merchantId, merchantId),
+          eq(merchantProviderEnrollmentsTable.providerSlug, providerSlug)
+        )
+      )
+      .limit(1);
+
+    if (!enrollment) {
+      res.status(404).json({ error: "Enrollment not found for this merchant and provider" });
+      return;
+    }
+
+    const testResult = runEnrollmentCredentialTest(providerSlug, enrollment);
+    const testedAt = new Date();
+
+    // On pass, record verification timestamp (read-only otherwise)
+    if (testResult.pass) {
+      await db
+        .update(merchantProviderEnrollmentsTable)
+        .set({ lastVerifiedAt: testedAt, updatedAt: testedAt })
+        .where(eq(merchantProviderEnrollmentsTable.id, enrollment.id));
+    }
+
+    // Audit log (fire-and-forget)
+    await db
+      .insert(auditLogsTable)
+      .values({
+        adminId: admin.id,
+        adminEmail: admin.email,
+        action: "admin_enrollment_credentials_test",
+        targetType: "merchant_provider_enrollment",
+        targetId: enrollment.id,
+        details: JSON.stringify({
+          merchantId,
+          providerSlug,
+          testResult: testResult.pass ? "pass" : "fail",
+          message: testResult.message,
+        }),
+        ipAddress: (req as any).ip ?? null,
+      } as any)
+      .catch((err: any) => {
+        logger.warn({ err }, "Failed to write enrollment credentials test audit log");
+      });
+
+    logger.info(
+      { merchantId, providerSlug, pass: testResult.pass, adminId: admin.id },
+      "admin_enrollment_credentials_test"
+    );
+
+    res.json({
+      pass: testResult.pass,
+      message: testResult.message,
+      ...(testResult.detail ? { detail: testResult.detail } : {}),
+      testedAt: testedAt.toISOString(),
+    });
+  } catch (err) {
+    logger.error({ err, merchantId, providerSlug }, "POST /admin/merchant-enrollments/:merchantId/enrollments/:providerSlug/test failed");
+    res.status(500).json({ error: "Failed to test enrollment credentials" });
+  }
+});
+
+/**
+ * Run a credential sanity test for a merchant enrollment.
+ *
+ * Category D providers (phonepe, paytm, bharatpe, amazon_pay, mobikwik) expose
+ * no public sandbox ping without a partnership agreement, so the test is a
+ * decryption + presence + format check — the strongest verification available
+ * without violating provider ToS. Contract:
+ *   - ZERO financial transactions, ZERO wallet/ledger mutations
+ *   - NEVER includes credential values in the result
+ */
+function runEnrollmentCredentialTest(
+  providerSlug: string,
+  enrollment: typeof merchantProviderEnrollmentsTable.$inferSelect
+): { pass: boolean; message: string; detail?: string } {
+  const info = getProviderOnboardingInfo(providerSlug);
+  if (info && info.category === "E") {
+    return { pass: false, message: "This provider is unsupported and cannot be tested", detail: info.finalStatus };
+  }
+  if (info && info.category === "A") {
+    return { pass: false, message: "This provider is admin-managed — merchant credential testing does not apply" };
+  }
+
+  const failures: string[] = [];
+
+  // API key: required for all Category D enrollments
+  if (!enrollment.encryptedApiKey || enrollment.encryptedApiKey.trim() === "") {
+    failures.push("API key is missing");
+  } else {
+    const dec = decryptSecret(enrollment.encryptedApiKey);
+    if (!dec.ok) failures.push("API key could not be decrypted — ask the merchant to re-submit");
+    else if (dec.value.trim().length < 8) failures.push("API key looks too short to be valid");
+  }
+
+  // API secret: required for all Category D enrollments
+  if (!enrollment.encryptedApiSecret || enrollment.encryptedApiSecret.trim() === "") {
+    failures.push("API secret is missing");
+  } else {
+    const dec = decryptSecret(enrollment.encryptedApiSecret);
+    if (!dec.ok) failures.push("API secret could not be decrypted — ask the merchant to re-submit");
+    else if (dec.value.trim().length < 8) failures.push("API secret looks too short to be valid");
+  }
+
+  // Webhook secret: optional, but must decrypt if present
+  if (enrollment.encryptedWebhookSecret && enrollment.encryptedWebhookSecret.trim() !== "") {
+    const dec = decryptSecret(enrollment.encryptedWebhookSecret);
+    if (!dec.ok) failures.push("Webhook secret could not be decrypted — ask the merchant to re-submit");
+  }
+
+  if (failures.length > 0) {
+    return {
+      pass: false,
+      message: "Credential test failed",
+      detail: failures.join("; "),
+    };
+  }
+
+  return {
+    pass: true,
+    message: "Credentials decrypted and passed format checks",
+    detail:
+      "Provider offers no public sandbox ping without a partnership agreement — this verifies the strongest checks available (decryption, presence, format).",
+  };
+}
 
 export default router;
