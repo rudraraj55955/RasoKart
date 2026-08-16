@@ -474,6 +474,38 @@ async function runGuard(executor: GuardExecutor = db): Promise<void> {
     logger.info({ count: rows.length }, "merchant_connections: credential encryption migration complete");
   });
 
+  // ── platform_connections: RasoKart's own provider accounts (Super Admin) ────
+  // Completely separate from merchant_connections; no merchantId FK.
+  await block("platform_connections", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS platform_connections (
+        id              SERIAL PRIMARY KEY,
+        provider        TEXT NOT NULL,
+        label           TEXT,
+        environment     TEXT NOT NULL DEFAULT 'sandbox',
+        credentials     TEXT,
+        connection_status TEXT NOT NULL DEFAULT 'pending',
+        is_active       BOOLEAN NOT NULL DEFAULT FALSE,
+        deactivated_at  TIMESTAMPTZ,
+        last_tested_at  TIMESTAMPTZ,
+        last_test_result TEXT DEFAULT 'untested',
+        capability_payin         BOOLEAN NOT NULL DEFAULT TRUE,
+        capability_payout        BOOLEAN NOT NULL DEFAULT FALSE,
+        capability_upi           BOOLEAN NOT NULL DEFAULT TRUE,
+        capability_qr            BOOLEAN NOT NULL DEFAULT TRUE,
+        capability_payment_links BOOLEAN NOT NULL DEFAULT FALSE,
+        capability_refunds       BOOLEAN NOT NULL DEFAULT FALSE,
+        capability_settlement    BOOLEAN NOT NULL DEFAULT FALSE,
+        notes           TEXT,
+        created_by_email TEXT,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS platform_connections_provider_idx ON platform_connections(provider)`);
+    logger.info({ table: "platform_connections" }, "schema_guard_table_created");
+  });
+
   // ── merchant_trusted_ips: per-merchant trusted IP allowlist ─────────────────
   await block("merchant_trusted_ips", async () => {
     await exec.execute(sql`

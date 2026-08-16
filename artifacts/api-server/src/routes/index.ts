@@ -103,6 +103,7 @@ import adminAgentsRouter from "./adminAgents";
 import agentActivateRouter from "./agentActivate";
 import adminCashfreePayinReconRouter from "./adminCashfreePayinRecon";
 import { devHelperRouter } from "./devHelper";
+import platformConnectionsRouter from "./platformConnections";
 
 const router: IRouter = Router();
 
@@ -271,6 +272,9 @@ router.use("/cms", cmsRouter);
 // Public agent activation — verify invite token + set password on first login
 // Mounted BEFORE the auth-guarded /agent router so no token is needed
 router.use("/agent/activate", agentActivateRouter);
+
+// Platform Connections — RasoKart's own provider accounts (Super Admin only)
+router.use("/platform-connections", platformConnectionsRouter);
 
 // Dev-only test support: OTP capture helper.
 // NEVER reachable in production — guarded both here and inside the handler.
