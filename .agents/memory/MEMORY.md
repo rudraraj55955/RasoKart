@@ -86,3 +86,5 @@
 - [IAM already live in production](iam-production-state.md) — IAM/RBAC migration ran on 2026-07-19T19:32:27Z (cutoff same timestamp); 71 permissions, 497 role_permission rows, all 7 roles seeded; verify-iam-migration passes 16/16; healthz/deep all green.
 - [healthz/deep realdb test prerequisites](healthz-deep-test-prereqs.md) — deep health 503s in unit tests unless initialized flag + schema guard pass + demo users exist; use prepareHealthzDeepTestEnv().
 - [Auth stable baseline](auth-stable-baseline.md) — full auth system locked at SHA 40807c21; 15-point regression checklist (all PASS); do not modify auth files without explicit approval + regression run.
+- [Drizzle .set typed-spread rule](drizzle-set-typed-spread.md) — Record<string,unknown> passed to .set() silently drops columns; always use typed spread objects so Drizzle maps every field correctly.
+- [realdb test CI exclusion pattern](realdb-ci-exclusion.md) — *.realdb.test.ts files need seeded demo users; unit test CI step runs before server startup/seed; exclude with find ! -name '*.realdb.test.ts' | xargs.
