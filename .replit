@@ -38,6 +38,10 @@ args = "gateway-panel-coverage"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
+args = "mobile-otp-coverage"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
 args = "system-config-coverage"
 
 [[workflows.workflow.tasks]]
@@ -98,6 +102,17 @@ isValidation = true
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "cd artifacts/rpay && node --import tsx/esm --test src/lib/gateway-panel-coverage.test.ts"
+
+[[workflows.workflow]]
+name = "mobile-otp-coverage"
+author = "agent"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/api-server && node --import tsx/esm --test src/helpers/mobile-otp-coverage.test.ts"
 
 [[workflows.workflow]]
 name = "system-config-coverage"
