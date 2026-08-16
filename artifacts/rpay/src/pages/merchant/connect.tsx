@@ -1374,30 +1374,44 @@ export default function MerchantConnect() {
 
   const isLoading = providersLoading || enrollmentsLoading;
 
-  // Filtered provider list for search
+  // Filtered provider list for search (platform-managed gateways from DB)
+  const searchLower = search.toLowerCase();
   const filtered = providers.filter(p => {
     if (!search) return true;
     const name = (PROVIDER_WHITE_LABEL[p.slug] ?? p.name).toLowerCase();
-    return name.includes(search.toLowerCase()) || p.slug.includes(search.toLowerCase());
+    return name.includes(searchLower) || p.slug.includes(searchLower);
   });
 
-  // Partition providers
-  const categoryD = filtered.filter(p => {
-    const info = enrollmentMap.get(p.slug)?.onboardingInfo;
-    return info?.category === "D";
+  // ── Category D / E / A come from the enrollments list, not the DB providers
+  // list. The /api/merchant/enrollments endpoint returns ALL providers that have
+  // onboarding metadata (phonepe, paytm, pinelabs, ekqr, etc.) regardless of
+  // whether they have a row in the providers table, so this is the authoritative
+  // source for self-service enrollment cards.
+  const categoryD = (enrollments ?? []).filter(e => {
+    if (e.onboardingInfo?.category !== "D") return false;
+    if (!search) return true;
+    const name = (PROVIDER_WHITE_LABEL[e.providerSlug] ?? e.providerSlug).toLowerCase();
+    return name.includes(searchLower) || e.providerSlug.includes(searchLower);
   });
-  const categoryE = filtered.filter(p => {
-    const info = enrollmentMap.get(p.slug)?.onboardingInfo;
-    return info?.category === "E";
+  const categoryE = (enrollments ?? []).filter(e => {
+    if (e.onboardingInfo?.category !== "E") return false;
+    if (!search) return true;
+    const name = (PROVIDER_WHITE_LABEL[e.providerSlug] ?? e.providerSlug).toLowerCase();
+    return name.includes(searchLower) || e.providerSlug.includes(searchLower);
   });
-  const categoryA = filtered.filter(p => {
-    const info = enrollmentMap.get(p.slug)?.onboardingInfo;
-    return info?.category === "A" || (!info && p.slug === "ekqr");
+  const categoryA = (enrollments ?? []).filter(e => {
+    if (!search) return e.onboardingInfo?.category === "A" || e.providerSlug === "ekqr";
+    const matchesCat = e.onboardingInfo?.category === "A" || e.providerSlug === "ekqr";
+    const name = (PROVIDER_WHITE_LABEL[e.providerSlug] ?? e.providerSlug).toLowerCase();
+    return matchesCat && (name.includes(searchLower) || e.providerSlug.includes(searchLower));
   });
-  // Fallback: providers not in enrollment metadata (live/testing platform providers)
+
+  // Platform-managed gateways (admin-activated: Cashfree, PayU, Razorpay, Pine Labs, …)
+  // Exclude slugs that are rendered via the enrollment card path above.
   const knownEnrollmentSlugs = new Set([
     "phonepe", "paytm", "bharatpe", "freecharge", "amazon_pay", "mobikwik",
     "sbi_yono", "hdfc_smarthub", "icici_eazypay", "axis_pay", "kotak_smart", "ekqr",
+    "pinelabs",
   ]);
   const platformProviders = filtered.filter(p => !knownEnrollmentSlugs.has(p.slug));
 
@@ -1545,8 +1559,12 @@ export default function MerchantConnect() {
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Live Gateway
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {categoryA.map(p => (
-                  <EkqrCard key={p.id} provider={p} connections={connections ?? null} />
+                {categoryA.map(e => (
+                  <EkqrCard
+                    key={e.providerSlug}
+                    provider={{ id: 0, slug: e.providerSlug, name: e.providerSlug, category: "A", description: "", status: "sandbox" }}
+                    connections={connections ?? null}
+                  />
                 ))}
               </div>
             </div>
@@ -1564,11 +1582,11 @@ export default function MerchantConnect() {
                 </p>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {categoryD.map(p => (
+                {categoryD.map(e => (
                   <EnrollmentCard
-                    key={p.id}
-                    provider={p}
-                    enrollment={enrollmentMap.get(p.slug) ?? null}
+                    key={e.providerSlug}
+                    provider={{ id: 0, slug: e.providerSlug, name: e.providerSlug, category: "D", description: "", status: "sandbox" }}
+                    enrollment={e}
                   />
                 ))}
               </div>
@@ -1582,14 +1600,14 @@ export default function MerchantConnect() {
                 <ShieldOff className="w-3.5 h-3.5" /> Not Available
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {categoryE.map(p => (
-                  <UnsupportedCard key={p.id} provider={p} />
+                {categoryE.map(e => (
+                  <UnsupportedCard key={e.providerSlug} provider={{ id: 0, slug: e.providerSlug, name: e.providerSlug, category: "E", description: "", status: "sandbox" }} />
                 ))}
               </div>
             </div>
           )}
 
-          {filtered.length === 0 && (
+          {filtered.length === 0 && categoryD.length === 0 && categoryE.length === 0 && (
             <div className="text-center py-16 text-muted-foreground">
               <p className="text-sm">No providers match your search</p>
             </div>
