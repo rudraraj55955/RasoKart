@@ -60,7 +60,64 @@ import { execFileSync } from "child_process";
 import { chromium, type Browser, type BrowserContext } from "playwright";
 import { logger } from "../../lib/logger";
 
+// ── Browser runtime error ─────────────────────────────────────────────────────
+
+/**
+ * Thrown when Chromium cannot be found or is not executable.
+ *
+ * Propagated to API route handlers which catch it and return a sanitized 503
+ * response — no server paths, binary locations, or Playwright stack traces are
+ * ever exposed to the merchant or customer.
+ */
+export class BrowserRuntimeUnavailableError extends Error {
+  readonly code = "BROWSER_RUNTIME_UNAVAILABLE" as const;
+  constructor() {
+    super("Browser runtime is unavailable. Contact support.");
+    this.name = "BrowserRuntimeUnavailableError";
+  }
+}
+
+/**
+ * Sanitize a browser error message before including it in an API response.
+ *
+ * Playwright's launch error messages include the full path to the expected
+ * Chromium binary ("Executable doesn't exist at /root/.cache/...").
+ * This function replaces all path-exposing messages with the stable token
+ * "BROWSER_RUNTIME_UNAVAILABLE" and strips filesystem path segments from
+ * anything else, capping the result at 80 characters.
+ */
+export function sanitizeBrowserError(msg: string): string {
+  const pathExposingPatterns = [
+    "Executable doesn't exist",
+    "ENOENT",
+    "spawn",
+    "Cannot find module",
+    "BROWSER_RUNTIME_UNAVAILABLE",
+    "browserType.launch",
+  ];
+  if (pathExposingPatterns.some((p) => msg.includes(p))) {
+    return "BROWSER_RUNTIME_UNAVAILABLE";
+  }
+  // Remove any filesystem path segments (starts with /) then cap length
+  return msg.replace(/\/[^\s)]+/g, "[path]").slice(0, 80);
+}
+
 // ── Chromium binary resolution ────────────────────────────────────────────────
+
+/**
+ * Return p if it exists AND has the execute bit set (X_OK), otherwise undefined.
+ * Used to validate every Chromium path before passing it to Playwright so that
+ * Playwright's "Executable doesn't exist at <full-server-path>" error is never
+ * triggered — we throw BrowserRuntimeUnavailableError first instead.
+ */
+function assertExecutable(p: string): string | undefined {
+  try {
+    fs.accessSync(p, fs.constants.X_OK);
+    return p;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Look up a system-installed Chromium binary using `which`.
@@ -84,7 +141,7 @@ function findSystemChromium(): string | undefined {
         timeout: 2_000,
         stdio: ["ignore", "pipe", "ignore"],
       }).trim();
-      if (p && fs.existsSync(p)) return p;
+      if (p) return assertExecutable(p);
     } catch {
       // not in PATH — try next
     }
@@ -132,7 +189,7 @@ function scanForChromium(browsersDir: string): string | undefined {
     for (const dir of dirs) {
       for (const rel of binRelPaths) {
         const candidate = path.join(browsersDir, dir, rel);
-        if (fs.existsSync(candidate)) {
+        if (assertExecutable(candidate)) {
           logger.debug({ candidate }, "browser_pool_chromium_found");
           return candidate;
         }
@@ -152,13 +209,14 @@ function resolveChromiumExecutable(): string | undefined {
   // Priority 1: explicit env var — for VPS / production
   const explicit = process.env["PLAYWRIGHT_CHROMIUM_EXECUTABLE"];
   if (explicit) {
-    if (fs.existsSync(explicit)) {
+    if (assertExecutable(explicit)) {
       logger.info({ path: explicit }, "browser_pool_using_explicit_executable");
       return explicit;
     }
+    // Path set but not runnable — warn and fall through to system detection
     logger.warn(
-      { path: explicit },
-      "browser_pool_explicit_executable_not_found",
+      { code: "BROWSER_RUNTIME_UNAVAILABLE" },
+      "browser_pool_explicit_executable_not_runnable",
     );
   }
 
@@ -250,6 +308,14 @@ async function getOrCreateBrowser(): Promise<Browser> {
 
   const executablePath = resolveChromiumExecutable();
 
+  // Pre-validate: if a path was resolved, confirm it is executable BEFORE calling
+  // chromium.launch(). This prevents Playwright from emitting its verbose
+  // "Executable doesn't exist at <full-server-path>" error which leaks server paths.
+  if (executablePath !== undefined && !assertExecutable(executablePath)) {
+    logger.error({ code: "BROWSER_RUNTIME_UNAVAILABLE" }, "browser_pool_resolved_path_not_runnable");
+    throw new BrowserRuntimeUnavailableError();
+  }
+
   launchPromise = chromium
     .launch({
       headless: true,
@@ -285,8 +351,21 @@ async function getOrCreateBrowser(): Promise<Browser> {
     })
     .catch((err: any) => {
       launchPromise = null;
+      const msg: string = err?.message ?? "";
+      // Playwright's "Executable doesn't exist at ..." leaks the server binary path.
+      // Catch it here and re-throw as BrowserRuntimeUnavailableError so callers
+      // always get a path-free error they can safely surface in API responses.
+      if (
+        err instanceof BrowserRuntimeUnavailableError ||
+        msg.includes("Executable doesn't exist") ||
+        msg.includes("ENOENT") ||
+        msg.includes("browserType.launch")
+      ) {
+        logger.error({ code: "BROWSER_RUNTIME_UNAVAILABLE" }, "browser_pool_launch_failed_missing_binary");
+        throw new BrowserRuntimeUnavailableError();
+      }
       logger.error(
-        { err: err?.message, executablePath: executablePath ?? "playwright-default" },
+        { err: msg, code: "BROWSER_LAUNCH_ERROR" },
         "browser_pool_launch_failed",
       );
       throw err;
@@ -394,7 +473,8 @@ export async function extractStorageState(
  *   { ready: false, reason: string }
  */
 export async function probeBrowserReady(): Promise<
-  { ready: true; durationMs: number } | { ready: false; reason: string }
+  | { ready: true; durationMs: number; version: string }
+  | { ready: false; reason: string }
 > {
   const t0 = Date.now();
   let ctx: IsolatedContext | null = null;
@@ -407,9 +487,12 @@ export async function probeBrowserReady(): Promise<
     if (val !== 2) {
       return { ready: false, reason: "js_evaluation_mismatch" };
     }
-    return { ready: true, durationMs: Date.now() - t0 };
+    // browser.version() is safe to expose — no paths, no credentials
+    const version = browserSingleton?.version() ?? "unknown";
+    return { ready: true, durationMs: Date.now() - t0, version };
   } catch (err: any) {
-    return { ready: false, reason: err?.message ?? "unknown_error" };
+    // Sanitize: never expose server paths or Playwright stack traces in responses
+    return { ready: false, reason: sanitizeBrowserError(err?.message ?? "unknown_error") };
   } finally {
     await ctx?.release();
   }
@@ -421,13 +504,12 @@ export function browserPoolStatus(): {
   browserConnected: boolean;
   concurrent: number;
   capacity: number;
-  executablePath: string;
 } {
   return {
     browserConnected: browserSingleton?.isConnected() ?? false,
     concurrent:       concurrentCount,
     capacity:         MAX_CONCURRENT,
-    executablePath:   resolveChromiumExecutable() ?? "playwright-default",
+    // executablePath deliberately omitted — never expose server paths in API responses
   };
 }
 

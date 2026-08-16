@@ -46,7 +46,11 @@ import { requireAuth } from "../middlewares/auth";
 import { isPortalProvider, getAdapter } from "../helpers/connectorEngine/engine";
 import { getRegisteredSlugs } from "../helpers/connectorEngine/adapters/registry";
 import { encryptSecret } from "../helpers/cryptoUtils";
-import { probeBrowserReady, browserPoolStatus } from "../helpers/connectorEngine/browserPool";
+import {
+  probeBrowserReady,
+  browserPoolStatus,
+  BrowserRuntimeUnavailableError,
+} from "../helpers/connectorEngine/browserPool";
 import { logger } from "../lib/logger";
 import { makeRateLimiter, safeIpKey } from "../helpers/makeRateLimiter";
 import { DbRateLimitStore } from "../lib/rateLimitStore";
@@ -64,7 +68,36 @@ function requireMerchant(req: any, res: any, next: any) {
   next();
 }
 
+// ── Public: browser-health probe ──────────────────────────────────────────────
+// Intentionally registered BEFORE router.use(requireAuth) so it is accessible
+// without authentication. The response contains no merchant data, no credentials,
+// and no server paths — it only indicates whether Chromium is launchable.
+// Used by deploy scripts, monitoring, and CI to verify the Playwright runtime.
+router.get("/browser-health", async (_req: any, res: any) => {
+  try {
+    const poolStatus = browserPoolStatus();
+    const probe      = await probeBrowserReady();
+    res.json({ ...probe, pool: poolStatus });
+  } catch (err: any) {
+    logger.error({ err: err.message }, "merchant_portal_browser_health_failed");
+    res.status(500).json({ ready: false, reason: "health_check_exception" });
+  }
+});
+
+// ── Auth guard (all routes below require a valid merchant JWT) ─────────────────
+
 router.use(requireAuth, requireMerchant);
+
+/** Map a BrowserRuntimeUnavailableError to a sanitized 503 with no server paths. */
+function handleBrowserUnavailable(res: any, merchantId: number, providerSlug: string): void {
+  logger.warn({ merchantId, providerSlug }, "merchant_portal_browser_runtime_unavailable");
+  res.status(503).json({
+    status:    "FAILED",
+    errorCode: "BROWSER_RUNTIME_UNAVAILABLE",
+    message:   "Browser automation is temporarily unavailable. Please try again later or contact support.",
+    nextStep:  null,
+  });
+}
 
 // ── Rate limits ────────────────────────────────────────────────────────────────
 
@@ -170,25 +203,6 @@ router.get("/providers", async (req: any, res) => {
   } catch (err: any) {
     logger.error({ err: err.message }, "merchant_portal_providers_failed");
     res.status(500).json({ error: "Failed to list portal providers" });
-  }
-});
-
-// ── GET /api/merchant/portal-sessions/browser-health ──────────────────────────
-// Lightweight browser-readiness probe. Does NOT visit any portal — opens a
-// blank page, runs `1 + 1`, and closes. Safe to call from monitoring.
-
-router.get("/browser-health", async (req: any, res) => {
-  try {
-    const poolStatus = browserPoolStatus();
-    const probe = await probeBrowserReady();
-
-    res.json({
-      ...probe,
-      pool: poolStatus,
-    });
-  } catch (err: any) {
-    logger.error({ err: err.message }, "merchant_portal_browser_health_failed");
-    res.status(500).json({ ready: false, reason: "health_check_exception" });
   }
 });
 
@@ -327,6 +341,10 @@ router.post("/:provider/initiate", initiateLimit, async (req: any, res) => {
       helpUrl:   result.helpUrl ?? null,
     });
   } catch (err: any) {
+    if (err instanceof BrowserRuntimeUnavailableError) {
+      handleBrowserUnavailable(res, merchantId, providerSlug);
+      return;
+    }
     // Log: error message only. No credentials, identifier, or OTP.
     logger.error(
       { err: err.message, merchantId, providerSlug },
@@ -530,6 +548,10 @@ router.post("/:provider/submit-step", submitStepLimit, async (req: any, res) => 
       attemptsRemaining: hitMaxAttempts ? 0 : MAX_OTP_ATTEMPTS - newFailureCount,
     });
   } catch (err: any) {
+    if (err instanceof BrowserRuntimeUnavailableError) {
+      handleBrowserUnavailable(res, merchantId, providerSlug);
+      return;
+    }
     // No credential values in the log
     logger.error(
       { err: err.message, merchantId, providerSlug },
@@ -641,6 +663,10 @@ router.post("/:provider/sync", syncLimit, async (req: any, res) => {
 
     res.json({ synced, skipped, total: fetchResult.transactions.length, hasMore: fetchResult.hasMore });
   } catch (err: any) {
+    if (err instanceof BrowserRuntimeUnavailableError) {
+      handleBrowserUnavailable(res, merchantId, providerSlug);
+      return;
+    }
     logger.error({ err: err.message, merchantId, providerSlug }, "merchant_portal_sync_failed");
     res.status(500).json({ error: "Sync failed. Please try again." });
   }

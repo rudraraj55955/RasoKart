@@ -115,6 +115,48 @@ jobs:
             echo "=== [3/9] Install dependencies ==="
             pnpm install --frozen-lockfile
 
+            # ── [3.5/9] Ensure system Chromium for Playwright ─────────────────
+            # The Connector Engine's portal_session_connector adapters use Playwright
+            # to automate merchant portal logins. Chromium must be available as a
+            # system binary so the Node.js process can find it at runtime without a
+            # hardcoded path. We install once if absent and inject the resolved path
+            # into ecosystem.config.cjs so PM2 re-reads it on every future restart.
+            echo "=== [3.5/9] Ensure system Chromium for Playwright ==="
+            CHROMIUM_BIN=""
+            for _cand in chromium-browser chromium google-chrome-stable google-chrome; do
+              if command -v "$_cand" >/dev/null 2>&1; then
+                CHROMIUM_BIN=$(command -v "$_cand"); break
+              fi
+            done
+            if [ -z "$CHROMIUM_BIN" ]; then
+              if command -v apt-get >/dev/null 2>&1; then
+                echo "Chromium not found — installing via apt-get..."
+                DEBIAN_FRONTEND=noninteractive apt-get update -qq
+                DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends chromium-browser 2>/dev/null \
+                  || DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends chromium 2>/dev/null \
+                  || { echo "ERROR: Chromium apt install failed"; exit 1; }
+                for _cand in chromium-browser chromium google-chrome-stable google-chrome; do
+                  if command -v "$_cand" >/dev/null 2>&1; then
+                    CHROMIUM_BIN=$(command -v "$_cand"); break
+                  fi
+                done
+              else
+                echo "ERROR: apt-get not available — cannot install Chromium"; exit 1
+              fi
+            fi
+            if [ -z "$CHROMIUM_BIN" ] || [ ! -x "$CHROMIUM_BIN" ]; then
+              echo "ERROR: No executable Chromium binary found after install"
+              exit 1
+            fi
+            CHROMIUM_VER=$("$CHROMIUM_BIN" --version 2>/dev/null || echo "version_unknown")
+            echo "Chromium ready: $CHROMIUM_VER"
+            # Inject PLAYWRIGHT_CHROMIUM_EXECUTABLE into the live ecosystem so PM2 inherits
+            # it on every restart. Path is passed as argv — not echoed into CI logs.
+            echo 'aW1wb3J0IHN5cwplY29fcGF0aCwgY2hyb21pdW1fYmluID0gc3lzLmFyZ3ZbMV0sIHN5cy5hcmd2WzJdCndpdGggb3BlbihlY29fcGF0aCkgYXMgZjoKICAgIGxpbmVzID0gZi5yZWFkbGluZXMoKQpuZXdfbGluZSA9ICcgICAgICAgIFBMQVlXUklHSFRfQ0hST01JVU1fRVhFQ1VUQUJMRTogIicgKyBjaHJvbWl1bV9iaW4gKyAnIixcbicKaGFzX2tleSA9IGFueSgnUExBWVdSSUdIVF9DSFJPTUlVTV9FWEVDVVRBQkxFJyBpbiBsIGZvciBsIGluIGxpbmVzKQpyZXN1bHQgPSBbXQppbnNlcnRlZCA9IEZhbHNlCmZvciBsaW5lIGluIGxpbmVzOgogICAgaWYgaGFzX2tleSBhbmQgJ1BMQVlXUklHSFRfQ0hST01JVU1fRVhFQ1VUQUJMRScgaW4gbGluZToKICAgICAgICByZXN1bHQuYXBwZW5kKG5ld19saW5lKQogICAgZWxpZiBub3QgaGFzX2tleSBhbmQgbGluZS5zdHJpcCgpLnN0YXJ0c3dpdGgoJ05PREVfRU5WOicpIGFuZCBub3QgaW5zZXJ0ZWQ6CiAgICAgICAgcmVzdWx0LmFwcGVuZChsaW5lKQogICAgICAgIHJlc3VsdC5hcHBlbmQobmV3X2xpbmUpCiAgICAgICAgaW5zZXJ0ZWQgPSBUcnVlCiAgICBlbHNlOgogICAgICAgIHJlc3VsdC5hcHBlbmQobGluZSkKd2l0aCBvcGVuKGVjb19wYXRoLCAndycpIGFzIGY6CiAgICBmLndyaXRlbGluZXMocmVzdWx0KQpwcmludCgnZWNvc3lzdGVtLmNvbmZpZy5janM6IFBMQVlXUklHSFRfQ0hST01JVU1fRVhFQ1VUQUJMRSBpbmplY3RlZCcpCg==' \
+              | base64 -d > /tmp/_rk_eco_inject.py
+            python3 /tmp/_rk_eco_inject.py "$ECOSYSTEM" "$CHROMIUM_BIN"
+            rm -f /tmp/_rk_eco_inject.py
+
             # ── [4/9] Migrate ─────────────────────────────────────────────────
             # DATABASE_URL is exported from the sourced env file above and
             # inherited by the pnpm child process — no need to pass it explicitly
@@ -126,9 +168,12 @@ jobs:
             pnpm --filter @workspace/api-server run build
 
             # ── [6/9] Restart PM2 ─────────────────────────────────────────────
-            # PM2 reads the restored ecosystem.config.cjs which has real credentials
+            # ecosystem.config.cjs was updated with PLAYWRIGHT_CHROMIUM_EXECUTABLE
+            # in step [3.5/9]. --update-env re-reads env from the ecosystem file so
+            # the new var is visible to the Node.js process immediately.
             echo "=== [6/9] Restart PM2 ==="
-            pm2 restart rasokart-api
+            export PLAYWRIGHT_CHROMIUM_EXECUTABLE="$CHROMIUM_BIN"
+            pm2 restart rasokart-api --update-env
             sleep 6
             pm2 status
 
@@ -210,6 +255,7 @@ jobs:
           check https://rasokart.com/merchant/login
           check https://rasokart.com/agent/login
           check https://rasokart.com/agent/activate
+          check https://rasokart.com/api/merchant/portal-sessions/browser-health
           check https://rasokart.com/sitemap.xml
           check https://rasokart.com/robots.txt
           echo "--- Contact form POST ---"
