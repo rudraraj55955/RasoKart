@@ -8,7 +8,7 @@
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --import tsx --test-concurrency=1 --test src/**/*.test.ts",
+    "test": "node --import tsx --test-concurrency=1 --test-force-exit --test src/**/*.test.ts",
     "seed": "tsx src/seed.ts"
   },
   "dependencies": {
