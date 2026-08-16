@@ -150,12 +150,13 @@ const CREDENTIAL_HINTS: Record<string, { fields: { name: string; hint: string }[
                          { name: "access_code", hint: "Access Code from Pine Labs Plural Console → Settings → API Keys" },
                          { name: "working_key", hint: "Working Key from Pine Labs Plural Console → Settings → API Keys" }],
                note: "Pine Labs Plural PG credentials — all three required. Managed via Payment Gateways, not Merchant Connect." },
-  // Pine Labs ONE — POS/QR merchant account. No API keys; partner access required.
+  // Pine Labs ONE — POS/QR merchant account platform. Partner API credentials required.
   pinelabs_one: { fields: [
-                   { name: "merchant_id", hint: "Merchant ID from Pine Labs ONE portal (one.pinelabs.com)" },
-                   { name: "store_id",    hint: "Store ID from Pine Labs ONE portal → Stores section" },
+                   { name: "partner_api_key",    hint: "Partner API Key issued by Pine Labs upon partner program approval — see developer.pinelabs.com or your partner onboarding email" },
+                   { name: "partner_api_secret", hint: "Partner API Secret from your Pine Labs partner program agreement (keep this secret)" },
+                   { name: "merchant_id",        hint: "Pine Labs ONE Merchant ID (optional) — scopes API calls to your account on one.pinelabs.com" },
                  ],
-                 note: "⚠ Official Pine Labs ONE partner/enterprise API access required. No public API currently available. Contact Pine Labs at developer.pinelabs.com to apply for partner access before configuring this connector." },
+                 note: "Requires an official Pine Labs partner API agreement. Apply at developer.pinelabs.com or contact Pine Labs enterprise support. Partner API Key and Secret are distinct from portal OTP login credentials." },
   ekqr:      { fields: [{ name: "api_key",    hint: "API Key / Merchant ID from EKQR dashboard" }] },
   phonepe:   { fields: [{ name: "merchant_id", hint: "PhonePe Business MID" },
                          { name: "api_key",    hint: "PhonePe API Key" }] },
@@ -531,19 +532,7 @@ function RasoKartConnections() {
 
                   {/* Actions */}
                   <div className="flex items-center gap-1.5 shrink-0">
-                    {p.slug === "pinelabs_one" && !conn ? (
-                      /* Pine Labs ONE: no public API — partner access required */
-                      <a
-                        href="https://developer.pinelabs.com"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-xs text-amber-400/80 hover:text-amber-300 transition-colors"
-                        title="Apply for Pine Labs ONE partner API access"
-                      >
-                        <AlertTriangle className="w-3 h-3" />
-                        Partner API Required
-                      </a>
-                    ) : !conn ? (
+                    {!conn ? (
                       <Button size="sm" variant="outline" onClick={() => openCreate(p)} className="gap-1 text-xs h-7">
                         <Plus className="w-3 h-3" /> Connect
                       </Button>

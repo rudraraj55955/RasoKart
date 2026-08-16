@@ -562,41 +562,57 @@ export const PROVIDER_ONBOARDING_METADATA: Record<string, ProviderOnboardingInfo
     category: "D",
     categoryReason:
       "Pine Labs ONE (one.pinelabs.com) is a POS/QR merchant account platform entirely " +
-      "separate from the Pine Labs Plural payment gateway (pinepg.in). Pine Labs ONE does " +
-      "not provide a public API allowing third-party platforms to access merchant accounts. " +
-      "Portal login uses mobile/email OTP — automating this without official API is not " +
-      "a supported integration pattern. Category D: official Pine Labs partner/enterprise " +
-      "API agreement is required before any integration is technically possible.",
+      "separate from the Pine Labs Plural payment gateway (pinepg.in). Official Pine Labs " +
+      "partner/enterprise API agreement is required (developer.pinelabs.com). Credentials " +
+      "are partner_api_key + partner_api_secret issued by Pine Labs upon partner approval.",
 
-    existingConnectionSupported: false,
+    existingConnectionSupported: true,
     existingConnectionNote:
-      "Pine Labs ONE does not expose a public third-party integration API. " +
-      "To enable this connector, apply for official partner API access through the Pine Labs " +
-      "partner program at developer.pinelabs.com or contact Pine Labs enterprise support. " +
-      "Do not attempt to automate OTP-based portal login — this is not an authorised method.",
+      "Pine Labs ONE integration requires an official Pine Labs partner API agreement. " +
+      "Once granted, enter your Partner API Key and Partner API Secret (issued by Pine Labs " +
+      "enterprise support or via the partner portal at developer.pinelabs.com). " +
+      "Do not attempt to use portal OTP login credentials — only partner-program API keys are accepted.",
     loginMethods: [
-      "Registered mobile number + OTP (Pine Labs ONE portal — not automatable via RasoKart API)",
-      "Registered email ID + OTP (Pine Labs ONE portal — not automatable via RasoKart API)",
+      "Partner API Key + Secret (Pine Labs partner program — issued by Pine Labs enterprise support)",
     ],
-    merchantPortalUrl: "https://one.pinelabs.com",
-    portalDisplayName: "Pine Labs ONE Merchant Portal",
-    credentialFields: [],  // No credential fields until official partner API is granted
+    merchantPortalUrl: "https://developer.pinelabs.com",
+    portalDisplayName: "Pine Labs Partner Developer Portal",
+    credentialFields: [
+      {
+        slot: "apiKey",
+        label: "Partner API Key",
+        hint: "Issued by Pine Labs upon partner program approval — see developer.pinelabs.com or your partner onboarding email",
+        required: true,
+      },
+      {
+        slot: "apiSecret",
+        label: "Partner API Secret",
+        hint: "Partner API Secret from your Pine Labs partner program agreement (keep this secret)",
+        required: true,
+      },
+      {
+        slot: "merchantId",
+        label: "Pine Labs ONE Merchant ID (optional)",
+        hint: "Your Merchant ID on Pine Labs ONE (one.pinelabs.com) — used to scope API calls to your account",
+        required: false,
+        isIdentifier: true,
+      },
+    ],
 
-    // Pine Labs ONE does use mobile OTP for portal login, but there is no API
-    // for third-party initiation of that OTP or session acquisition.
+    // Mobile/email OTP — portal login only; not a valid third-party API credential path.
     mobileOtpSupported: false,
     mobileOtpNote:
-      "Pine Labs ONE portal uses mobile OTP for merchant login, but no public API exists " +
-      "to initiate OTP or receive a session token on the merchant's behalf. " +
-      "Official Pine Labs partner API required.",
+      "Pine Labs ONE portal uses mobile/email OTP for merchant portal login, but these " +
+      "are not valid credentials for the partner API. Use your Pine Labs partner API key " +
+      "and secret (issued via developer.pinelabs.com) to configure this connector.",
 
     emailOtpLoginAvailable: false,
 
     signupUrl: "https://developer.pinelabs.com",
-    kycDocuments: [],  // N/A — existing merchant account product
-    onboardingTimeline: "Requires official Pine Labs partner program enrollment (timeline per Pine Labs)",
-    supportsSelfSubmit: false,
-    finalStatus: "OFFICIAL PINE LABS ONE PARTNER/ENTERPRISE API ACCESS REQUIRED — CONNECTOR SHELL READY",
+    kycDocuments: [],  // N/A — existing merchant account product; partner agreement handles KYC
+    onboardingTimeline: "Partner program enrollment at developer.pinelabs.com; timeline per Pine Labs",
+    supportsSelfSubmit: true,
+    finalStatus: "PARTNER API CREDENTIALS REQUIRED — APPLY AT developer.pinelabs.com",
   },
 
   ekqr: {

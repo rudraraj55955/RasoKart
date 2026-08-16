@@ -144,18 +144,45 @@ export async function runProviderTest(
     }
 
     case "pinelabs_one": {
-      // Pine Labs ONE (one.pinelabs.com) is a POS/QR merchant account portal.
-      // It does NOT provide a public third-party API for programmatic account access.
-      // Accessing it via OTP-based portal login automation is not an official integration.
-      // Official Pine Labs partner/enterprise API agreement is required.
+      // Pine Labs ONE (one.pinelabs.com) — POS/QR merchant account platform.
+      // Official partner/enterprise API agreement required (developer.pinelabs.com).
+      //
+      // ALWAYS returns pass:false — by design.
+      //
+      // Rationale: the partner API endpoint URL, auth scheme, and response contract
+      // are documented in the Pine Labs partner onboarding agreement, which has not
+      // yet been received. Until that endpoint is confirmed and wired in, this test
+      // performs credential-presence validation only and deliberately returns
+      // pass:false so the calling route never auto-promotes the connection to "active".
+      //
+      // When the Pine Labs partner onboarding docs arrive:
+      //   1. Add the exact endpoint URL + auth headers here.
+      //   2. Accept only documented successful responses as pass:true.
+      //   3. Remove this comment block.
+      // (See follow-up task: "Flip Pine Labs ONE live once partner credentials are in production")
+      const hasKey    = !!(creds["partner_api_key"]    || creds["api_key"]);
+      const hasSecret = !!(creds["partner_api_secret"] || creds["api_secret"] || creds["client_secret"]);
+      if (!hasKey || !hasSecret) {
+        return {
+          pass: false,
+          message: "Pine Labs ONE credentials must include Partner API Key and Partner API Secret",
+          detail: `Keys present: ${Object.keys(creds).join(", ") || "none"}. ` +
+            "Obtain credentials from the Pine Labs partner program at developer.pinelabs.com.",
+        };
+      }
+      // Credentials are present and well-formed, but live verification is impossible
+      // without the official partner API endpoint. Return pass:false so the connection
+      // stays in "pending" status — it can only become "active" once a real network
+      // test succeeds against the documented endpoint (Task #2726).
       return {
         pass: false,
-        message: "Official Pine Labs ONE partner/API access required",
+        message: "Pine Labs ONE credentials saved but not yet live-verified",
         detail:
-          "Pine Labs ONE (one.pinelabs.com) does not provide a public API for third-party " +
-          "account monitoring. To enable this connector, apply for official partner API access " +
-          "at developer.pinelabs.com or contact Pine Labs enterprise support. " +
-          "No real-money transactions are initiated by this test.",
+          "Credentials present: " + Object.keys(creds).join(", ") + ". " +
+          "A live connectivity test requires the official partner API endpoint URL from your " +
+          "Pine Labs partner onboarding agreement (developer.pinelabs.com). " +
+          "The connection remains pending until that endpoint is confirmed and a real network " +
+          "test can be run. No financial operations are affected.",
       };
     }
 

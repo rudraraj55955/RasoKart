@@ -107,13 +107,18 @@ router.post("/", async (req, res) => {
 
   const encryptedCreds = prepareCredentials(credentials);
 
+  // Guard: providers requiring a live test cannot be created as active.
+  const activationOverride = sanitizePlatformConnActivation(provider, { isActive, connectionStatus });
+  const safeIsActive = activationOverride ? activationOverride.isActive : !!isActive;
+  const safeConnectionStatus = activationOverride ? activationOverride.connectionStatus : (connectionStatus ?? "pending");
+
   const [inserted] = await db.insert(platformConnectionsTable).values({
     provider,
     label:          label || null,
     environment:    environment === "live" ? "live" : "sandbox",
     credentials:    encryptedCreds !== undefined ? encryptedCreds : null,
-    connectionStatus,
-    isActive:       !!isActive,
+    connectionStatus: safeConnectionStatus,
+    isActive:       safeIsActive,
     notes:          notes || null,
     createdByEmail: user.email,
     capabilityPayin:        capabilityPayin        !== undefined ? !!capabilityPayin        : true,
@@ -145,6 +150,12 @@ router.put("/:id", async (req, res) => {
     capabilityPaymentLinks, capabilityRefunds, capabilitySettlement,
   } = req.body;
 
+  // Pre-fetch the connection to know its provider for the activation guard.
+  const [existing] = await db.select({
+    provider: platformConnectionsTable.provider,
+  }).from(platformConnectionsTable).where(eq(platformConnectionsTable.id, id)).limit(1);
+  if (!existing) { res.status(404).json({ error: "Platform connection not found" }); return; }
+
   const update: Record<string, unknown> = {};
   if (label       !== undefined) update.label       = label || null;
   if (environment !== undefined) update.environment = environment === "live" ? "live" : "sandbox";
@@ -157,6 +168,21 @@ router.put("/:id", async (req, res) => {
   if (isActive         !== undefined) {
     update.isActive      = !!isActive;
     update.deactivatedAt = !isActive ? new Date() : null;
+  }
+
+  // Guard: providers requiring a live test cannot be set active via PUT.
+  const activationOverride = sanitizePlatformConnActivation(existing.provider, {
+    isActive: update.isActive as boolean | undefined,
+    connectionStatus: update.connectionStatus as string | undefined,
+  });
+  if (activationOverride) {
+    if (update.isActive !== undefined) {
+      update.isActive      = activationOverride.isActive;
+      update.deactivatedAt = null;
+    }
+    if (update.connectionStatus !== undefined) {
+      update.connectionStatus = activationOverride.connectionStatus;
+    }
   }
   if (capabilityPayin        !== undefined) update.capabilityPayin        = !!capabilityPayin;
   if (capabilityPayout       !== undefined) update.capabilityPayout       = !!capabilityPayout;
@@ -259,9 +285,58 @@ router.post("/:id/test", async (req, res) => {
 
 // ── POST /api/platform-connections/:id/enable ────────────────────────────────
 
+/**
+ * Providers that require a successful live network test before they can be activated.
+ * A format-only credential check (pass:false by design) does not count as a live test.
+ *
+ * Enforced in three places:
+ *   1. POST create — isActive and connectionStatus forced to false/"pending"
+ *   2. PUT update  — activation fields stripped/overridden before write
+ *   3. POST enable — blocked until lastTestResult === "pass" from a real live test
+ */
+export const REQUIRES_LIVE_TEST_PROVIDERS = new Set(["pinelabs_one"]);
+
+/**
+ * For providers in REQUIRES_LIVE_TEST_PROVIDERS: strip caller-controlled activation
+ * fields from a create/update payload and force them to safe defaults.
+ *
+ * Called in both POST (create) and PUT (update) to prevent bypassing the /enable gate.
+ * Exported so it can be unit-tested independently.
+ */
+export function sanitizePlatformConnActivation(
+  provider: string,
+  fields: { isActive?: boolean; connectionStatus?: string }
+): { isActive: boolean; connectionStatus: string } | null {
+  if (!REQUIRES_LIVE_TEST_PROVIDERS.has(provider)) return null; // no override needed
+  return {
+    isActive: false,
+    connectionStatus:
+      fields.connectionStatus && fields.connectionStatus !== "active"
+        ? fields.connectionStatus
+        : "pending",
+  };
+}
+
 router.post("/:id/enable", async (req, res) => {
   const user = (req as any).user;
   const id = parseInt(req.params['id'] as string);
+
+  // Fetch first so we can enforce the live-test gate before mutating.
+  const [conn] = await db.select().from(platformConnectionsTable).where(eq(platformConnectionsTable.id, id)).limit(1);
+  if (!conn) { res.status(404).json({ error: "Platform connection not found" }); return; }
+
+  if (REQUIRES_LIVE_TEST_PROVIDERS.has(conn.provider) && conn.lastTestResult !== "pass") {
+    res.status(409).json({
+      error: `${conn.provider} cannot be enabled until a successful live connectivity test has passed`,
+      detail:
+        "This provider requires an official partner API agreement and a successful live network " +
+        "verification before it can be activated. Run the credential test once the partner API " +
+        "endpoint is confirmed in your onboarding agreement (developer.pinelabs.com).",
+      code: "LIVE_TEST_REQUIRED",
+    });
+    return;
+  }
+
   const [result] = await db.update(platformConnectionsTable)
     .set({ isActive: true, connectionStatus: "active", deactivatedAt: null })
     .where(eq(platformConnectionsTable.id, id))
