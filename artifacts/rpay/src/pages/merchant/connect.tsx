@@ -40,7 +40,7 @@ import {
 import {
   Search, RefreshCw, Link2,
   ExternalLink, ShieldOff, CheckCircle2, Clock, AlertTriangle, XCircle, FileText,
-  Key, Unlink, ArrowRight, Info, ChevronRight, LogIn, UserPlus, ArrowLeft,
+  Key, Unlink, ArrowRight, Info, ChevronRight, UserPlus, ArrowLeft,
   Lock, AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -413,21 +413,21 @@ function EnrollFlowDialog({
           Choose how you want to connect <span className="font-medium text-foreground">{providerName}</span>:
         </p>
 
-        {/* Option A: Existing account */}
+        {/* Option A: Provider-issued credentials */}
         <button
           className="w-full text-left p-4 rounded-lg border border-border/60 hover:border-primary/40 hover:bg-primary/5 transition-colors group"
           onClick={() => setStep("existing_info")}
         >
           <div className="flex items-start gap-3">
             <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors">
-              <LogIn className="w-4 h-4 text-primary" />
+              <Key className="w-4 h-4 text-primary" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-foreground">Connect Existing Merchant Account</p>
+              <p className="text-sm font-semibold text-foreground">Connect using provider-issued credentials</p>
               <p className="text-xs text-muted-foreground mt-0.5">
                 {existingSupported
-                  ? "I already have a merchant account — I'll retrieve my API credentials from the provider portal and submit them here"
-                  : "View information about connecting an existing account"}
+                  ? "I have API credentials issued by this provider — I'll enter them here to connect"
+                  : "View information about this provider's connection requirements"}
               </p>
             </div>
             <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary mt-0.5 shrink-0 transition-colors" />
@@ -467,16 +467,16 @@ function EnrollFlowDialog({
   function renderExistingInfo() {
     return (
       <div className="space-y-4 py-2">
-        {/* How connection works for this provider */}
+        {/* How credential-based connection works for this provider */}
         <div className="p-3.5 rounded-lg bg-amber-500/5 border border-amber-500/20 space-y-2">
           <p className="text-xs font-semibold text-amber-400 flex items-center gap-1.5">
-            <Info className="w-3.5 h-3.5" /> How existing-account connection works
+            <Info className="w-3.5 h-3.5" /> How provider-credential connection works
           </p>
           <p className="text-xs text-muted-foreground leading-relaxed">
             {info?.existingConnectionNote ?? (
               existingSupported
                 ? "Log into the provider's business portal, retrieve your API credentials, and submit them here."
-                : "Direct merchant login connection is not available for this provider."
+                : "Direct credential connection is not available for this provider."
             )}
           </p>
         </div>
@@ -493,22 +493,14 @@ function EnrollFlowDialog({
           </div>
         )}
 
-        {/* Login methods */}
+        {/* Portal access note — this happens entirely at the provider's website, not in RasoKart */}
         {existingSupported && info?.loginMethods && info.loginMethods.length > 0 && (
           <div className="space-y-1.5">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              How to log in at the provider portal
+              Accessing your credentials on the provider portal
             </p>
-            <ul className="space-y-1.5">
-              {info.loginMethods.map(m => (
-                <li key={m} className="text-xs text-foreground flex items-start gap-2">
-                  <Smartphone className="w-3.5 h-3.5 text-muted-foreground mt-0.5 shrink-0" />
-                  <span>{m}</span>
-                </li>
-              ))}
-            </ul>
-            <p className="text-xs text-muted-foreground italic mt-1">
-              OTP is entered directly on the provider's website — RasoKart never receives or intercepts it.
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              You will need to access the provider's portal using your registered account to retrieve the API credentials listed below. This authentication happens entirely at the provider's own website — RasoKart is not part of that login flow and does not receive your portal session, OTP, or password.
             </p>
           </div>
         )}
@@ -577,9 +569,9 @@ function EnrollFlowDialog({
       <div className="space-y-4 py-2">
         {/* Step breadcrumb */}
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <span className="text-muted-foreground/60">Connect Existing Account</span>
+          <span className="text-muted-foreground/60">Connect using provider-issued credentials</span>
           <ChevronRight className="w-3 h-3" />
-          <span className="text-foreground font-medium">Submit API Credentials</span>
+          <span className="text-foreground font-medium">Enter API Credentials</span>
         </div>
 
         <div className="p-3 rounded-lg bg-amber-500/5 border border-amber-500/20 flex items-start gap-2">
@@ -787,8 +779,8 @@ function EnrollFlowDialog({
           </DialogTitle>
           <DialogDescription>
             {step === "choice" && "How would you like to connect this provider?"}
-            {step === "existing_info" && "Connect an existing merchant account"}
-            {step === "credentials" && "Submit your API credentials from the provider portal"}
+            {step === "existing_info" && "Submit provider-issued API credentials"}
+            {step === "credentials" && "Enter the API credentials you obtained from the provider portal"}
             {step === "new_account" && "Apply for a new merchant account"}
           </DialogDescription>
         </DialogHeader>
