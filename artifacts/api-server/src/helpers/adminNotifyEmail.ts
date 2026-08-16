@@ -11,7 +11,7 @@ function formatAmount(val: string | number | null | undefined): string {
   return `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-export async function getAdminEmails(preference: "planExpiryAlertEmails" | "settlementStateEmails" | "webhookFailureEmails" | "ekqrSyncAlertEmails" | "ekqrCapAlertEmails" | "reportFailureAlertEmails"): Promise<string[]> {
+export async function getAdminEmails(preference: "planExpiryAlertEmails" | "settlementStateEmails" | "webhookFailureEmails" | "ekqrSyncAlertEmails" | "ekqrCapAlertEmails" | "reportFailureAlertEmails" | "enrollmentCredentialSubmittedEmails"): Promise<string[]> {
   const admins = await db
     .select({ email: usersTable.email })
     .from(usersTable)
@@ -1874,5 +1874,145 @@ export async function notifyMerchantOfEnrollmentStatusChange(opts: {
       { err, merchantId: opts.merchantId, providerSlug: opts.providerSlug },
       "Failed to send merchant enrollment status change email"
     );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Merchant enrollment credential submission emails
+// ---------------------------------------------------------------------------
+
+/** Escape user-controlled text before interpolating into HTML email bodies. */
+function escapeHtml(raw: string): string {
+  return raw
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+export function buildMerchantCredentialSubmittedHtml(opts: {
+  merchantId: number;
+  merchantName: string;
+  providerSlug: string;
+  hasApiKey: boolean;
+  hasApiSecret: boolean;
+  hasWebhookSecret: boolean;
+}): string {
+  const { merchantId, hasApiKey, hasApiSecret, hasWebhookSecret } = opts;
+  const merchantName = escapeHtml(opts.merchantName);
+  const providerSlug = escapeHtml(opts.providerSlug);
+  const reviewLink = `${APP_DOMAIN}/admin/merchant-enrollments`;
+  const merchantLink = `${APP_DOMAIN}/admin/merchants/${merchantId}`;
+
+  const badge = (present: boolean, label: string) =>
+    `<span style="display:inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; background: ${present ? "#14532d" : "#1c1c1c"}; color: ${present ? "#4ade80" : "#71717a"}; border: 1px solid ${present ? "#166534" : "#2a2a2a"};">${present ? "✓" : "—"} ${label}</span>`;
+
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; background: #0f0f0f; color: #e5e5e5; margin: 0; padding: 24px;">
+  <div style="max-width: 600px; margin: 0 auto; background: #1a1a1a; border-radius: 8px; overflow: hidden; border: 1px solid #2a2a2a;">
+    <div style="background: #1e3a2f; padding: 20px 24px;">
+      <h1 style="margin: 0; font-size: 20px; color: #fff; letter-spacing: 0.5px;">RasoKart — New Provider Credentials Submitted</h1>
+      <p style="margin: 4px 0 0; color: #6ee7b7; font-size: 13px;">A merchant has submitted API credentials for review</p>
+    </div>
+    <div style="padding: 24px;">
+      <p style="margin: 0 0 16px; color: #d1fae5; font-size: 14px; font-weight: 600;">
+        🔑 ${merchantName} has submitted credentials for <strong>${providerSlug}</strong>.
+      </p>
+      <p style="margin: 0 0 20px; color: #a1a1aa; font-size: 13px;">
+        Please review the submitted credentials in the Merchant Enrollment panel and activate or reject the integration.
+      </p>
+
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+        <tr style="background: #111;">
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px; width: 40%;">Merchant</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; font-weight: 600;">${merchantName}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">Merchant ID</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px;">#${merchantId}</td>
+        </tr>
+        <tr style="background: #111;">
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">Provider</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; font-weight: 600;">${providerSlug}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">Credentials</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px;">
+            <span style="display: flex; gap: 6px; flex-wrap: wrap;">
+              ${badge(hasApiKey, "API Key")}
+              ${badge(hasApiSecret, "API Secret")}
+              ${badge(hasWebhookSecret, "Webhook Secret")}
+            </span>
+          </td>
+        </tr>
+      </table>
+
+      <div style="text-align: center; margin-bottom: 16px;">
+        <a href="${reviewLink}"
+           style="display: inline-block; background: #7c3aed; color: #fff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-size: 14px; font-weight: 600; letter-spacing: 0.3px;">
+          Review Enrollment in Admin Portal
+        </a>
+      </div>
+      <div style="text-align: center; margin-bottom: 20px;">
+        <a href="${merchantLink}"
+           style="display: inline-block; color: #818cf8; text-decoration: none; font-size: 13px;">
+          View Merchant Profile
+        </a>
+      </div>
+
+      <p style="margin: 0; color: #71717a; font-size: 12px;">
+        If the link above doesn't work, copy this URL into your browser:<br>
+        <span style="color: #818cf8;">${reviewLink}</span>
+      </p>
+    </div>
+    <div style="padding: 14px 24px; background: #111; border-top: 1px solid #2a2a2a;">
+      <p style="margin: 0; color: #52525b; font-size: 11px;">
+        This alert was sent by RasoKart. To stop receiving enrollment credential submission emails, update your notification preferences in Admin Settings.
+      </p>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+export async function notifyAdminsOfNewEnrollmentSubmission(opts: {
+  merchantId: number;
+  merchantName: string;
+  providerSlug: string;
+  hasApiKey: boolean;
+  hasApiSecret: boolean;
+  hasWebhookSecret: boolean;
+}): Promise<void> {
+  try {
+    const recipients = await getAdminEmails("enrollmentCredentialSubmittedEmails");
+
+    if (recipients.length === 0) {
+      logger.info({ merchantId: opts.merchantId }, "No admins opted in to enrollment credential submission emails — skipping");
+      return;
+    }
+
+    const html = buildMerchantCredentialSubmittedHtml(opts);
+    // Subject uses plain text — strip HTML special chars from merchant-controlled fields
+    const safeName = opts.merchantName.replace(/[<>"'&]/g, "");
+    const safeSlug = opts.providerSlug.replace(/[<>"'&]/g, "");
+    const subject = `[RasoKart] 🔑 New Provider Credentials Submitted — ${safeName} (${safeSlug})`;
+
+    const results = await Promise.allSettled(
+      recipients.map(email => sendMail({ to: email, subject, html }))
+    );
+
+    const sent = results.filter(r => r.status === "fulfilled" && r.value).length;
+    const failed = results.length - sent;
+
+    logger.info(
+      { merchantId: opts.merchantId, providerSlug: opts.providerSlug, totalAdmins: recipients.length, sent, failed },
+      "Admin enrollment credential submission emails dispatched"
+    );
+  } catch (err) {
+    logger.error({ err, merchantId: opts.merchantId, providerSlug: opts.providerSlug }, "Failed to send admin enrollment credential submission emails");
   }
 }

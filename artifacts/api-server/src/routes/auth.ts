@@ -749,6 +749,7 @@ router.get("/me", requireAuth, async (req, res, next) => {
         webhookFailureEmails: usersTable.webhookFailureEmails,
         reportFailureAlertEmails: usersTable.reportFailureAlertEmails,
         githubSyncFailureAlertEmails: usersTable.githubSyncFailureAlertEmails,
+        enrollmentCredentialSubmittedEmails: usersTable.enrollmentCredentialSubmittedEmails,
         weeklyDeliveryDigestEmails: usersTable.weeklyDeliveryDigestEmails,
         apiKeyGeneratedEmails: usersTable.apiKeyGeneratedEmails,
         apiKeyRevokedEmails: usersTable.apiKeyRevokedEmails,
@@ -834,6 +835,7 @@ router.get("/me", requireAuth, async (req, res, next) => {
       webhookFailureEmails: row?.webhookFailureEmails ?? true,
       reportFailureAlertEmails: row?.reportFailureAlertEmails ?? true,
       githubSyncFailureAlertEmails: row?.githubSyncFailureAlertEmails ?? true,
+      enrollmentCredentialSubmittedEmails: row?.enrollmentCredentialSubmittedEmails ?? true,
       weeklyDeliveryDigestEmails: row?.weeklyDeliveryDigestEmails ?? true,
       apiKeyGeneratedEmails: row?.apiKeyGeneratedEmails ?? true,
       apiKeyRevokedEmails: row?.apiKeyRevokedEmails ?? true,
@@ -879,7 +881,7 @@ router.get("/me", requireAuth, async (req, res, next) => {
 router.put("/preferences", requireAuth, prefChangeLimiter, async (req, res, next) => {
   try {
     const user = (req as any).user;
-    const { reconciliationAlertEmails, planExpiryAlertEmails, settlementStateEmails, signatureFailureAlertEmails, webhookFailureEmails, reportFailureAlertEmails, githubSyncFailureAlertEmails, weeklyDeliveryDigestEmails, apiKeyGeneratedEmails, apiKeyRevokedEmails, loginAlertEmails, reportScheduleChangedEmails, settlementStateChangedEmails, ekqrSyncAlertEmails, ekqrCapAlertEmails, planChangeEmails, reconciliationAlertNotifs, planExpiryAlertNotifs, settlementStateNotifs, signatureFailureAlertNotifs, webhookFailureNotifs, ekqrSyncAlertNotifs, ekqrCapAlertNotifs, reportFailureAlertNotifs, weeklyDeliveryDigestNotifs, apiKeyGeneratedNotifs, apiKeyRevokedNotifs, loginAlertNotifs, reportScheduleChangedNotifs, settlementStateChangedNotifs, planChangeNotifs, quietHoursStart, quietHoursEnd, quietHoursTimezone, notificationSoundEnabled, notificationVibrationEnabled } = req.body;
+    const { reconciliationAlertEmails, planExpiryAlertEmails, settlementStateEmails, signatureFailureAlertEmails, webhookFailureEmails, reportFailureAlertEmails, githubSyncFailureAlertEmails, enrollmentCredentialSubmittedEmails, weeklyDeliveryDigestEmails, apiKeyGeneratedEmails, apiKeyRevokedEmails, loginAlertEmails, reportScheduleChangedEmails, settlementStateChangedEmails, ekqrSyncAlertEmails, ekqrCapAlertEmails, planChangeEmails, reconciliationAlertNotifs, planExpiryAlertNotifs, settlementStateNotifs, signatureFailureAlertNotifs, webhookFailureNotifs, ekqrSyncAlertNotifs, ekqrCapAlertNotifs, reportFailureAlertNotifs, weeklyDeliveryDigestNotifs, apiKeyGeneratedNotifs, apiKeyRevokedNotifs, loginAlertNotifs, reportScheduleChangedNotifs, settlementStateChangedNotifs, planChangeNotifs, quietHoursStart, quietHoursEnd, quietHoursTimezone, notificationSoundEnabled, notificationVibrationEnabled } = req.body;
 
     const patch: Record<string, boolean | Date | string | null | Record<string, string>> = {};
 
@@ -937,6 +939,14 @@ router.put("/preferences", requireAuth, prefChangeLimiter, async (req, res, next
         return;
       }
       patch["githubSyncFailureAlertEmails"] = githubSyncFailureAlertEmails;
+    }
+
+    if (enrollmentCredentialSubmittedEmails !== undefined) {
+      if (typeof enrollmentCredentialSubmittedEmails !== "boolean") {
+        res.status(400).json({ error: "enrollmentCredentialSubmittedEmails must be a boolean" });
+        return;
+      }
+      patch["enrollmentCredentialSubmittedEmails"] = enrollmentCredentialSubmittedEmails;
     }
 
     if (weeklyDeliveryDigestEmails !== undefined) {
@@ -1099,6 +1109,7 @@ router.put("/preferences", requireAuth, prefChangeLimiter, async (req, res, next
       "webhookFailureEmails",
       "reportFailureAlertEmails",
       "githubSyncFailureAlertEmails",
+      "enrollmentCredentialSubmittedEmails",
       "weeklyDeliveryDigestEmails",
       "apiKeyGeneratedEmails",
       "apiKeyRevokedEmails",
@@ -1134,6 +1145,7 @@ router.put("/preferences", requireAuth, prefChangeLimiter, async (req, res, next
         webhookFailureEmails: usersTable.webhookFailureEmails,
         reportFailureAlertEmails: usersTable.reportFailureAlertEmails,
         githubSyncFailureAlertEmails: usersTable.githubSyncFailureAlertEmails,
+        enrollmentCredentialSubmittedEmails: usersTable.enrollmentCredentialSubmittedEmails,
         weeklyDeliveryDigestEmails: usersTable.weeklyDeliveryDigestEmails,
         apiKeyGeneratedEmails: usersTable.apiKeyGeneratedEmails,
         apiKeyRevokedEmails: usersTable.apiKeyRevokedEmails,

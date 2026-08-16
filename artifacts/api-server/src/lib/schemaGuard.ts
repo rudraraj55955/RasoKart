@@ -1571,6 +1571,7 @@ async function runGuard(executor: GuardExecutor = db): Promise<void> {
     await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_ip TEXT`);
     await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_updated_at TIMESTAMPTZ`);
     await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS enrollment_credential_submitted_emails BOOLEAN NOT NULL DEFAULT TRUE`);
     logger.info({ table: "users", migration: "add_missing_notif_and_profile_cols" }, "schema_guard_column_added");
   });
 

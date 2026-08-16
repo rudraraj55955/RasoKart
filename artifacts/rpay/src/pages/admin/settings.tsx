@@ -419,6 +419,7 @@ export default function AdminSettings() {
   const ekqrCapAlertEnabled = (me as any)?.ekqrCapAlertEmails ?? true;
   const ekqrCapAlertNotifsEnabled = (me as any)?.ekqrCapAlertNotifs ?? true;
   const githubSyncFailureEnabled = (me as any)?.githubSyncFailureAlertEmails ?? true;
+  const enrollmentCredentialEnabled = (me as any)?.enrollmentCredentialSubmittedEmails ?? true;
   const weeklyDigestEnabled = me?.weeklyDeliveryDigestEmails ?? true;
 
   const { mutate: updatePrefs, isPending: savingPrefs } = useUpdateMyPreferences({
@@ -3825,6 +3826,28 @@ export default function AdminSettings() {
             <p className="text-xs text-amber-400 flex items-center gap-1.5">
               <AlertCircle className="w-3.5 h-3.5 shrink-0" />
               You will not receive escalation emails when GitHub sync fails repeatedly.
+            </p>
+          )}
+
+          <div className="flex items-center justify-between rounded-lg border border-border/50 bg-muted/5 px-4 py-3">
+            <div className="space-y-0.5">
+              <p className="text-sm font-medium">Merchant enrollment credential submission emails</p>
+              <p className="text-xs text-muted-foreground">
+                Receive an email when a merchant submits new API credentials for a Category D provider (e.g. PhonePe, Paytm, BharatPe). Includes a direct link to the Enrollment Review panel.
+              </p>
+            </div>
+            <Switch
+              checked={enrollmentCredentialEnabled}
+              onCheckedChange={val =>
+                updatePrefs({ data: { enrollmentCredentialSubmittedEmails: val } as any })
+              }
+              disabled={savingPrefs || me === undefined}
+            />
+          </div>
+          {!enrollmentCredentialEnabled && (
+            <p className="text-xs text-amber-400 flex items-center gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              You will not receive emails when merchants submit provider credentials for review.
             </p>
           )}
 
