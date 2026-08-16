@@ -956,6 +956,256 @@ function EkqrCard({ onConfigure }: { onConfigure: () => void }) {
   );
 }
 
+// ── Pine Labs overview card ───────────────────────────────────────────────────
+
+function PineLabsCard({ onConfigure }: { onConfigure: () => void }) {
+  const { data: integrations = [], isLoading } = useListProviderIntegrations({
+    request: { headers: authHeader() },
+  } as any);
+  const integration = (integrations as ProviderIntegration[]).find(i => i.providerKey === "pinelabs");
+
+  return (
+    <Card className="border-border/50 hover:border-sky-500/30 transition-colors">
+      <CardHeader className="pb-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="p-2 rounded-lg bg-sky-500/10 border border-sky-500/20">
+            <CreditCard className="w-4 h-4 text-sky-400" />
+          </div>
+          <div className="flex flex-col items-end gap-1">
+            {!isLoading && integration && <StatusBadge enabled={integration.isEnabled} />}
+            {!isLoading && integration && <EnvBadge env={integration.environment} />}
+          </div>
+        </div>
+        <CardTitle className="text-sm font-semibold mt-2">Pine Labs Plural</CardTitle>
+        <CardDescription className="text-xs">
+          Cards, UPI, Wallets, Netbanking, EMI — Plural gateway
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-muted-foreground">Merchant ID (MID)</span>
+            <ConnectedBadge connected={(integration as any)?.clientIdSet ?? false} />
+          </div>
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-muted-foreground">Access Code</span>
+            <ConnectedBadge connected={integration?.apiKeySet ?? false} />
+          </div>
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-muted-foreground">Secret Key</span>
+            <ConnectedBadge connected={integration?.apiSecretSet ?? false} />
+          </div>
+        </div>
+        <Separator className="opacity-30" />
+        <Button size="sm" variant="outline" className="w-full h-7 text-xs" onClick={onConfigure}>
+          <Settings2 className="w-3 h-3 mr-1.5" />Configure
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Pine Labs config panel ────────────────────────────────────────────────────
+
+function PineLabsPanel() {
+  const qc = useQueryClient();
+  const { data: integrations = [], isLoading } = useListProviderIntegrations({
+    request: { headers: authHeader() },
+  } as any);
+  const integration = (integrations as ProviderIntegration[]).find(i => i.providerKey === "pinelabs");
+
+  const [enabled, setEnabled] = useState(false);
+  const [environment, setEnvironment] = useState<"test" | "live">("test");
+  const [merchantId, setMerchantId] = useState("");
+  const [accessCode, setAccessCode] = useState("");
+  const [secretKey, setSecretKey] = useState("");
+  const [showAccessCode, setShowAccessCode] = useState(false);
+  const [showSecretKey, setShowSecretKey] = useState(false);
+  const [initialized, setInitialized] = useState(false);
+
+  useEffect(() => {
+    if (integration && !initialized) {
+      setEnabled(integration.isEnabled);
+      setEnvironment((integration.environment ?? "test") as "test" | "live");
+      setInitialized(true);
+    }
+  }, [integration, initialized]);
+
+  const { mutate: saveConfig, isPending: saving } = useUpdateProviderIntegration({
+    request: { headers: authHeader() },
+    mutation: {
+      onSuccess: () => {
+        toast.success("Pine Labs settings saved");
+        setMerchantId(""); setAccessCode(""); setSecretKey("");
+        qc.invalidateQueries({ queryKey: getListProviderIntegrationsQueryKey() });
+      },
+      onError: (err: Error) => toast.error((err as any)?.message ?? "Failed to save settings"),
+    },
+  } as any);
+
+  function handleSave() {
+    const body: Record<string, unknown> = { isEnabled: enabled, environment };
+    if (merchantId.trim()) body["clientId"] = merchantId.trim();
+    if (accessCode.trim()) body["apiKey"] = accessCode.trim();
+    if (secretKey.trim()) body["apiSecret"] = secretKey.trim();
+    saveConfig({ key: "pinelabs", data: body as any });
+  }
+
+  if (isLoading) return (
+    <div className="flex items-center gap-2 text-sm text-muted-foreground py-8">
+      <Loader2 className="w-4 h-4 animate-spin" />Loading Pine Labs config…
+    </div>
+  );
+
+  if (!integration) return (
+    <div className="flex items-center gap-2 text-sm text-amber-400 py-8">
+      <AlertCircle className="w-4 h-4" />Pine Labs integration not found — restart the server to seed it.
+    </div>
+  );
+
+  const intg = integration as any;
+
+  return (
+    <div className="space-y-5 max-w-2xl">
+      {/* Header strip */}
+      <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/20 border border-border/40">
+        <div className="p-2 rounded-lg bg-sky-500/10 border border-sky-500/20">
+          <CreditCard className="w-4 h-4 text-sky-400" />
+        </div>
+        <div className="flex-1">
+          <p className="text-sm font-medium">Pine Labs Plural Gateway</p>
+          <p className="text-xs text-muted-foreground">Cards, UPI, Wallets, Netbanking, EMI — credentials encrypted (AES-256-GCM)</p>
+        </div>
+        <StatusBadge enabled={enabled} />
+      </div>
+
+      {/* Settings */}
+      <div className="border border-border/40 rounded-lg p-4 space-y-4">
+        <p className="text-sm font-medium">Settings</p>
+
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs font-medium">Enable Pine Labs</p>
+            <p className="text-[11px] text-muted-foreground">Accept payments via Pine Labs Plural</p>
+          </div>
+          <Switch checked={enabled} onCheckedChange={setEnabled} />
+        </div>
+
+        <div className="space-y-1.5">
+          <Label className="text-xs">Environment</Label>
+          <Select value={environment} onValueChange={(v) => setEnvironment(v as "test" | "live")}>
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="test" className="text-xs">Sandbox / Test</SelectItem>
+              <SelectItem value="live" className="text-xs">Live / Production</SelectItem>
+            </SelectContent>
+          </Select>
+          {environment === "live" && (
+            <p className="text-[11px] text-amber-400 flex items-center gap-1.5 mt-1">
+              <AlertCircle className="w-3 h-3" />Live mode — verify Pine Labs account activation before enabling
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Credentials */}
+      <div className="border border-border/40 rounded-lg p-4 space-y-4">
+        <div>
+          <p className="text-sm font-medium">Credentials</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">
+            Find these in the Pine Labs Merchant Portal → Integration Settings.
+            Leave a field blank to keep the existing saved value.
+          </p>
+        </div>
+
+        {/* Merchant ID */}
+        <div className="space-y-1.5">
+          <Label className="text-xs">Merchant ID (MID)</Label>
+          <div className="rounded-md border border-border/60 px-3 py-1.5 bg-muted/10 min-h-[32px] flex items-center">
+            {intg.clientIdSet
+              ? <span className="text-xs text-muted-foreground font-mono">{intg.clientIdMasked} (saved)</span>
+              : <span className="text-xs text-zinc-500 flex items-center gap-1"><XCircle className="w-3 h-3" />Not configured</span>}
+          </div>
+          <Input
+            placeholder="Enter Merchant ID (MID) to update"
+            value={merchantId}
+            onChange={e => setMerchantId(e.target.value)}
+            className="h-8 text-xs font-mono"
+          />
+        </div>
+
+        {/* Access Code */}
+        <div className="space-y-1.5">
+          <Label className="text-xs">Access Code</Label>
+          <div className="rounded-md border border-border/60 px-3 py-1.5 bg-muted/10 min-h-[32px] flex items-center">
+            {integration.apiKeySet
+              ? <span className="text-xs text-muted-foreground font-mono">{integration.apiKeyMasked} (saved)</span>
+              : <span className="text-xs text-zinc-500 flex items-center gap-1"><XCircle className="w-3 h-3" />Not configured</span>}
+          </div>
+          <div className="relative">
+            <Input
+              placeholder="Enter new Access Code to update"
+              value={accessCode}
+              onChange={e => setAccessCode(e.target.value)}
+              type={showAccessCode ? "text" : "password"}
+              className="h-8 text-xs font-mono pr-8"
+            />
+            <button type="button" onClick={() => setShowAccessCode(v => !v)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+              {showAccessCode ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+            </button>
+          </div>
+        </div>
+
+        {/* Secret Key */}
+        <div className="space-y-1.5">
+          <Label className="text-xs">Secret Key</Label>
+          <div className="rounded-md border border-border/60 px-3 py-1.5 bg-muted/10 min-h-[32px] flex items-center">
+            {integration.apiSecretSet
+              ? <span className="text-xs text-muted-foreground font-mono">••••••••••• (saved)</span>
+              : <span className="text-xs text-zinc-500 flex items-center gap-1"><XCircle className="w-3 h-3" />Not configured</span>}
+          </div>
+          <div className="relative">
+            <Input
+              placeholder="Enter new Secret Key to update"
+              value={secretKey}
+              onChange={e => setSecretKey(e.target.value)}
+              type={showSecretKey ? "text" : "password"}
+              className="h-8 text-xs font-mono pr-8"
+            />
+            <button type="button" onClick={() => setShowSecretKey(v => !v)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+              {showSecretKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Onboarding notes */}
+      <div className="border border-border/40 rounded-lg p-4 space-y-2">
+        <p className="text-sm font-medium flex items-center gap-2">
+          <Info className="w-3.5 h-3.5 text-blue-400" />Activation Notes
+        </p>
+        <ul className="text-[11px] text-muted-foreground space-y-1 list-disc pl-4">
+          <li>Pine Labs account activation required before switching to Live mode</li>
+          <li>Supported methods: Cards, UPI, Wallets, Netbanking, EMI</li>
+          <li>Sign up at <a href="https://www.pinelabs.com/payment-gateway" target="_blank" rel="noopener noreferrer" className="text-blue-400 underline underline-offset-2">pinelabs.com/payment-gateway</a></li>
+          <li>Onboarding timeline: 3–7 business days after KYC document submission</li>
+          <li>Retrieve credentials from Pine Labs Merchant Portal → Integration Settings</li>
+        </ul>
+      </div>
+
+      <Button size="sm" onClick={handleSave} disabled={saving} className="h-8 text-xs">
+        {saving
+          ? <><Loader2 className="w-3 h-3 mr-1.5 animate-spin" />Saving…</>
+          : <><Save className="w-3 h-3 mr-1.5" />Save Pine Labs Settings</>}
+      </Button>
+    </div>
+  );
+}
+
 function AddGatewayCard({ onCreated }: { onCreated: (providerKey: string) => void }) {
   return (
     <AddGatewayDialog
@@ -2900,6 +3150,7 @@ export default function AdminPaymentGateways() {
               <CashfreePayinCard onConfigure={() => openConfigTab("cashfree-payin")} />
               <CashfreePayoutCard onConfigure={() => openConfigTab("cashfree-payout")} />
               <EkqrCard onConfigure={() => openConfigTab("ekqr")} />
+              <PineLabsCard onConfigure={() => openConfigTab("pinelabs")} />
               {customIntegrations.map((integration: ProviderIntegration) => (
                 <CustomGatewayCard
                   key={integration.providerKey}
@@ -2952,6 +3203,9 @@ export default function AdminPaymentGateways() {
                 <TabsTrigger value="ekqr" className="text-xs px-3">
                   <Zap className="w-3 h-3 mr-1.5" />UPI Gateway
                 </TabsTrigger>
+                <TabsTrigger value="pinelabs" className="text-xs px-3">
+                  <CreditCard className="w-3 h-3 mr-1.5" />Pine Labs
+                </TabsTrigger>
                 {customIntegrations.map((integration: ProviderIntegration) => (
                   <TabsTrigger key={integration.providerKey} value={integration.providerKey} className="text-xs px-3">
                     <Plug className="w-3 h-3 mr-1.5" />{integration.displayNamePublic}
@@ -2962,6 +3216,7 @@ export default function AdminPaymentGateways() {
               <TabsContent value="payu"><PayuPanel /></TabsContent>
               <TabsContent value="cashfree-payin"><CashfreePayinPanel /></TabsContent>
               <TabsContent value="cashfree-payout"><CashfreePayoutPanel /></TabsContent>
+              <TabsContent value="pinelabs"><PineLabsPanel /></TabsContent>
               <TabsContent value="ekqr">
                 <Tabs defaultValue="qr-codes">
                   <TabsList className="h-8 mb-5">

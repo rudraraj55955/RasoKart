@@ -810,6 +810,32 @@ export async function seed() {
     description: "Pine Labs Plural payment gateway — cards, UPI, wallets, EMI", sortOrder: 18,
   }).onConflictDoUpdate({ target: providersTable.slug, set: { name: "Pine Labs", status: "sandbox", sortOrder: 18 } });
 
+  // ── Idempotent upsert for Pine Labs provider_integrations row ─────────────
+  // Pine Labs is a gateway-category platform integration; it is not UPI/bank so
+  // it is NOT included in the UPI backfill loop below. Seed it here so admins
+  // can enable/configure it from the payment-gateways admin panel immediately.
+  {
+    const [existingPinelabs] = await db.select({ id: providerIntegrationsTable.id })
+      .from(providerIntegrationsTable)
+      .where(eq(providerIntegrationsTable.providerKey, "pinelabs"))
+      .limit(1);
+    if (!existingPinelabs) {
+      await db.insert(providerIntegrationsTable).values({
+        providerKey: "pinelabs",
+        providerNameInternal: "Pine Labs Plural",
+        displayNamePublic: "Pine Labs",
+        environment: "test",
+        isEnabled: false,
+        isCustom: false,
+        productType: "payin",
+        supportsDynamicQr: false,
+        supportsStaticQr: false,
+        supportsPaymentLinks: false,
+        supportsWebhooks: false,
+      }).onConflictDoNothing();
+    }
+  }
+
   // Note: provider_integrations UPI columns (is_custom, *_encrypted, etc) are
   // now guaranteed by ensureSchemaGuard() above — see lib/schemaGuard.ts.
 

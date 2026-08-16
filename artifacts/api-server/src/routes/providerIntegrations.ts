@@ -42,13 +42,17 @@ function maskSecret(raw: string): string {
 function serializeIntegration(r: ProviderIntegration) {
   const rawApiKey = r.apiKeyEncrypted ? decryptSecret(r.apiKeyEncrypted) : null;
   const rawApiSecret = r.apiSecretEncrypted ? decryptSecret(r.apiSecretEncrypted) : null;
+  const rawClientId = r.clientIdEncrypted ? decryptSecret(r.clientIdEncrypted) : null;
   const apiKeyValue = rawApiKey?.ok ? rawApiKey.value : "";
   const apiSecretValue = rawApiSecret?.ok ? rawApiSecret.value : "";
+  const clientIdValue = rawClientId?.ok ? rawClientId.value : "";
 
   const {
     apiKeyEncrypted: _apiKeyEncrypted,
     apiSecretEncrypted: _apiSecretEncrypted,
     webhookSecretEncrypted: _webhookSecretEncrypted,
+    clientIdEncrypted: _clientIdEncrypted,
+    clientSecretEncrypted: _clientSecretEncrypted,
     ...rest
   } = r;
 
@@ -60,6 +64,8 @@ function serializeIntegration(r: ProviderIntegration) {
     apiKeyMasked: apiKeyValue.length > 0 ? maskSecret(apiKeyValue) : "",
     apiSecretSet: apiSecretValue.length > 0,
     webhookSecretSet: !!r.webhookSecretEncrypted,
+    clientIdSet: clientIdValue.length > 0,
+    clientIdMasked: clientIdValue.length > 0 ? maskSecret(clientIdValue) : "",
   };
 }
 
@@ -136,7 +142,7 @@ router.put("/integrations/:key", requireAdmin, async (req, res, next) => {
   try {
     const user = (req as any).user;
     const key = req.params["key"] as string;
-    const { environment, isEnabled, webhookUrl, notes, displayNamePublic, productType, apiKey, apiSecret, webhookSecret } = req.body as {
+    const { environment, isEnabled, webhookUrl, notes, displayNamePublic, productType, apiKey, apiSecret, webhookSecret, clientId } = req.body as {
       environment?: string;
       isEnabled?: boolean;
       webhookUrl?: string;
@@ -146,6 +152,7 @@ router.put("/integrations/:key", requireAdmin, async (req, res, next) => {
       apiKey?: string;
       apiSecret?: string;
       webhookSecret?: string;
+      clientId?: string;
     };
 
     const [existing] = await db.select().from(providerIntegrationsTable)
@@ -159,9 +166,11 @@ router.put("/integrations/:key", requireAdmin, async (req, res, next) => {
     if (notes !== undefined) updateSet.notes = notes;
     if (displayNamePublic !== undefined) updateSet.displayNamePublic = displayNamePublic;
     if (existing.isCustom && productType !== undefined) updateSet.productType = productType;
-    if (existing.isCustom && apiKey !== undefined) updateSet.apiKeyEncrypted = apiKey.trim() ? encryptSecret(apiKey.trim()) : null;
-    if (existing.isCustom && apiSecret !== undefined) updateSet.apiSecretEncrypted = apiSecret.trim() ? encryptSecret(apiSecret.trim()) : null;
-    if (existing.isCustom && webhookSecret !== undefined) updateSet.webhookSecretEncrypted = webhookSecret.trim() ? encryptSecret(webhookSecret.trim()) : null;
+    // Credentials allowed for both custom and built-in platform integrations (e.g. Pine Labs)
+    if (apiKey !== undefined) updateSet.apiKeyEncrypted = apiKey.trim() ? encryptSecret(apiKey.trim()) : null;
+    if (apiSecret !== undefined) updateSet.apiSecretEncrypted = apiSecret.trim() ? encryptSecret(apiSecret.trim()) : null;
+    if (webhookSecret !== undefined) updateSet.webhookSecretEncrypted = webhookSecret.trim() ? encryptSecret(webhookSecret.trim()) : null;
+    if (clientId !== undefined) updateSet.clientIdEncrypted = clientId.trim() ? encryptSecret(clientId.trim()) : null;
     updateSet.updatedByEmail = user.email;
 
     const [updated] = await db.update(providerIntegrationsTable)
