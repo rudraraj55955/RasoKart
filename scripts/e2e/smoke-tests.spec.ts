@@ -42,7 +42,8 @@ test("GET /api/healthz/deep returns 200 with all checks passing", async ({ reque
   const res = await request.get(`${API}/healthz/deep`);
   expect(res.status()).toBe(200);
   const body = await res.json();
-  expect(body).toMatchObject({ status: "ok", demo_credentials: true });
+  // demo_credentials lives inside the checks sub-object, not at the top level
+  expect(body).toMatchObject({ status: "ok", checks: { demo_credentials: true } });
 });
 
 // ── Unauthenticated protection ─────────────────────────────────────────────
@@ -52,8 +53,8 @@ test("GET /api/auth/me returns 401 when no token", async ({ request }) => {
   expect(res.status()).toBe(401);
 });
 
-test("GET /api/admin/merchants returns 401 when no token", async ({ request }) => {
-  const res = await request.get(`${API}/admin/merchants`);
+test("GET /api/merchants returns 401 when no token", async ({ request }) => {
+  const res = await request.get(`${API}/merchants`);
   expect(res.status()).toBe(401);
 });
 
@@ -107,7 +108,7 @@ test("Admin /auth/me returns correct role", async ({ request }) => {
 
 test("Admin merchants list returns array", async ({ request }) => {
   const token = readCachedAdminToken();
-  const res = await request.get(`${API}/admin/merchants`, {
+  const res = await request.get(`${API}/merchants`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   expect(res.status()).toBe(200);
@@ -221,11 +222,12 @@ test("Merchant dashboard – no duplicate portal label on mobile", async ({ brow
 
 // ── Cross-role access control ──────────────────────────────────────────────
 
-test("Merchant token cannot access admin merchant list", async ({ request }) => {
+test("Merchant token cannot access merchant list as admin", async ({ request }) => {
   const token = readCachedMerchantToken();
-  const res = await request.get(`${API}/admin/merchants`, {
+  const res = await request.get(`${API}/merchants`, {
     headers: { Authorization: `Bearer ${token}` },
   });
+  // /api/merchants is admin-only; a merchant token must be rejected
   expect([401, 403]).toContain(res.status());
 });
 
