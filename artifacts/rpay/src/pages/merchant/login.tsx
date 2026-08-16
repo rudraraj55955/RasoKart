@@ -209,8 +209,10 @@ function OtpLoginTab({
     defaultValues: { otp: "" },
   });
 
-  const requestOtp = useRequestMerchantOtp();
-  const verifyOtp = useVerifyMerchantOtp();
+  // meta.suppressGlobalError = true prevents App.tsx MutationCache.onError from
+  // firing a duplicate global toast alongside the per-mutate() onError handler.
+  const requestOtp = useRequestMerchantOtp({ mutation: { meta: { suppressGlobalError: true } } });
+  const verifyOtp = useVerifyMerchantOtp({ mutation: { meta: { suppressGlobalError: true } } });
 
   useEffect(() => {
     return () => {
@@ -434,8 +436,8 @@ function ForgotPasswordTab({
     defaultValues: { otp: "", newPassword: "", confirmPassword: "" },
   });
 
-  const requestReset = useRequestMerchantPasswordReset();
-  const resetPassword = useResetMerchantPassword();
+  const requestReset = useRequestMerchantPasswordReset({ mutation: { meta: { suppressGlobalError: true } } });
+  const resetPassword = useResetMerchantPassword({ mutation: { meta: { suppressGlobalError: true } } });
 
   useEffect(() => {
     return () => {

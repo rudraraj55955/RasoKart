@@ -220,8 +220,14 @@ function extractApiError(error: unknown): string | null {
 const queryClient = new QueryClient({
   mutationCache: new MutationCache({
     onError(error, _variables, _context, mutation) {
-      // Skip if the mutation has a specific onError handler
+      // Skip if the useMutation() call has a specific onError handler.
       if (mutation.options.onError) return;
+      // Skip if the hook call explicitly opted out of the global toast.
+      // Use `mutation.meta.suppressGlobalError = true` at useMutation() level
+      // to suppress for mutations that pass onError to mutate() instead.
+      // (React Query v5 stores per-call callbacks on private #observers so they
+      // cannot be inspected here; meta is the clean opt-out mechanism.)
+      if ((mutation.meta as Record<string, unknown> | undefined)?.suppressGlobalError) return;
       const msg = extractApiError(error);
       toast.error(msg ?? "An error occurred. Please try again.");
     },
