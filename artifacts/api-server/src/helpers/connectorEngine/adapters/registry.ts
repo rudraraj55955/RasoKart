@@ -16,16 +16,17 @@
 import type { ProviderAdapter } from "../types";
 import { pineLabsOneAdapter } from "./pinelabs-one";
 import { razorpayAdapter } from "./razorpay";
+import { paytmMerchantAdapter } from "./paytm";
 
 /**
  * All registered provider adapters, keyed by their slug.
  * New adapters must be added here to be discoverable by the engine.
  */
 const ADAPTER_REGISTRY: Record<string, ProviderAdapter> = {
-  pinelabs_one: pineLabsOneAdapter,
-  razorpay:     razorpayAdapter,
+  pinelabs_one:    pineLabsOneAdapter,
+  razorpay:        razorpayAdapter,
+  paytm_merchant:  paytmMerchantAdapter,
   // phonepay_merchant: phonepayMerchantAdapter,   // future
-  // paytm_merchant:    paytmMerchantAdapter,       // future
 };
 
 /**

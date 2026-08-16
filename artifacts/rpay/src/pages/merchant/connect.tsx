@@ -123,8 +123,9 @@ const PROVIDER_WHITE_LABEL: Record<string, string> = {
 };
 
 const PROVIDER_DESC: Record<string, string> = {
-  phonepe:       "QR-based UPI merchant payments via PhonePe Business",
-  paytm:         "UPI, wallet, and net banking collections via Paytm Business",
+  phonepe:        "QR-based UPI merchant payments via PhonePe Business",
+  paytm:          "UPI, wallet, and net banking collections via Paytm Business",
+  paytm_merchant: "Paytm Business portal — connect with your registered mobile number + OTP to sync transaction history (read-only)",
   bharatpe:      "Zero MDR UPI collections via BharatPe QR",
   amazon_pay:    "UPI merchant checkout via Amazon Pay for Business",
   mobikwik:      "Mobile wallet payment gateway via MobiKwik Business",
@@ -231,9 +232,10 @@ async function portalFetch(path: string, init?: RequestInit): Promise<Response> 
 }
 
 // ── Portal provider slugs — providers that use the Connector Engine ────────────
-// Razorpay: API Key + Secret — real adapter, no CAPTCHA, fully operational.
-// Pine Labs ONE: fail-closed (PARTNER_API_REQUIRED — awaiting partner API agreement).
-const PORTAL_PROVIDER_SLUGS = new Set(["pinelabs_one", "razorpay"]);
+// razorpay:       API Key + Secret — optional api_key_connector (operational).
+// pinelabs_one:   fail-closed (PARTNER_API_REQUIRED — awaiting partner API agreement).
+// paytm_merchant: Registered Mobile + OTP — portal_session_connector (browser automation).
+const PORTAL_PROVIDER_SLUGS = new Set(["pinelabs_one", "razorpay", "paytm_merchant"]);
 
 // ── API hooks ─────────────────────────────────────────────────────────────────
 
@@ -1756,6 +1758,540 @@ function RazorpayPortalCard({
   );
 }
 
+// ── Paytm Business Portal Card — credential-first portal_session_connector ─────
+// Mobile + OTP login via browser automation against business.paytm.com.
+// The RasoKart backend navigates the portal with Playwright, submits credentials,
+// and stores only the encrypted browser session state. No passwords are stored.
+// OTPs are discarded after submission and never stored, logged, or replayed.
+
+type PaytmUiStep = "mobile" | "otp" | "connected" | "blocked" | "reconnect_needed";
+
+function PaytmPortalCard({
+  provider,
+  session,
+}: {
+  provider: any;
+  session: MerchantPortalSession | null;
+}) {
+  const qc = useQueryClient();
+
+  // Derive UI step from session status
+  function deriveStep(s: MerchantPortalSession | null): PaytmUiStep {
+    if (!s) return "mobile";
+    if (s.status === "CONNECTED") return "connected";
+    if (s.status === "AWAITING_OTP") return "otp";
+    if (s.status === "BLOCKED") return "blocked";
+    if (s.status === "RECONNECT_REQUIRED" || s.status === "SESSION_EXPIRED") return "reconnect_needed";
+    // FAILED, DISCONNECTED, PENDING → show mobile input
+    return "mobile";
+  }
+
+  const [uiStep, setUiStep] = useState<PaytmUiStep>(() => deriveStep(session));
+  const [mobile, setMobile]   = useState("");
+  const [otp, setOtp]         = useState("");
+  const [initiating, setInitiating] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [syncing, setSyncing]       = useState(false);
+  const [errorMsg, setErrorMsg]     = useState<string | null>(null);
+
+  // Sync UI step when session prop changes (e.g. after query invalidation)
+  useEffect(() => {
+    setUiStep(deriveStep(session));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.status]);
+
+  const providerName = "Paytm Business";
+  const cmeta = CATEGORY_META["upi"] ?? { label: "UPI", color: "bg-violet-500/10 text-violet-400 border-violet-500/20" };
+  const isConnected = uiStep === "connected";
+
+  // Recent synced transactions (only when connected)
+  const { data: txData } = useQuery<PortalTransaction[]>({
+    queryKey: ["merchant", "portal-transactions", "paytm_merchant"],
+    queryFn: async () => {
+      const res = await portalFetch(
+        "/api/merchant/portal-sessions/paytm_merchant/transactions?limit=5",
+      );
+      if (!res.ok) return [];
+      const body = await res.json();
+      return (body.transactions ?? []) as PortalTransaction[];
+    },
+    enabled: isConnected,
+    staleTime: 60_000,
+  });
+
+  // ── Step 1: initiate (mobile entry) ──────────────────────────────────────────
+  async function handleInitiate() {
+    const mob = mobile.trim().replace(/\s/g, "");
+    if (!mob || mob.length < 10) {
+      setErrorMsg("Enter a valid 10-digit mobile number registered with Paytm Business.");
+      return;
+    }
+    setInitiating(true);
+    setErrorMsg(null);
+    try {
+      const result = await initiatePortalSession("paytm_merchant", {
+        loginMethod: "mobile_otp",
+        identifier:  mob,
+      });
+      qc.invalidateQueries({ queryKey: PORTAL_SESSIONS_QUERY_KEY });
+
+      if (result.status === "AWAITING_OTP") {
+        setUiStep("otp");
+        setMobile(""); // wipe from component state immediately
+        toast.success("OTP sent to your Paytm-registered mobile. Enter it below.");
+      } else if (result.status === "AWAITING_USER_ACTION") {
+        setErrorMsg(
+          result.message ??
+            "Paytm is showing a CAPTCHA. Please wait a few minutes and try again.",
+        );
+      } else {
+        const msg =
+          result.message ?? "Could not initiate Paytm session. Check your mobile number.";
+        setErrorMsg(msg);
+        toast.error(msg);
+      }
+    } catch {
+      setErrorMsg("Could not reach the server. Please try again.");
+    } finally {
+      setInitiating(false);
+    }
+  }
+
+  // ── Step 2: submit OTP ────────────────────────────────────────────────────────
+  async function handleSubmitOtp() {
+    const otpVal = otp.trim().replace(/\s/g, "");
+    if (!otpVal || otpVal.length < 4) {
+      setErrorMsg("Enter the OTP you received on your mobile.");
+      return;
+    }
+    setSubmitting(true);
+    setErrorMsg(null);
+    try {
+      // POST plaintext OTP — server encrypts immediately before passing to adapter
+      const res = await portalFetch(
+        "/api/merchant/portal-sessions/paytm_merchant/submit-step",
+        { method: "POST", body: JSON.stringify({ otp: otpVal }) },
+      );
+      // Wipe OTP from component state immediately regardless of outcome
+      setOtp("");
+
+      const body = await res.json().catch(() => ({}));
+      qc.invalidateQueries({ queryKey: PORTAL_SESSIONS_QUERY_KEY });
+
+      if (body.status === "CONNECTED") {
+        setUiStep("connected");
+        toast.success("Paytm Business account connected. Syncing transactions…");
+        // Auto-sync
+        setTimeout(() => handleSync(), 1500);
+      } else if (body.status === "FAILED" && body.errorCode === "OTP_EXPIRED") {
+        setUiStep("mobile");
+        setErrorMsg("OTP expired. Please enter your mobile number again to receive a new OTP.");
+      } else {
+        const msg =
+          body.message ??
+          "OTP verification failed. Please check the OTP and try again, or restart the connection.";
+        setErrorMsg(msg);
+        toast.error(msg);
+      }
+    } catch {
+      setOtp(""); // still wipe on error
+      setErrorMsg("Could not submit OTP. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  // ── Sync ──────────────────────────────────────────────────────────────────────
+  async function handleSync() {
+    setSyncing(true);
+    try {
+      const res = await portalFetch(
+        "/api/merchant/portal-sessions/paytm_merchant/sync",
+        { method: "POST" },
+      );
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(body.error ?? "Sync failed.");
+      } else {
+        const n = body.synced ?? 0;
+        toast.success(`Sync complete — ${n} new transaction${n === 1 ? "" : "s"} fetched.`);
+        qc.invalidateQueries({ queryKey: ["merchant", "portal-transactions", "paytm_merchant"] });
+        qc.invalidateQueries({ queryKey: PORTAL_SESSIONS_QUERY_KEY });
+      }
+    } catch {
+      toast.error("Sync failed. Please try again.");
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  // ── Disconnect ────────────────────────────────────────────────────────────────
+  async function handleDisconnect() {
+    try {
+      const res = await portalFetch(
+        "/api/merchant/portal-sessions/paytm_merchant/disconnect",
+        { method: "POST" },
+      );
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        toast.error(body.error ?? "Disconnect failed.");
+      } else {
+        toast.success("Paytm Business account disconnected.");
+        setUiStep("mobile");
+        setErrorMsg(null);
+        qc.invalidateQueries({ queryKey: PORTAL_SESSIONS_QUERY_KEY });
+        qc.invalidateQueries({ queryKey: ["merchant", "portal-transactions", "paytm_merchant"] });
+      }
+    } catch {
+      toast.error("Disconnect failed. Please try again.");
+    }
+  }
+
+  // ── Reconnect ─────────────────────────────────────────────────────────────────
+  async function handleReconnect() {
+    setInitiating(true);
+    setErrorMsg(null);
+    try {
+      const res = await portalFetch(
+        "/api/merchant/portal-sessions/paytm_merchant/reconnect",
+        { method: "POST" },
+      );
+      const body = await res.json().catch(() => ({}));
+      qc.invalidateQueries({ queryKey: PORTAL_SESSIONS_QUERY_KEY });
+
+      if (body.status === "CONNECTED") {
+        setUiStep("connected");
+        toast.success("Session reconnected successfully.");
+      } else if (body.status === "AWAITING_OTP") {
+        setUiStep("otp");
+        toast.info("A new OTP is required. Enter it below.");
+      } else {
+        // Full re-auth needed
+        setUiStep("mobile");
+        setErrorMsg(
+          body.message ?? "Session expired. Please enter your mobile number to reconnect.",
+        );
+      }
+    } catch {
+      setUiStep("mobile");
+      setErrorMsg("Could not reconnect. Please enter your mobile number again.");
+    } finally {
+      setInitiating(false);
+    }
+  }
+
+  return (
+    <Card className="border-border/60 bg-card">
+      <CardHeader className="pb-2">
+        <div className="flex items-start gap-3">
+          <div className="w-14 h-14 rounded-xl bg-background border border-border/60 flex items-center justify-center shrink-0">
+            <ProviderIcon slug="paytm" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <CardTitle className="text-base truncate">{providerName}</CardTitle>
+            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+              <Badge variant="outline" className={`text-xs ${cmeta.color}`}>
+                {cmeta.label}
+              </Badge>
+              {isConnected && (
+                <Badge variant="outline" className="text-xs border-emerald-500/40 text-emerald-400 flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3" /> Connected
+                </Badge>
+              )}
+              {uiStep === "otp" && (
+                <Badge variant="outline" className="text-xs border-amber-500/40 text-amber-400 flex items-center gap-1">
+                  <Clock className="w-3 h-3" /> Enter OTP
+                </Badge>
+              )}
+              {uiStep === "blocked" && (
+                <Badge variant="outline" className="text-xs border-red-500/40 text-red-400 flex items-center gap-1">
+                  <XCircle className="w-3 h-3" /> Blocked
+                </Badge>
+              )}
+            </div>
+          </div>
+        </div>
+      </CardHeader>
+
+      <CardContent className="space-y-3">
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          {PROVIDER_DESC["paytm_merchant"]}
+        </p>
+
+        {/* ── Security note (always visible) ───────────────────────────── */}
+        <div className="flex items-start gap-1.5 p-2.5 rounded-lg bg-muted/20 border border-border/40">
+          <Lock className="w-3.5 h-3.5 text-muted-foreground mt-0.5 shrink-0" />
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Your mobile number is encrypted with AES-256 on the server before use.
+            OTPs are used once and immediately discarded — never stored, logged, or replayed.
+          </p>
+        </div>
+
+        {/* ── CONNECTED state ───────────────────────────────────────────── */}
+        {isConnected && (
+          <div className="space-y-3">
+            <div className="p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20 space-y-1">
+              <p className="text-xs font-semibold text-emerald-400 flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Account Connected
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {session?.connectedAt
+                  ? `Connected on ${new Date(session.connectedAt).toLocaleDateString("en-IN")}`
+                  : "Your Paytm Business account is connected."}
+              </p>
+            </div>
+
+            {/* Recent transactions */}
+            {txData && txData.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground">Recent transactions</p>
+                {txData.map(tx => (
+                  <div
+                    key={tx.id}
+                    className="flex items-center justify-between text-xs py-1 border-b border-border/30 last:border-0"
+                  >
+                    <span className="text-muted-foreground font-mono truncate max-w-[120px]">
+                      {tx.externalId}
+                    </span>
+                    <span className="font-medium tabular-nums">
+                      ₹{((tx.amount ?? 0) / 100).toLocaleString("en-IN", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </span>
+                    <span className={`capitalize font-medium ${
+                      tx.normalizedStatus === "SUCCESS" ? "text-emerald-400"
+                      : tx.normalizedStatus === "FAILED" ? "text-red-400"
+                      : "text-amber-400"
+                    }`}>
+                      {tx.normalizedStatus?.toLowerCase() ?? "unknown"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {txData && txData.length === 0 && (
+              <p className="text-xs text-muted-foreground text-center py-2">
+                No transactions yet. Click "Sync Now" to fetch the last 30 days.
+              </p>
+            )}
+
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="flex-1 gap-1.5"
+                onClick={handleSync}
+                disabled={syncing}
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${syncing ? "animate-spin" : ""}`} />
+                {syncing ? "Syncing…" : "Sync Now"}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="gap-1.5 text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                onClick={handleDisconnect}
+              >
+                <Unlink className="w-3.5 h-3.5" />
+                Disconnect
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* ── AWAITING_OTP state: OTP entry ─────────────────────────────── */}
+        {uiStep === "otp" && (
+          <div className="space-y-3">
+            <div className="p-3 rounded-lg bg-amber-500/5 border border-amber-500/20">
+              <p className="text-xs font-semibold text-amber-400 flex items-center gap-1.5 mb-1">
+                <Clock className="w-3.5 h-3.5" /> OTP Sent
+              </p>
+              <p className="text-xs text-muted-foreground">
+                An OTP has been sent to your Paytm-registered mobile.
+                Enter it below to complete the connection.
+              </p>
+            </div>
+
+            {errorMsg && (
+              <div className="p-2.5 rounded-lg bg-red-500/5 border border-red-500/20">
+                <p className="text-xs text-red-400 flex items-start gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  {errorMsg}
+                </p>
+              </div>
+            )}
+
+            <div>
+              <label className="text-xs text-muted-foreground block mb-1">OTP</label>
+              <Input
+                className="h-8 text-sm font-mono tracking-widest"
+                placeholder="••••••"
+                type="password"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={8}
+                value={otp}
+                onChange={e => setOtp(e.target.value.replace(/\D/g, ""))}
+                onKeyDown={e => e.key === "Enter" && handleSubmitOtp()}
+                autoFocus
+              />
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              OTP is used once and discarded immediately — never stored.
+            </p>
+
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                className="flex-1 gap-1.5"
+                onClick={handleSubmitOtp}
+                disabled={submitting || !otp.trim()}
+              >
+                {submitting ? (
+                  <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Verifying…</>
+                ) : (
+                  <><CheckCircle2 className="w-3.5 h-3.5" /> Verify OTP</>
+                )}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-muted-foreground"
+                onClick={() => { setUiStep("mobile"); setOtp(""); setErrorMsg(null); }}
+              >
+                Start Over
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* ── RECONNECT_REQUIRED state ──────────────────────────────────── */}
+        {uiStep === "reconnect_needed" && (
+          <div className="space-y-3">
+            <div className="p-2.5 rounded-lg bg-amber-500/5 border border-amber-500/20 flex items-start gap-2">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-400 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-xs font-medium text-amber-400">Session Expired</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Your Paytm session has expired. Click Reconnect to try restoring it,
+                  or enter your mobile number to re-authenticate.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                className="flex-1"
+                onClick={handleReconnect}
+                disabled={initiating}
+              >
+                {initiating ? (
+                  <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Reconnecting…</>
+                ) : "Reconnect"}
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => { setUiStep("mobile"); setErrorMsg(null); }}>
+                New Login
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* ── BLOCKED state ─────────────────────────────────────────────── */}
+        {uiStep === "blocked" && (
+          <div className="space-y-3">
+            <div className="p-2.5 rounded-lg bg-red-500/5 border border-red-500/20 flex items-start gap-2">
+              <AlertTriangle className="w-3.5 h-3.5 text-red-400 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-xs font-medium text-red-400">Account Blocked</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {session?.lastStatusMessage ??
+                    "Your Paytm Business account appears to be blocked. Please contact Paytm Business support."}
+                </p>
+              </div>
+            </div>
+            <Button size="sm" variant="outline" className="w-full" asChild>
+              <a href="https://business.paytm.com" target="_blank" rel="noopener noreferrer">
+                Contact Paytm Business Support <ExternalLink className="w-3 h-3 ml-1" />
+              </a>
+            </Button>
+          </div>
+        )}
+
+        {/* ── MOBILE entry state (initial / disconnected / failed) ──────── */}
+        {uiStep === "mobile" && (
+          <div className="space-y-3">
+            {errorMsg && (
+              <div className="p-2.5 rounded-lg bg-red-500/5 border border-red-500/20">
+                <p className="text-xs text-red-400 flex items-start gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  {errorMsg}
+                </p>
+              </div>
+            )}
+
+            {session?.status === "FAILED" && session.lastStatusMessage && !errorMsg && (
+              <div className="p-2.5 rounded-lg bg-red-500/5 border border-red-500/20">
+                <p className="text-xs text-red-400 flex items-start gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  {session.lastStatusMessage}
+                </p>
+              </div>
+            )}
+
+            <div>
+              <label className="text-xs text-muted-foreground block mb-1">
+                Registered Mobile Number
+              </label>
+              <Input
+                className="h-8 text-sm"
+                placeholder="10-digit Paytm-registered mobile"
+                type="tel"
+                inputMode="numeric"
+                maxLength={10}
+                autoComplete="tel"
+                value={mobile}
+                onChange={e => setMobile(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                onKeyDown={e => e.key === "Enter" && handleInitiate()}
+              />
+            </div>
+
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Enter the mobile number registered with your Paytm Business account.
+              RasoKart will trigger the OTP on Paytm's portal — you enter it here manually.
+              Go to{" "}
+              <a
+                href="https://business.paytm.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary underline-offset-2 hover:underline"
+              >
+                business.paytm.com
+              </a>{" "}
+              if you need to check your registered number.
+            </p>
+
+            <Button
+              size="sm"
+              className="w-full gap-1.5"
+              onClick={handleInitiate}
+              disabled={initiating || mobile.trim().length < 10}
+            >
+              {initiating ? (
+                <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Sending OTP…</>
+              ) : (
+                <><Link2 className="w-3.5 h-3.5" /> Connect Paytm Business</>
+              )}
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── Category E (Unsupported) card ─────────────────────────────────────────────
 
 function UnsupportedCard({ provider }: { provider: any }) {
@@ -2101,6 +2637,12 @@ export default function MerchantConnect() {
                 {portalProviders.map(p =>
                   p.slug === "razorpay" ? (
                     <RazorpayPortalCard
+                      key={p.slug}
+                      provider={p}
+                      session={portalSessionMap.get(p.slug) ?? null}
+                    />
+                  ) : p.slug === "paytm_merchant" ? (
+                    <PaytmPortalCard
                       key={p.slug}
                       provider={p}
                       session={portalSessionMap.get(p.slug) ?? null}

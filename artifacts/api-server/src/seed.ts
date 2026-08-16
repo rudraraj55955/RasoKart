@@ -792,6 +792,7 @@ export async function seed() {
       { name: "EKQR / UPI Gateway",   slug: "ekqr",            category: "gateway", status: "sandbox",     description: "EKQR UPI payment gateway — dynamic QR & auto-credit deposits", sortOrder: 17 },
       { name: "Pine Labs Plural",      slug: "pinelabs",        category: "gateway", status: "sandbox",     description: "Pine Labs Plural payment gateway — cards, UPI, wallets, EMI",  sortOrder: 18 },
       { name: "Pine Labs ONE",         slug: "pinelabs_one",    category: "gateway", status: "sandbox",     description: "Pine Labs ONE POS/QR merchant account platform — partner API required", sortOrder: 19 },
+      { name: "Paytm Business",        slug: "paytm_merchant",  category: "upi",     status: "sandbox",     description: "Paytm Business portal — mobile OTP portal session connector (read-only transaction sync)", sortOrder: 20 },
     ];
     for (const p of PROVIDERS) {
       await db.insert(providersTable).values(p).onConflictDoUpdate({ target: providersTable.slug, set: { name: p.name, status: p.status, sortOrder: p.sortOrder } });
@@ -824,6 +825,15 @@ export async function seed() {
     name: "Pine Labs ONE", slug: "pinelabs_one", category: "gateway", status: "sandbox",
     description: "Pine Labs ONE — POS/QR merchant account platform (partner API credentials required)", sortOrder: 19,
   }).onConflictDoUpdate({ target: providersTable.slug, set: { name: "Pine Labs ONE", category: "gateway", status: "sandbox", sortOrder: 19 } });
+
+  // ── Idempotent upsert for Paytm Business (portal session connector) ─────────
+  // Paytm Business (business.paytm.com) — portal_session_connector using
+  // registered mobile + OTP login. Status: sandbox — browser automation adapter
+  // is registered and operational for the portal session flow.
+  await db.insert(providersTable).values({
+    name: "Paytm Business", slug: "paytm_merchant", category: "upi", status: "sandbox",
+    description: "Paytm Business portal — mobile OTP portal session connector (read-only transaction sync)", sortOrder: 20,
+  }).onConflictDoUpdate({ target: providersTable.slug, set: { name: "Paytm Business", category: "upi", status: "sandbox", sortOrder: 20 } });
 
   // ── Idempotent upsert for Pine Labs provider_integrations row ─────────────
   // Pine Labs is a gateway-category platform integration; it is not UPI/bank so

@@ -293,12 +293,18 @@ router.post("/:provider/initiate", initiateLimit, async (req: any, res) => {
 router.post("/:provider/submit-step", submitStepLimit, async (req: any, res) => {
   const providerSlug = req.params["provider"] as string;
   const merchantId = getMerchantId(req);
-  const { encryptedOtp, encryptedPassword } = req.body ?? {};
+  // Accept plaintext otp/password — encrypted server-side immediately (same pattern as /initiate).
+  // Raw values are never logged, returned, or written to disk after this scope.
+  const { otp, password } = req.body ?? {};
 
-  if (!encryptedOtp && !encryptedPassword) {
-    res.status(400).json({ error: "encryptedOtp or encryptedPassword is required" });
+  if (!otp && !password) {
+    res.status(400).json({ error: "otp or password is required" });
     return;
   }
+
+  // Server-side AES-256-GCM encryption before passing to adapter
+  const encryptedOtp      = otp      ? encryptSecret(String(otp))      : undefined;
+  const encryptedPassword = password ? encryptSecret(String(password))  : undefined;
 
   try {
     if (!isPortalProvider(providerSlug)) {

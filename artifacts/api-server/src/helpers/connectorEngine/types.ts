@@ -29,10 +29,14 @@ export type PortalSessionStatus =
   | "AWAITING_OTP"
   | "AWAITING_PASSWORD"
   | "AWAITING_CAPTCHA"
+  | "AWAITING_USER_ACTION"   // CAPTCHA, device-binding, or other manual step required
   | "PARTNER_API_REQUIRED"
   | "CONNECTED"
   | "MONITORING"
   | "EXPIRED"
+  | "SESSION_EXPIRED"        // explicit session expiry (more precise than EXPIRED)
+  | "RECONNECT_REQUIRED"     // session needs reconnection with stored creds
+  | "DISCONNECTED"           // explicitly disconnected by merchant or system
   | "BLOCKED"
   | "FAILED";
 
