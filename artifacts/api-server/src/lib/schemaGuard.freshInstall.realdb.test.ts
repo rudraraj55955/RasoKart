@@ -81,7 +81,7 @@ import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import { SQL } from "drizzle-orm";
-import { pool } from "@workspace/db";
+import { pool, db, up } from "@workspace/db";
 import { DEMO_CREDENTIALS } from "@workspace/demo-credentials";
 import app from "../app";
 import { seed } from "../seed";
@@ -388,6 +388,24 @@ describe(
     let payinChargesEmptyAtStartup: boolean;
 
     before(async () => {
+      // ───────────────────────────────────────────────────────────────────────
+      // PRE-STEP: Run the IAM migration on the real pool BEFORE the transaction.
+      //
+      // runSchemaGuardWith() (Part A below) calls up(db) internally.  up(db)
+      // uses the drizzle global pool — a SEPARATE pg connection from the
+      // transaction client.  up(db) creates FK constraints that reference the
+      // `users` table, which requires a SHARE lock.  But the transaction client
+      // holds an ACCESS EXCLUSIVE lock on `users` (from ALTER TABLE ADD COLUMN).
+      // SHARE conflicts with ACCESS EXCLUSIVE → up(db) waits forever while the
+      // transaction client (also in Node.js) waits for up(db) to finish.
+      //
+      // Fix: run up(db) once here, BEFORE any transaction is open.  When
+      // runSchemaGuardWith() calls up(db) inside the transaction, all DO $$
+      // IF NOT EXISTS guards short-circuit (FK constraints already exist,
+      // columns already renamed, tables already present) — no SHARE lock on
+      // `users` is ever taken, and the deadlock does not occur.
+      await up(db);
+
       // ───────────────────────────────────────────────────────────────────────
       // PART A: Isolated table-creation proof
       //
