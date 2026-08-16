@@ -808,7 +808,7 @@ export async function seed() {
   await db.insert(providersTable).values({
     name: "Pine Labs", slug: "pinelabs", category: "gateway", status: "sandbox",
     description: "Pine Labs Plural payment gateway — cards, UPI, wallets, EMI", sortOrder: 18,
-  }).onConflictDoUpdate({ target: providersTable.slug, set: { name: "Pine Labs", status: "sandbox", sortOrder: 18 } });
+  }).onConflictDoUpdate({ target: providersTable.slug, set: { name: "Pine Labs", sortOrder: 18 } });
 
   // ── Idempotent upsert for Pine Labs provider_integrations row ─────────────
   // Pine Labs is a gateway-category platform integration; it is not UPI/bank so

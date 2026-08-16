@@ -22,6 +22,7 @@ import {
   activationRequestsTable,
   merchantsTable,
   auditLogsTable,
+  providersTable,
 } from "@workspace/db";
 import { eq, and, asc, desc } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
@@ -202,6 +203,14 @@ router.put("/integrations/:key", requireAdmin, async (req, res, next) => {
       .set(updateSet as any)
       .where(eq(providerIntegrationsTable.providerKey, key))
       .returning();
+
+    // Sync the providers catalog status to reflect the integration state.
+    // A provider shows as 'live' only when its integration is both enabled
+    // and configured for the live environment; otherwise it reverts to 'sandbox'.
+    const newCatalogStatus = updated!.isEnabled && updated!.environment === "live" ? "live" : "sandbox";
+    await db.update(providersTable)
+      .set({ status: newCatalogStatus })
+      .where(eq(providersTable.slug, key));
 
     const auditChangeSet: Record<string, unknown> = { providerKey: key };
     if (updateSet["apiKeyEncrypted"] !== undefined) auditChangeSet.apiKeyUpdated = true;
