@@ -1,3 +1,4 @@
+- [schemaGuard exec vs db deadlock](schemaguard-exec-vs-db-deadlock.md) — every SQL inside runGuard() must use exec, never global db; cross-connection lock conflicts cause indefinite hangs.
 - [Cashfree Payout V2 webhook signing](cashfree-payout-webhook-signing.md) — Client Secret is the only signing key; webhook_secret field MUST be empty; UI cannot clear it via blank save (pending defect #2630).
 - [Replit deploy migration pre-startup](replit-deploy-migration-pre-startup.md) — Replit diffs Drizzle schema vs production DB BEFORE container starts; schemaGuard can't rescue a blocked migration; schema must match prod exactly.
 - [Razorpay IAM access-envelope guard](razorpay-iam-access-envelope.md) — SA-only Razorpay perms cannot be ALLOW-overridden for non-SA users (→ 403); IAM single-key PUT endpoint requires body { effect: "ALLOW"|"DENY" }, NOT { allow: bool }.
