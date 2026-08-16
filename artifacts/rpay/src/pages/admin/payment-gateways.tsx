@@ -1024,7 +1024,7 @@ function PineLabsPanel() {
   const [initialized, setInitialized] = useState(false);
   const [liveCredError, setLiveCredError] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{ pass: boolean; message: string; detail: string } | null>(null);
+  const [testResult, setTestResult] = useState<{ pass: boolean; message: string; detail: string; environment?: "uat" | "live" } | null>(null);
 
   useEffect(() => {
     if (integration && !initialized) {
@@ -1273,7 +1273,9 @@ function PineLabsPanel() {
               <FlaskConical className="w-3.5 h-3.5 text-sky-400" />Test Credentials
             </p>
             <p className="text-[11px] text-muted-foreground mt-0.5">
-              Probes the Pine Labs UAT API with your saved credentials — no payment is triggered.
+              {environment === "live"
+                ? "Probes the Pine Labs Live API (api.pinepg.in) with your saved credentials — no payment is triggered."
+                : "Probes the Pine Labs UAT API (uat.pinepg.in) with your saved credentials — no payment is triggered."}
             </p>
           </div>
 
@@ -1302,6 +1304,15 @@ function PineLabsPanel() {
                 <p className={`text-xs font-medium ${testResult.pass ? "text-emerald-300" : "text-red-300"}`}>
                   {testResult.message}
                 </p>
+                {testResult.environment && (
+                  <span className={`ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                    testResult.environment === "live"
+                      ? "bg-orange-500/15 text-orange-300 border border-orange-500/20"
+                      : "bg-sky-500/15 text-sky-300 border border-sky-500/20"
+                  }`}>
+                    {testResult.environment === "live" ? "Live" : "UAT"}
+                  </span>
+                )}
               </div>
               {testResult.detail && (
                 <p className="text-[11px] text-muted-foreground pl-5 leading-relaxed">{testResult.detail}</p>

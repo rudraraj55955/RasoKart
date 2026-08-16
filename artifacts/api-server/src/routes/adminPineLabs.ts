@@ -2,9 +2,13 @@
  * Pine Labs Admin Routes
  *
  * Routes:
- *   POST /api/admin/pinelabs/test-credentials — Probe UAT API with saved credentials
+ *   POST /api/admin/pinelabs/test-credentials — Probe UAT or live API with saved credentials
  *
  * Credentials are read from provider_integrations (providerKey = "pinelabs").
+ * The environment field on the row determines which endpoint is probed:
+ *   - "live" → api.pinepg.in (Pine Labs production)
+ *   - anything else → uat.pinepg.in (Pine Labs UAT / sandbox)
+ *
  * Decrypted in-process only; never returned or logged.
  */
 
@@ -68,7 +72,8 @@ router.post("/test-credentials", async (req, res, next) => {
       return;
     }
 
-    const result = await verifyPineLabsUatCredentials(mid, accessCode, secretKey);
+    const env = row.environment === "live" ? "live" : "uat";
+    const result = await verifyPineLabsUatCredentials(mid, accessCode, secretKey, env);
     res.json(result);
   } catch (err) {
     next(err);

@@ -1,8 +1,8 @@
 /**
  * Pine Labs Plural credential verifier — HTTP layer only.
  *
- * Makes a lightweight inquiry call to the Pine Labs Plural UAT API using the
- * supplied Merchant ID, Access Code, and Secret Key.
+ * Makes a lightweight inquiry call to the Pine Labs Plural API (UAT or live)
+ * using the supplied Merchant ID, Access Code, and Secret Key.
  *
  * Pass / fail criteria are STRICT (fail-closed):
  *   - Pass:  HTTP 200 AND ppc_ResponseCode is in PASS_CODES (documented
@@ -23,12 +23,14 @@
 import { createHmac } from "node:crypto";
 
 /**
- * Pine Labs Plural (PinePG) UAT inquiry endpoint.
+ * Pine Labs Plural (PinePG) inquiry endpoints.
  * Auth: HMAC-SHA256 signed params (sorted key=value pairs, Secret Key as key).
  *
- * The UAT hostname is uat.pinepg.in (not uat.pinelabs.com which does not resolve).
+ * UAT hostname: uat.pinepg.in  (not uat.pinelabs.com which does not resolve)
+ * Live hostname: api.pinepg.in
  */
-const PINE_LABS_UAT_URL = "https://uat.pinepg.in/api/v2/inquiry";
+const PINE_LABS_UAT_URL  = "https://uat.pinepg.in/api/v2/inquiry";
+const PINE_LABS_LIVE_URL = "https://api.pinepg.in/api/v2/inquiry";
 const PINE_LABS_TIMEOUT_MS = 12_000;
 
 /**
@@ -72,23 +74,29 @@ const AUTH_FAIL_KEYWORDS = [
 ];
 
 export type PineLabsVerifyResult =
-  | { pass: true;  message: string; detail: string }
-  | { pass: false; message: string; detail: string };
+  | { pass: true;  message: string; detail: string; environment: "uat" | "live" }
+  | { pass: false; message: string; detail: string; environment: "uat" | "live" };
 
 /**
- * Verify Pine Labs credentials against the UAT inquiry endpoint.
+ * Verify Pine Labs credentials against the UAT or live inquiry endpoint.
  *
  * @param mid         Merchant ID (MID) — plain text, not a secret.
  * @param accessCode  Access Code — already decrypted, plain text.
  * @param secretKey   Secret Key — already decrypted, used only for HMAC, never returned.
+ * @param env         "live" probes api.pinepg.in; anything else probes uat.pinepg.in.
  * @param fetchFn     Inject a mock for unit tests; defaults to globalThis.fetch.
  */
 export async function verifyPineLabsUatCredentials(
   mid: string,
   accessCode: string,
   secretKey: string,
+  env: "uat" | "live" = "uat",
   fetchFn: typeof globalThis.fetch = globalThis.fetch,
 ): Promise<PineLabsVerifyResult> {
+  const isLive = env === "live";
+  const endpointUrl  = isLive ? PINE_LABS_LIVE_URL : PINE_LABS_UAT_URL;
+  const envLabel     = isLive ? "Live" : "UAT";
+
   // ── Build signed request ──────────────────────────────────────────────────
   // Pine Labs Plural signature: sort params alphabetically, join as
   // "key1=val1&key2=val2", then HMAC-SHA256 with Secret Key (uppercase hex).
@@ -117,7 +125,7 @@ export async function verifyPineLabsUatCredentials(
   // ── Make HTTP call ────────────────────────────────────────────────────────
   let response: Response;
   try {
-    response = await fetchFn(PINE_LABS_UAT_URL, {
+    response = await fetchFn(endpointUrl, {
       method:  "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body:    requestBody,
@@ -132,15 +140,17 @@ export async function verifyPineLabsUatCredentials(
     if (isTimeout) {
       return {
         pass: false,
-        message: "Pine Labs UAT API did not respond in time",
+        environment: env,
+        message: `Pine Labs ${envLabel} API did not respond in time`,
         detail:
-          "The Pine Labs UAT environment did not respond within 12 seconds. " +
+          `The Pine Labs ${envLabel} environment did not respond within 12 seconds. ` +
           "Credentials could not be verified automatically — activate manually after reviewing the submitted values.",
       };
     }
     return {
       pass: false,
-      message: "Could not reach Pine Labs UAT API",
+      environment: env,
+      message: `Could not reach Pine Labs ${envLabel} API`,
       detail:
         "A network error prevented the credential test from completing. " +
         "Credentials could not be verified automatically — activate manually after reviewing the submitted values.",
@@ -151,27 +161,30 @@ export async function verifyPineLabsUatCredentials(
   if (response.status === 401 || response.status === 403) {
     return {
       pass: false,
+      environment: env,
       message: "Pine Labs rejected the credentials",
       detail:
-        `HTTP ${response.status} from Pine Labs UAT — authentication was rejected. ` +
+        `HTTP ${response.status} from Pine Labs ${envLabel} — authentication was rejected. ` +
         "Verify the Merchant ID, Access Code, and Secret Key in the Pine Labs merchant portal.",
     };
   }
   if (response.status >= 400 && response.status < 500) {
     return {
       pass: false,
-      message: "Pine Labs UAT returned a client error",
+      environment: env,
+      message: `Pine Labs ${envLabel} returned a client error`,
       detail:
-        `HTTP ${response.status} from the Pine Labs UAT inquiry endpoint. ` +
+        `HTTP ${response.status} from the Pine Labs ${envLabel} inquiry endpoint. ` +
         "The submitted Merchant ID or Access Code may be incorrect.",
     };
   }
   if (response.status >= 500) {
     return {
       pass: false,
-      message: "Pine Labs UAT is temporarily unavailable",
+      environment: env,
+      message: `Pine Labs ${envLabel} is temporarily unavailable`,
       detail:
-        `HTTP ${response.status} from Pine Labs UAT — the server is currently unavailable. ` +
+        `HTTP ${response.status} from Pine Labs ${envLabel} — the server is currently unavailable. ` +
         "Credentials could not be verified — try again shortly or activate manually.",
     };
   }
@@ -187,9 +200,10 @@ export async function verifyPineLabsUatCredentials(
     // Non-JSON body on HTTP 200 → not a Pine Labs Plural response → fail closed
     return {
       pass: false,
-      message: "Unexpected response from Pine Labs UAT",
+      environment: env,
+      message: `Unexpected response from Pine Labs ${envLabel}`,
       detail:
-        "The Pine Labs UAT inquiry endpoint returned an unrecognised response format. " +
+        `The Pine Labs ${envLabel} inquiry endpoint returned an unrecognised response format. ` +
         "Credentials could not be verified — activate manually after reviewing the submitted values.",
     };
   }
@@ -200,9 +214,10 @@ export async function verifyPineLabsUatCredentials(
     // ppc_ResponseCode absent → not a Pine Labs Plural response → fail closed
     return {
       pass: false,
-      message: "Unexpected response from Pine Labs UAT",
+      environment: env,
+      message: `Unexpected response from Pine Labs ${envLabel}`,
       detail:
-        "The Pine Labs UAT inquiry endpoint returned an unrecognised response format " +
+        `The Pine Labs ${envLabel} inquiry endpoint returned an unrecognised response format ` +
         "(missing ppc_ResponseCode). Credentials could not be verified — activate manually.",
     };
   }
@@ -213,14 +228,15 @@ export async function verifyPineLabsUatCredentials(
     // We do NOT echo the raw provider message (untrusted; may contain request data).
     const explanation =
       responseCode === "234"
-        ? "The Secret Key was rejected (hash mismatch). Check the Secret Key in the Pine Labs merchant portal."
+        ? `The Secret Key was rejected (hash mismatch). Check the Secret Key in the Pine Labs ${envLabel} merchant portal.`
         : responseCode === "235"
-        ? "The Access Code was rejected. Check the Access Code in the Pine Labs merchant portal."
+        ? `The Access Code was rejected. Check the Access Code in the Pine Labs ${envLabel} merchant portal.`
         : responseCode === "236"
-        ? "The Merchant ID was not recognised. Check the Merchant ID in the Pine Labs merchant portal."
-        : "Authentication was rejected by Pine Labs UAT. Check the Merchant ID, Access Code, and Secret Key.";
+        ? `The Merchant ID was not recognised. Check the Merchant ID in the Pine Labs ${envLabel} merchant portal.`
+        : `Authentication was rejected by Pine Labs ${envLabel}. Check the Merchant ID, Access Code, and Secret Key.`;
     return {
       pass: false,
+      environment: env,
       message: "Pine Labs rejected the credentials",
       detail: explanation,
     };
@@ -232,9 +248,10 @@ export async function verifyPineLabsUatCredentials(
   if (isKeywordAuthError) {
     return {
       pass: false,
+      environment: env,
       message: "Pine Labs rejected the credentials",
       detail:
-        "The Pine Labs UAT API indicated an authentication failure. " +
+        `The Pine Labs ${envLabel} API indicated an authentication failure. ` +
         "Verify the Merchant ID, Access Code, and Secret Key in the Pine Labs merchant portal.",
     };
   }
@@ -244,9 +261,10 @@ export async function verifyPineLabsUatCredentials(
   if (!PASS_CODES.has(responseCode)) {
     return {
       pass: false,
-      message: "Unexpected response code from Pine Labs UAT",
+      environment: env,
+      message: `Unexpected response code from Pine Labs ${envLabel}`,
       detail:
-        `Pine Labs UAT returned an unrecognised response code (${responseCode}). ` +
+        `Pine Labs ${envLabel} returned an unrecognised response code (${responseCode}). ` +
         "Credentials could not be conclusively verified — activate manually after reviewing the submitted values.",
     };
   }
@@ -255,9 +273,20 @@ export async function verifyPineLabsUatCredentials(
   // (The test order RASOKART_CRED_TEST will not exist — "order not found" is expected.)
   return {
     pass: true,
-    message: "Pine Labs credentials verified against UAT API",
+    environment: env,
+    message: `Pine Labs credentials verified against ${envLabel} API`,
     detail:
-      "The Pine Labs UAT inquiry endpoint accepted the Merchant ID, Access Code, and Secret Key. " +
+      `The Pine Labs ${envLabel} inquiry endpoint accepted the Merchant ID, Access Code, and Secret Key. ` +
       `(Response code: ${responseCode} — authentication confirmed, test order not found as expected.)`,
   };
+}
+
+/** @deprecated Use verifyPineLabsUatCredentials with env="live" instead. */
+export async function verifyPineLabsLiveCredentials(
+  mid: string,
+  accessCode: string,
+  secretKey: string,
+  fetchFn: typeof globalThis.fetch = globalThis.fetch,
+): Promise<PineLabsVerifyResult> {
+  return verifyPineLabsUatCredentials(mid, accessCode, secretKey, "live", fetchFn);
 }
