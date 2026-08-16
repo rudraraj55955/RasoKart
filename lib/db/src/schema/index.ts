@@ -105,3 +105,4 @@ export * from "./portalSessions";
 export * from "./portalDiscovery";
 export * from "./portalTransactions";
 export * from "./portalWalletCredits";
+export * from "./merchantPortalSessions";

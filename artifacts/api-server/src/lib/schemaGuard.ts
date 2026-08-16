@@ -2949,6 +2949,35 @@ async function runGuard(executor: GuardExecutor = db): Promise<void> {
     logger.info({ table: "portal_wallet_credits" }, "schema_guard_table_created");
   });
 
+  // ── merchant_portal_sessions ─────────────────────────────────────────────────
+  // Tenant-owned portal automation sessions. Strictly isolated by merchant_id.
+  // Separate from portal_sessions (admin/platform-owned). No cross-tenant access.
+  await block("merchant_portal_sessions", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS merchant_portal_sessions (
+        id                   SERIAL PRIMARY KEY,
+        merchant_id          INTEGER NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
+        provider_slug        TEXT NOT NULL,
+        status               TEXT NOT NULL DEFAULT 'PENDING',
+        encrypted_session    TEXT,
+        step_failure_count   INTEGER NOT NULL DEFAULT 0,
+        last_error_code      TEXT,
+        last_status_message  TEXT,
+        expires_at           TIMESTAMPTZ,
+        connected_at         TIMESTAMPTZ,
+        ended_at             TIMESTAMPTZ,
+        end_reason           TEXT,
+        dry_run              BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (merchant_id, provider_slug)
+      )
+    `);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS merchant_portal_sessions_merchant_idx ON merchant_portal_sessions(merchant_id)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS merchant_portal_sessions_provider_status_idx ON merchant_portal_sessions(provider_slug, status)`);
+    logger.info({ table: "merchant_portal_sessions" }, "schema_guard_table_created");
+  });
+
   _guardStatus = "pass";
   logger.info("schema_guard_completed");
 }

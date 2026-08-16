@@ -56,6 +56,7 @@ import adminOnboardingRouter from "./adminOnboarding";
 import secureIdSettingsRouter from "./secureIdSettings";
 import merchantKycRouter from "./merchantKyc";
 import merchantEnrollmentsRouter from "./merchantEnrollments";
+import merchantPortalSessionsRouter from "./merchantPortalSessions";
 import adminMerchantKycRouter from "./adminMerchantKyc";
 import merchantKycSettingsRouter from "./merchantKycSettings";
 import payoutMerchantRouter from "./payoutMerchant";
@@ -204,6 +205,8 @@ router.use("/merchant-kyc", merchantKycRouter);
 
 // Merchant self-service provider enrollment (Category D providers, audit log, rate-limited)
 router.use("/merchant/enrollments", merchantEnrollmentsRouter);
+// Merchant self-service portal sessions (fail-closed until partner APIs are issued)
+router.use("/merchant/portal-sessions", merchantPortalSessionsRouter);
 router.use("/admin/merchant-kyc-settings", merchantKycSettingsRouter);
 router.use("/admin/merchant-kyc", adminMerchantKycRouter);
 

@@ -222,6 +222,19 @@ async function enrollFetch(path: string, init?: RequestInit): Promise<Response> 
   });
 }
 
+async function portalFetch(path: string, init?: RequestInit): Promise<Response> {
+  const isJson = init?.body != null;
+  return fetch(path, {
+    ...init,
+    headers: authHeaders(isJson ? { "Content-Type": "application/json" } : {}),
+  });
+}
+
+// ── Portal provider slugs — providers that use the Connector Engine ────────────
+// All adapters are currently fail-closed (PARTNER_API_REQUIRED).
+// This set drives the "Portal Automation" section in the connect page.
+const PORTAL_PROVIDER_SLUGS = new Set(["pinelabs_one"]);
+
 // ── API hooks ─────────────────────────────────────────────────────────────────
 
 const ENROLLMENT_QUERY_KEY = ["merchant", "enrollments"] as const;
@@ -297,6 +310,42 @@ function useDisconnect() {
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ENROLLMENT_QUERY_KEY }); },
   });
+}
+
+// ── Portal session hook ───────────────────────────────────────────────────────
+
+const PORTAL_SESSIONS_QUERY_KEY = ["merchant", "portal-sessions"] as const;
+
+interface MerchantPortalSession {
+  id: number;
+  merchantId: number;
+  providerSlug: string;
+  status: string;
+  lastErrorCode: string | null;
+  lastStatusMessage: string | null;
+  connectedAt: string | null;
+  updatedAt: string;
+}
+
+function usePortalSessions() {
+  return useQuery<MerchantPortalSession[]>({
+    queryKey: PORTAL_SESSIONS_QUERY_KEY,
+    queryFn: async () => {
+      const res = await portalFetch("/api/merchant/portal-sessions");
+      if (!res.ok) return [];
+      const body = await res.json();
+      return body.sessions ?? [];
+    },
+    staleTime: 30_000,
+  });
+}
+
+async function initiatePortalSession(providerSlug: string): Promise<{ status: string; message: string | null }> {
+  const res = await portalFetch(`/api/merchant/portal-sessions/${providerSlug}/initiate`, {
+    method: "POST",
+  });
+  const body = await res.json().catch(() => ({ status: "FAILED", message: null }));
+  return { status: body.status ?? "FAILED", message: body.message ?? null };
 }
 
 interface HistoryEntry {
@@ -1256,6 +1305,108 @@ function EnrollmentCard({
   );
 }
 
+// ── Portal provider card ───────────────────────────────────────────────────────
+
+function PortalProviderCard({
+  provider,
+  session,
+}: {
+  provider: any;
+  session: MerchantPortalSession | null;
+}) {
+  const qc = useQueryClient();
+  const [checking, setChecking] = useState(false);
+  const providerName = wlName(provider.slug, provider.name);
+  const cmeta = CATEGORY_META[provider.category] ?? { label: provider.category, color: "bg-muted text-muted-foreground border-border" };
+  const sessionStatus = session?.status ?? null;
+
+  async function handleCheck() {
+    setChecking(true);
+    try {
+      const result = await initiatePortalSession(provider.slug);
+      qc.invalidateQueries({ queryKey: PORTAL_SESSIONS_QUERY_KEY });
+      if (result.status === "PARTNER_API_REQUIRED") {
+        toast.info("Partner API access is required before automation is available for this provider.");
+      } else {
+        toast.info(`Session status: ${result.status}`);
+      }
+    } catch {
+      toast.error("Could not check portal status. Please try again.");
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  return (
+    <Card className="border-border/60 bg-card opacity-90">
+      <CardHeader className="pb-2">
+        <div className="flex items-start gap-3">
+          <div className="w-14 h-14 rounded-xl bg-background border border-border/60 flex items-center justify-center shrink-0">
+            <ProviderIcon slug={provider.slug} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <CardTitle className="text-base truncate">{providerName}</CardTitle>
+            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+              <Badge variant="outline" className={`text-xs ${cmeta.color}`}>{cmeta.label}</Badge>
+              <Badge variant="outline" className="text-xs border-amber-500/40 text-amber-400 flex items-center gap-1">
+                <Clock className="w-3 h-3" /> Partner API Required
+              </Badge>
+            </div>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          {PROVIDER_DESC[provider.slug] ?? provider.description}
+        </p>
+
+        {/* Partner API requirement notice */}
+        <div className="p-3 rounded-lg bg-amber-500/5 border border-amber-500/20 space-y-1.5">
+          <p className="text-xs font-semibold text-amber-400 flex items-center gap-1.5">
+            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+            Official Partner API Agreement Required
+          </p>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            This provider requires an authorized partner API agreement before portal session
+            automation is available. Apply at the provider's developer portal to get started.
+          </p>
+        </div>
+
+        {/* Session status if we have a record */}
+        {sessionStatus && (
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Info className="w-3 h-3" />
+            Last check: <span className="font-medium text-foreground">{sessionStatus}</span>
+            {session?.updatedAt && (
+              <span>· {new Date(session.updatedAt).toLocaleDateString("en-IN")}</span>
+            )}
+          </div>
+        )}
+
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            className="flex-1"
+            onClick={handleCheck}
+            disabled={checking}
+          >
+            {checking ? "Checking…" : "Check Status"}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="gap-1"
+            onClick={() => window.open("https://developer.pinelabs.com", "_blank", "noopener,noreferrer")}
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── Category E (Unsupported) card ─────────────────────────────────────────────
 
 function UnsupportedCard({ provider }: { provider: any }) {
@@ -1417,7 +1568,19 @@ export default function MerchantConnect() {
     "sbi_yono", "hdfc_smarthub", "icici_eazypay", "axis_pay", "kotak_smart", "ekqr",
     "pinelabs",
   ]);
-  const platformProviders = filtered.filter(p => !knownEnrollmentSlugs.has(p.slug));
+  // Exclude portal providers — they render in a dedicated section below
+  const platformProviders = filtered.filter(
+    p => !knownEnrollmentSlugs.has(p.slug) && !PORTAL_PROVIDER_SLUGS.has(p.slug),
+  );
+
+  // Portal providers: show from the providers table for known portal slugs
+  const portalProviders = providers.filter(p => PORTAL_PROVIDER_SLUGS.has(p.slug));
+
+  // Portal session hook — loads merchant's own sessions
+  const { data: portalSessions } = usePortalSessions();
+  const portalSessionMap = new Map<string, MerchantPortalSession>(
+    (portalSessions ?? []).map(s => [s.providerSlug, s]),
+  );
 
   // Active connections from connections API (platform-managed)
   const activeConnections = (connections ?? []).filter(c => c.isActive);
@@ -1568,6 +1731,29 @@ export default function MerchantConnect() {
                     key={e.providerSlug}
                     provider={{ id: 0, slug: e.providerSlug, name: e.providerSlug, category: "A", description: "", status: "sandbox" }}
                     connections={connections ?? null}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Portal Automation — Partner API Required */}
+          {portalProviders.length > 0 && (
+            <div className="space-y-3">
+              <div>
+                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+                  <Key className="w-3.5 h-3.5" /> Portal Automation
+                </h2>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Providers that support automated portal session management (requires official partner API access).
+                </p>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {portalProviders.map(p => (
+                  <PortalProviderCard
+                    key={p.slug}
+                    provider={p}
+                    session={portalSessionMap.get(p.slug) ?? null}
                   />
                 ))}
               </div>
