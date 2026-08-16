@@ -1,3 +1,4 @@
+- [Chromium --single-process browser pool keepalive](chromium-single-process-keepalive.md) — removing --single-process + opening a keepalive context prevents Chromium exiting between adapter calls (BROWSER_ERROR on submitStep).
 - [Credential-first portal login audit](credential-first-portal-audit.md) — all major Indian PG portals block server-side login; Playwright required for portal_session_connector adapters.
 - [Playwright chromium on Replit NixOS](playwright-chromium-nixos.md) — playwright-downloaded headless shell fails (libgbm.so.1); use system `which chromium` from pkgs.chromium; probe via probeBrowserReady() not healthCheck.
 - [Portal session security pattern](portal-session-security-pattern.md) — 4-gate OTP security: max-attempts (stepFailureCount≥3), expiry (updatedAt+10min), status guard (AWAITING_* only), in-flight Set lock; all four enforced before adapter call.

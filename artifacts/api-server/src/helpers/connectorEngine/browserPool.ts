@@ -219,16 +219,29 @@ let browserSingleton: Browser | null = null;
 let launchPromise: Promise<Browser> | null = null;
 let concurrentCount = 0;
 
+/**
+ * Keepalive browser context — opened immediately after browser launch and kept
+ * alive indefinitely. Without it, Chromium exits when all user contexts are
+ * closed (Chromium's default idle-exit behaviour under --single-process).
+ * This allows the browser singleton to survive between adapter calls, avoiding
+ * a 7-second relaunch penalty on every submitStep / validateSession / etc.
+ *
+ * Closed only in closeBrowserPool() (server shutdown).
+ */
+let keepaliveCtx: import("playwright").BrowserContext | null = null;
+
 const CHROMIUM_LAUNCH_ARGS = [
   "--no-sandbox",
   "--disable-setuid-sandbox",
   "--disable-dev-shm-usage",
   "--disable-gpu",
   "--disable-accelerated-2d-canvas",
-  "--single-process",
-  "--no-zygote",
-  // Security: explicitly absent — no stealth flags, no user-agent overrides,
-  // no fingerprint spoofing, no anti-bot args
+  // NOTE: --single-process and --no-zygote are intentionally absent.
+  // Those flags cause Chromium to exit when all open contexts are closed, even
+  // when a keepalive context is present, because they disable Chromium's normal
+  // multi-process supervision. The flags reduce memory slightly but make the
+  // singleton unstable for multi-call flows (initiateSession → submitStep).
+  // Security: no stealth flags, no user-agent overrides, no anti-bot args.
 ];
 
 async function getOrCreateBrowser(): Promise<Browser> {
@@ -244,14 +257,26 @@ async function getOrCreateBrowser(): Promise<Browser> {
       args: CHROMIUM_LAUNCH_ARGS,
       timeout: 30_000,
     })
-    .then((browser) => {
+    .then(async (browser) => {
       browserSingleton = browser;
       launchPromise = null;
       browser.on("disconnected", () => {
         logger.warn({}, "browser_pool_disconnected");
         browserSingleton = null;
         launchPromise = null;
+        keepaliveCtx = null;
       });
+      // Open a background context immediately so Chromium never sees zero open
+      // contexts. Without this, --single-process Chromium exits when the only
+      // user context is released (between initiateSession and submitStep calls).
+      try {
+        keepaliveCtx = await browser.newContext({ permissions: [], serviceWorkers: "block" });
+        logger.info({}, "browser_pool_keepalive_opened");
+      } catch {
+        // Non-fatal — if keepalive open fails, the pool still works but may
+        // suffer browser exits between calls.
+        logger.warn({}, "browser_pool_keepalive_open_failed");
+      }
       logger.info(
         { executablePath: executablePath ?? "playwright-default" },
         "browser_pool_launched",
@@ -410,12 +435,17 @@ export function browserPoolStatus(): {
  * Close all contexts and shut down the browser (server shutdown hook).
  */
 export async function closeBrowserPool(): Promise<void> {
+  // Close keepalive context first so browser sees zero contexts gracefully
+  if (keepaliveCtx) {
+    try {
+      await keepaliveCtx.close();
+    } catch { /* swallow */ }
+    keepaliveCtx = null;
+  }
   if (browserSingleton) {
     try {
       await browserSingleton.close();
-    } catch {
-      // swallow
-    }
+    } catch { /* swallow */ }
     browserSingleton = null;
   }
 }

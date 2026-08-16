@@ -88,15 +88,32 @@ import { logger } from "../../../lib/logger";
 
 // ── Portal URLs ───────────────────────────────────────────────────────────────
 
-const PORTAL_ROOT  = "https://business.paytm.com";
-const HELP_URL     = "https://business.paytm.com";
+const HELP_URL = "https://business.paytm.com";
 
-// Paytm Business login URL candidates (tried in order).
-// Paytm has historically used multiple login URL patterns.
-const LOGIN_URL_CANDIDATES = [
-  "https://business.paytm.com/user/login",
-  "https://business.paytm.com/login",
-  "https://business.paytm.com/",
+/**
+ * Portal root URL. Set PAYTM_PORTAL_ROOT_OVERRIDE in tests to redirect all
+ * adapter navigation to a local mock HTTP server — this allows full E2E testing
+ * without any real Paytm network calls or OTP sending.
+ *
+ * Production value: "https://business.paytm.com" (never overridden at runtime).
+ */
+function getPortalRoot(): string {
+  return process.env["PAYTM_PORTAL_ROOT_OVERRIDE"] ?? "https://business.paytm.com";
+}
+
+/** Login URL candidates, derived from the portal root at call time. */
+function getLoginUrlCandidates(): string[] {
+  const root = getPortalRoot();
+  return [`${root}/user/login`, `${root}/login`, root];
+}
+
+/** Profile paths to try for ownership verification, in preference order. */
+const PROFILE_PATHS = [
+  "/profile",
+  "/account",
+  "/user/profile",
+  "/settings/profile",
+  "/merchant-profile",
 ];
 
 // URL patterns indicating the session is on a login/auth page (NOT dashboard)
@@ -273,6 +290,18 @@ const SEL = {
     '[class*="merchant-id"]',
     '[class*="mid"]',
   ],
+
+  // Profile / account page — registered mobile selectors for ownership verification
+  OWNERSHIP_MOBILE: [
+    '[data-testid="registered-mobile"]',
+    '.registered-mobile',
+    '[class*="registered-mobile" i]',
+    'p:has-text("Registered Mobile")',
+    'span:has-text("Mobile:")',
+    'td:has-text("Mobile")',
+    'div:has-text("Mobile")',
+    '[data-testid*="phone"]',
+  ],
 };
 
 // ── Adapter-specific session data ─────────────────────────────────────────────
@@ -350,28 +379,36 @@ async function waitForAny(
  * (not on any login / OTP / redirect page).
  */
 function isDashboardUrl(url: string): boolean {
-  // Reject any URL that contains a login page pattern
-  for (const pattern of LOGIN_PAGE_URL_PATTERNS) {
-    if (url.includes(pattern)) return false;
-  }
-  // Must be on business.paytm.com (not accounts. or auth. subdomain)
-  if (!url.startsWith("https://business.paytm.com")) return false;
-  // Must match at least one dashboard path pattern, or be at the root after login
-  const path = url.replace("https://business.paytm.com", "");
-  if (path === "/" || path === "") {
-    // Root URL after login might be the dashboard — accept with landmark check
-    return true;
-  }
+  const root = getPortalRoot();
+  // Must be on the configured portal host (real or mock override)
+  if (!url.startsWith(root) && !url.startsWith("https://business.paytm.com")) return false;
+  // Reject login-page URLs (path-based check handles both real and mock)
+  if (isLoginUrl(url)) return false;
+  // Extract pathname
+  let pathname = url;
+  try { pathname = new URL(url).pathname; } catch {}
+  // Root path after login is the dashboard
+  if (pathname === "/" || pathname === "") return true;
+  // Known dashboard path prefixes
   for (const pattern of DASHBOARD_URL_PATTERNS) {
-    if (path.startsWith(pattern)) return true;
+    if (pathname.startsWith(pattern)) return true;
   }
   return false;
 }
 
 /**
  * Check if the current URL is a login/auth page.
+ * Path-based matching works for both real Paytm and mock server URLs.
  */
 function isLoginUrl(url: string): boolean {
+  let pathname = url;
+  try { pathname = new URL(url).pathname; } catch {}
+  // Path-based: works for both real Paytm and mock server
+  const loginPaths = ["/user/login", "/login"];
+  for (const p of loginPaths) {
+    if (pathname === p || pathname.startsWith(p + "?") || pathname.startsWith(p + "/")) return true;
+  }
+  // Hostname-based patterns (additional real-Paytm checks)
   for (const pattern of LOGIN_PAGE_URL_PATTERNS) {
     if (url.includes(pattern)) return true;
   }
@@ -426,30 +463,149 @@ async function fillOtp(page: Page, otp: string): Promise<boolean> {
 }
 
 /**
- * Navigate to the Paytm Business login page.
- * Tries multiple URL candidates and returns true when the mobile input is found.
+ * Navigate to the Paytm Business login page and detect the current auth state.
+ *
+ * Returns:
+ *   "otp_form"    — OTP inputs visible (pending session from initiateSession)
+ *   "mobile_form" — Mobile entry form visible (fresh / expired session)
+ *   "dashboard"   — Already on dashboard (session still live)
+ *   false         — Could not reach any recognisable page
  */
-async function navigateToLoginPage(page: Page): Promise<boolean> {
-  for (const url of LOGIN_URL_CANDIDATES) {
+async function navigateToLoginPage(
+  page: Page,
+): Promise<"mobile_form" | "otp_form" | "dashboard" | false> {
+  for (const url of getLoginUrlCandidates()) {
     try {
       await page.goto(url, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
       await page.waitForLoadState("networkidle", { timeout: 5_000 }).catch(() => {});
 
-      // Check if we ended up on any login page
       const currentUrl = page.url();
-      if (!isLoginUrl(currentUrl) && isDashboardUrl(currentUrl)) {
-        // Already logged in — session is still valid, don't overwrite
-        return false; // caller handles this case
-      }
 
-      // Look for the mobile input
+      // Redirected to dashboard — session was still valid
+      if (isDashboardUrl(currentUrl)) return "dashboard";
+
+      // Check for OTP inputs first — portal puts us directly on OTP step if initiate
+      // session cookies are still live (the portal remembers the pending OTP request)
+      const otpLoc = await tryLocator(
+        page,
+        [...SEL.OTP_INPUT_SINGLE, ...SEL.OTP_INPUT_DIGITS],
+        ACTION_TIMEOUT_MS,
+      );
+      if (otpLoc) return "otp_form";
+
+      // Check for mobile input — fresh session or expired OTP session
       const mobileInput = await tryLocator(page, SEL.MOBILE_INPUT, ACTION_TIMEOUT_MS);
-      if (mobileInput) return true;
+      if (mobileInput) return "mobile_form";
     } catch {
       // try next URL candidate
     }
   }
   return false;
+}
+
+// ── Ownership verification ───────────────────────────────────────────────────
+
+/** Mask an identifier for safe logging/display. Keeps first + last 3 chars. */
+function maskIdentifier(raw: string): string {
+  const s = raw.trim();
+  if (s.length <= 4) return "****";
+  return s[0] + "****" + s.slice(-3);
+}
+
+/**
+ * Navigate to the merchant's profile page and verify that at least one
+ * displayed identifier (masked mobile phone number) matches the last 3 digits
+ * of the mobile provided at initiateSession time.
+ *
+ * SECURITY CONTRACT:
+ *   - CONNECTED is NEVER returned without this check passing.
+ *   - "Dashboard visible" alone is NOT sufficient evidence of account ownership.
+ *   - Only the unmasked suffix (last 3 digits) is compared — never the full number.
+ *   - Navigating to the profile page requires the portal session to be live
+ *     (adds an implicit auth check beyond the dashboard landmark gate).
+ *   - If the profile is unreachable or has no recognisable identifier, the check
+ *     FAILS (fail-closed) — CONNECTED is NOT returned.
+ *   - The comparison result is logged (masked) for audit; the full mobile is not.
+ *
+ * Returns:
+ *   { verified: true, identifier: "<masked>" }  on success
+ *   { verified: false, reason: "<code>" }       on failure
+ */
+async function verifyOwnershipFromPortal(
+  page: Page,
+  adData: PaytmAdapterData,
+  portalRoot: string,
+): Promise<{ verified: boolean; identifier?: string; reason?: string }> {
+  const storedMasked = adData.maskedMobile ?? "";
+  // Extract last 3 numeric digits from stored maskedMobile.
+  // e.g. "**XXXXXX890" → digits "890"
+  const storedSuffix = storedMasked.replace(/\D/g, "").slice(-3);
+
+  if (!storedSuffix || storedSuffix.length < 3) {
+    logger.warn({ slug: "paytm_merchant" }, "paytm_ownership_no_stored_suffix");
+    return { verified: false, reason: "NO_STORED_MOBILE_SUFFIX" };
+  }
+
+  for (const profilePath of PROFILE_PATHS) {
+    try {
+      await page.goto(`${portalRoot}${profilePath}`, {
+        waitUntil: "domcontentloaded",
+        timeout: 10_000,
+      });
+
+      const currentUrl = page.url();
+      // Redirected to login — session expired, skip to next path
+      if (isLoginUrl(currentUrl)) continue;
+
+      // ── Specific selector search ──────────────────────────────────────────
+      for (const sel of SEL.OWNERSHIP_MOBILE) {
+        try {
+          const el = page.locator(sel).first();
+          if (await el.count() > 0) {
+            const text = (await el.textContent())?.trim() ?? "";
+            const elDigits = text.replace(/\D/g, "");
+            if (elDigits.endsWith(storedSuffix) && elDigits.length >= 3) {
+              logger.info(
+                { slug: "paytm_merchant", profilePath },
+                "paytm_ownership_verified_selector",
+              );
+              return { verified: true, identifier: maskIdentifier(text) };
+            }
+          }
+        } catch { /* continue */ }
+      }
+
+      // ── Full page text search ─────────────────────────────────────────────
+      const pageText = await page
+        .evaluate(() => (globalThis as any)["document"]?.body?.innerText ?? "")
+        .catch(() => "");
+
+      for (const line of pageText.split("\n")) {
+        const lineDigits = line.replace(/\D/g, "");
+        if (lineDigits.length >= 3 && lineDigits.endsWith(storedSuffix)) {
+          // Line must look like a masked phone (has mask chars or has ≥7 digits)
+          const hasMaskChars = /[X*●•]/.test(line);
+          const isPhoneLength = lineDigits.length >= 7;
+          if (hasMaskChars || isPhoneLength) {
+            logger.info(
+              { slug: "paytm_merchant", profilePath },
+              "paytm_ownership_verified_text_search",
+            );
+            return { verified: true, identifier: maskIdentifier(line.trim()) };
+          }
+        }
+      }
+    } catch {
+      // Profile path navigation failed — try next
+    }
+  }
+
+  // No matching identifier found across all profile paths
+  logger.warn(
+    { slug: "paytm_merchant", maskedMobile: storedMasked },
+    "paytm_ownership_verification_failed",
+  );
+  return { verified: false, reason: "NO_MATCHING_IDENTIFIER_FOUND" };
 }
 
 /**
@@ -505,7 +661,7 @@ async function verifyDashboardAuthenticated(page: Page): Promise<{
  */
 async function verifySessionAlive(page: Page): Promise<boolean> {
   try {
-    await page.goto(PORTAL_ROOT, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
+    await page.goto(getPortalRoot(), { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
     const result = await verifyDashboardAuthenticated(page);
     return result.verified;
   } catch {
@@ -806,14 +962,31 @@ export const paytmMerchantAdapter: ProviderAdapter = {
       ctx = await newIsolatedContext(adData.storageState);
       const page = await ctx.context.newPage();
 
-      // Check if the restored session is already on the dashboard
-      await page.goto(PORTAL_ROOT, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
+      // Navigate to portal root — check current state of the restored session
+      await page.goto(getPortalRoot(), { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
       const preCheckUrl = page.url();
 
       if (!isLoginUrl(preCheckUrl)) {
         // Might already be logged in — run the full CONNECTED gate
         const preCheck = await verifyDashboardAuthenticated(page);
         if (preCheck.verified) {
+          // Session is still alive — verify ownership before returning CONNECTED.
+          // CONNECTED is never returned without this check.
+          const ownership = await verifyOwnershipFromPortal(page, adData, getPortalRoot());
+          if (!ownership.verified) {
+            logger.warn(
+              { slug: "paytm_merchant", reason: ownership.reason },
+              "paytm_submitstep_precheck_ownership_failed",
+            );
+            return {
+              status: "FAILED",
+              failReason: ownership.reason === "NO_MATCHING_IDENTIFIER_FOUND"
+                ? "OWNERSHIP_MISMATCH"
+                : "OWNERSHIP_UNVERIFIABLE",
+              failDetail: "Could not verify merchant identity on the authenticated portal. " +
+                "Please reconnect to reauthorize.",
+            };
+          }
           const newStorageState = await extractStorageState(ctx.context);
           const newData: PaytmAdapterData = {
             ...adData,
@@ -835,9 +1008,50 @@ export const paytmMerchantAdapter: ProviderAdapter = {
         }
       }
 
-      // Navigate to login page to reach the OTP step
-      const loginReached = await navigateToLoginPage(page);
-      if (!loginReached) {
+      // Navigate to login page to reach the OTP step.
+      // navigateToLoginPage() returns "otp_form" if the portal already shows OTP
+      // inputs (cookies from initiate() put us directly on the OTP step), "mobile_form"
+      // if the session expired, "dashboard" if somehow already logged in, or false if
+      // the portal is unreachable.
+      const loginState = await navigateToLoginPage(page);
+      if (loginState === "dashboard") {
+        // Navigating to login ended up on dashboard — verify ownership
+        const ownership = await verifyOwnershipFromPortal(page, adData, getPortalRoot());
+        if (!ownership.verified) {
+          return {
+            status: "FAILED",
+            failReason: ownership.reason === "NO_MATCHING_IDENTIFIER_FOUND"
+              ? "OWNERSHIP_MISMATCH"
+              : "OWNERSHIP_UNVERIFIABLE",
+            failDetail: "Could not verify merchant identity on the authenticated portal. " +
+              "Please reconnect.",
+          };
+        }
+        const newStorageState = await extractStorageState(ctx.context);
+        const newData: PaytmAdapterData = {
+          ...adData, storageState: newStorageState, step: "CONNECTED",
+          connectedAt: new Date().toISOString(),
+        };
+        const payload = makeSessionPayload(
+          "paytm_merchant", 0, newData as unknown as Record<string, unknown>,
+          { expiresAt: new Date(Date.now() + SESSION_TTL_HOURS * 60 * 60 * 1000) },
+        );
+        const enc = encryptSessionPayload(payload);
+        return {
+          status: "CONNECTED",
+          encryptedSessionToken: enc.ok ? enc.token : undefined,
+          nextStep: "COMPLETE",
+        };
+      }
+      if (loginState === "mobile_form") {
+        // Session expired — need full re-initiate
+        return {
+          status: "FAILED",
+          failReason: "SESSION_EXPIRED_REAUTH",
+          failDetail: "OTP session has expired. Please restart the connection to receive a new OTP.",
+        };
+      }
+      if (!loginState) {
         return {
           status: "FAILED",
           failReason: "PORTAL_UNREACHABLE",
@@ -845,8 +1059,9 @@ export const paytmMerchantAdapter: ProviderAdapter = {
             "Please restart the connection.",
         };
       }
+      // loginState === "otp_form" — OTP inputs already visible on the login page
 
-      // Wait for OTP input
+      // Wait for OTP input (may already be visible since we're on "otp_form")
       const allOtpSels = [...SEL.OTP_INPUT_SINGLE, ...SEL.OTP_INPUT_DIGITS];
       const otpSel = await waitForAny(page, allOtpSels, NAV_TIMEOUT_MS);
       if (!otpSel) {
@@ -948,6 +1163,33 @@ export const paytmMerchantAdapter: ProviderAdapter = {
       }
       // ── End CONNECTED gate ─────────────────────────────────────────────────
 
+      // ── OWNERSHIP VERIFICATION GATE ───────────────────────────────────────
+      // After confirming the dashboard is visible and authenticated, navigate to
+      // the profile page and verify the merchant's registered mobile matches the
+      // last 3 digits of the mobile number provided at initiateSession time.
+      //
+      // CONNECTED is NEVER returned without this check passing.
+      // "Dashboard visible" alone is NOT sufficient evidence of account ownership.
+      const ownership = await verifyOwnershipFromPortal(page, adData, getPortalRoot());
+      if (!ownership.verified) {
+        logger.warn(
+          { slug: "paytm_merchant", reason: ownership.reason },
+          "paytm_submitstep_ownership_failed",
+        );
+        return {
+          status: "FAILED",
+          failReason: ownership.reason === "NO_MATCHING_IDENTIFIER_FOUND"
+            ? "OWNERSHIP_MISMATCH"
+            : "OWNERSHIP_UNVERIFIABLE",
+          failDetail: ownership.reason === "NO_MATCHING_IDENTIFIER_FOUND"
+            ? "The registered mobile on your Paytm Business portal does not match the " +
+              "mobile number you entered. Please ensure you are logging in to your own account."
+            : "Could not extract a verifiable merchant identifier from the Paytm Business " +
+              "portal. Please try again or contact support.",
+        };
+      }
+      // ── End OWNERSHIP VERIFICATION GATE ───────────────────────────────────
+
       // Serialise updated storage state (cookies refreshed post-login)
       const newStorageState = await extractStorageState(ctx.context);
       const newData: PaytmAdapterData = {
@@ -1048,7 +1290,7 @@ export const paytmMerchantAdapter: ProviderAdapter = {
       const page = await ctx.context.newPage();
 
       // Navigate to the profile page to look for MID
-      await page.goto(`${PORTAL_ROOT}/profile`, {
+      await page.goto(`${getPortalRoot()}/profile`, {
         waitUntil: "domcontentloaded",
         timeout: NAV_TIMEOUT_MS,
       });
@@ -1127,7 +1369,7 @@ export const paytmMerchantAdapter: ProviderAdapter = {
       const page = await ctx.context.newPage();
 
       // Navigate to transactions
-      await page.goto(`${PORTAL_ROOT}/transactions`, {
+      await page.goto(`${getPortalRoot()}/transactions`, {
         waitUntil: "domcontentloaded",
         timeout: NAV_TIMEOUT_MS,
       });
@@ -1237,9 +1479,10 @@ export const paytmMerchantAdapter: ProviderAdapter = {
     try {
       ctx = await newIsolatedContext(); // no stored state — fresh context
       const page = await ctx.context.newPage();
-      await page.goto(PORTAL_ROOT, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
+      const root = getPortalRoot();
+      await page.goto(root, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
       const url = page.url();
-      const reachable = url.startsWith("https://business.paytm.com");
+      const reachable = url.startsWith("https://business.paytm.com") || url.startsWith(root);
       return {
         healthy: reachable,
         status:  "CONNECTED" as any,
@@ -1250,7 +1493,7 @@ export const paytmMerchantAdapter: ProviderAdapter = {
         healthy: false,
         status:  "FAILED" as any,
         reason:  "PORTAL_UNREACHABLE",
-        detail:  `${PORTAL_ROOT}: ${err?.message ?? "unknown"}`,
+        detail:  `${getPortalRoot()}: ${err?.message ?? "unknown"}`,
       };
     } finally {
       await ctx?.release();
@@ -1341,7 +1584,7 @@ export const paytmMerchantAdapter: ProviderAdapter = {
     try {
       ctx = await newIsolatedContext(adData.storageState);
       const page = await ctx.context.newPage();
-      await page.goto(`${PORTAL_ROOT}/user/logout`, {
+      await page.goto(`${getPortalRoot()}/user/logout`, {
         waitUntil: "domcontentloaded",
         timeout: NAV_TIMEOUT_MS,
       });
