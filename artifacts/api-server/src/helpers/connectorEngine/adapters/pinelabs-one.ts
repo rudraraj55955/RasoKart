@@ -63,6 +63,7 @@ const HELP_URL = "https://developer.pinelabs.com";
 export const pineLabsOneAdapter: ProviderAdapter = {
   slug: "pinelabs_one",
   displayName: "Pine Labs ONE",
+  adapterKind: "portal_session_connector",
   category: "pos",
 
   // No supported login methods until official partner API is granted.

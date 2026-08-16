@@ -194,12 +194,38 @@ export interface HealthCheckResult {
 // ── Provider adapter interface ────────────────────────────────────────────────
 
 /**
+ * Distinguishes API-key-based optional connectors from the primary
+ * credential-first portal session connectors.
+ *
+ * "api_key_connector"      — Merchant pastes programmatic API keys (Key ID +
+ *                            Secret, clientId + clientSecret, etc.).  These are
+ *                            developer credentials generated in a dashboard, not
+ *                            the merchant's own portal login details.  Optional
+ *                            convenience path only.
+ *
+ * "portal_session_connector" — Merchant supplies their normal authorized login
+ *                            details (mobile / email / username / MID + password
+ *                            + manually entered OTP).  This is the primary
+ *                            credential-first path required by Merchant Connect.
+ *
+ * The two kinds must never be merged, and an api_key_connector must never be
+ * presented to users or in reports as satisfying the portal-session requirement.
+ */
+export type AdapterKind = "api_key_connector" | "portal_session_connector";
+
+/**
  * Every provider adapter must implement this interface.
  * See adapters/pinelabs-one.ts for a reference fail-closed implementation.
  */
 export interface ProviderAdapter {
   readonly slug: string;
   readonly displayName: string;
+  /**
+   * Declares whether this adapter uses programmatic API keys (api_key_connector)
+   * or the merchant's own portal login credentials (portal_session_connector).
+   * Must be set accurately — never label an API-key adapter as portal_session.
+   */
+  readonly adapterKind: AdapterKind;
   readonly category: "pos" | "gateway" | "bank" | "upi";
 
   /**

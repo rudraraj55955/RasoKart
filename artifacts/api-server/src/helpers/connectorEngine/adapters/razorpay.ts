@@ -1,35 +1,56 @@
 /**
- * Razorpay — Connector Engine Adapter (API Key Authentication)
+ * Razorpay — OPTIONAL API Read-Only Connector
  *
- * CONNECTION METHOD: Razorpay API Key + Secret
+ * ┌─────────────────────────────────────────────────────────────────────────┐
+ * │  ADAPTER KIND: api_key_connector                                        │
+ * │  This is NOT the credential-first portal connector.                     │
+ * │  This adapter requires a Razorpay API Key ID + Key Secret — programmatic│
+ * │  keys that merchants generate from their Razorpay Dashboard, not their  │
+ * │  dashboard login credentials (email + password + OTP).                  │
+ * │                                                                         │
+ * │  It is kept as an OPTIONAL, separately labelled data-access path.       │
+ * │  It must never be presented as a substitute for the credential-first    │
+ * │  portal connector, and must never be merged into the portal session     │
+ * │  connector path.                                                         │
+ * └─────────────────────────────────────────────────────────────────────────┘
+ *
+ * CONNECTION METHOD: Razorpay API Key + Secret (merchant-generated)
  *   Merchants supply their own Razorpay API Key ID and Key Secret from their
- *   Razorpay Dashboard (Settings → API Keys). These are their merchant-level
- *   credentials, NOT RasoKart's gateway credentials.
+ *   Razorpay Dashboard (Settings → API Keys). These are programmatic read-only
+ *   keys, NOT the merchant's portal login credentials.
  *
  * AUTHENTICATION FLOW:
- *   1. Merchant enters Key ID (rzp_live_... / rzp_test_...) and Key Secret in RasoKart UI.
- *   2. Server encrypts both server-side (AES-256-GCM, never logged or returned).
- *   3. Adapter validates credentials via a lightweight Razorpay API call (no CAPTCHA).
- *   4. On success: encrypted session token is stored; status becomes CONNECTED.
- *   5. Session remains valid until the merchant revokes the API key on Razorpay.
+ *   1. Merchant retrieves Key ID (rzp_live_... / rzp_test_...) and Key Secret
+ *      from their Razorpay Dashboard → Settings → API Keys.
+ *   2. Merchant pastes both into RasoKart's optional API connector form.
+ *   3. Server encrypts both server-side (AES-256-GCM, never logged or returned).
+ *   4. Adapter validates by calling GET /v1/payments?count=1 with Basic auth.
+ *   5. CONNECTED is set ONLY on HTTP 200. All other responses → FAILED.
  *
- * SESSION SECURITY:
- *   - Key ID and Key Secret are stored only inside the AES-256-GCM encrypted session blob.
- *   - The blob is stored in merchant_portal_sessions.encrypted_session (server-only).
- *   - Raw credentials are never returned to the frontend, logged, or written to disk.
- *   - Session expiry: 90 days (advisory; API keys don't expire unless rotated).
+ * CREDENTIAL-VALIDATION LEASE (not a provider session):
+ *   - The encrypted blob stores the API keys for repeated use.
+ *   - The 90-day advisory expiry triggers re-validation; it does NOT represent
+ *     a real Razorpay session — API keys do not expire unless the merchant
+ *     rotates them. The label "session" is intentionally avoided here because
+ *     there is no server-side session on Razorpay's side.
+ *   - Reconnect re-validates the stored keys via the same live API call.
+ *
+ * FAIL-CLOSED RULES (strict):
+ *   - Only HTTP 200 from Razorpay → ok: true → CONNECTED.
+ *   - HTTP 400 (bad request) → FAILED. Never infer "authenticated".
+ *   - HTTP 401 (invalid credentials) → FAILED.
+ *   - HTTP 403 (forbidden / insufficient permissions) → FAILED.
+ *   - HTTP 429 (rate limited) → FAILED.
+ *   - HTTP 5xx (provider error) → FAILED.
+ *   - Timeout or network error → FAILED.
+ *   - Any response other than 200 → FAILED.
+ *   - Decryption failure → EXPIRED (never CONNECTED).
  *
  * DATA ACCESS (READ-ONLY):
  *   - Fetches payment transactions via GET /v1/payments (no mutations).
  *   - No payments, refunds, payouts, settlements, or profile changes.
- *   - Respects Razorpay API rate limits; does NOT bypass any security controls.
  *
- * FAIL-CLOSED GUARANTEE:
- *   - Invalid credentials → FAILED (never CONNECTED without verified auth).
- *   - Razorpay unreachable → FAILED (never fabricated CONNECTED state).
- *   - Decryption failure → session treated as EXPIRED.
- *
- * GET API KEYS: https://dashboard.razorpay.com/app/keys
+ * HOW TO GET API KEYS: https://dashboard.razorpay.com/app/keys
  */
 
 import type {
@@ -88,21 +109,34 @@ async function testCredentials(keyId: string, keySecret: string): Promise<CredTe
       signal: controller.signal,
     });
     clearTimeout(timer);
-    // 200 = valid credentials, has data
-    // 400 = valid credentials, bad query params (still authenticated)
-    // 403 = valid credentials, insufficient permissions for this endpoint
-    // 401 = invalid credentials
-    // 429 = rate limited (credentials format may be valid — do not infer invalid)
-    if (res.status === 401) {
-      return { ok: false, reason: "Invalid API Key ID or Key Secret. Double-check your credentials on the Razorpay dashboard." };
-    }
-    if (res.status === 429) {
-      return { ok: false, reason: "Razorpay rate limit reached. Please wait a moment and try again." };
-    }
-    if (res.status === 200 || res.status === 400 || res.status === 403) {
+    // FAIL-CLOSED: only HTTP 200 is an authorized successful response.
+    // Every other status code — including 400 and 403 — must never produce CONNECTED.
+    //
+    // 200 = credentials accepted, request successful → ONLY valid → CONNECTED
+    // 400 = request rejected (bad format / key restricted) → FAILED
+    // 401 = invalid credentials → FAILED
+    // 403 = key exists but has insufficient permissions → FAILED
+    // 429 = rate-limited → FAILED (do not infer credential validity)
+    // 5xx = provider-side error → FAILED
+    if (res.status === 200) {
       return { ok: true };
     }
-    return { ok: false, reason: `Unexpected response from Razorpay (HTTP ${res.status}). Please try again.` };
+    if (res.status === 400) {
+      return { ok: false, reason: "Razorpay rejected the request (HTTP 400). Your API key may be IP-restricted or misconfigured. Check your Razorpay Dashboard." };
+    }
+    if (res.status === 401) {
+      return { ok: false, reason: "Invalid API Key ID or Key Secret (HTTP 401). Double-check both values on your Razorpay Dashboard under Settings → API Keys." };
+    }
+    if (res.status === 403) {
+      return { ok: false, reason: "API key has insufficient permissions (HTTP 403). Ensure the key has read access to payments on your Razorpay Dashboard." };
+    }
+    if (res.status === 429) {
+      return { ok: false, reason: "Razorpay rate limit reached (HTTP 429). Wait a moment and try again." };
+    }
+    if (res.status >= 500) {
+      return { ok: false, reason: `Razorpay service error (HTTP ${res.status}). Please try again in a few minutes.` };
+    }
+    return { ok: false, reason: `Unexpected response from Razorpay (HTTP ${res.status}). Connection refused for safety.` };
   } catch (err: any) {
     clearTimeout(timer);
     if (err.name === "AbortError") {
@@ -111,6 +145,13 @@ async function testCredentials(keyId: string, keySecret: string): Promise<CredTe
     return { ok: false, reason: `Could not reach Razorpay API: ${err.message ?? "unknown error"}.` };
   }
 }
+
+// ── Test-only export ──────────────────────────────────────────────────────────
+// Allows white-box regression tests to call testCredentials() directly.
+// The export is tree-shaken away in production builds (esbuild drops it when
+// nothing outside the test file imports it, and test files are excluded).
+/** @internal Do not import this outside of test files. */
+export const TEST_ONLY_testCredentials = testCredentials;
 
 // ── Transaction status normalisation ──────────────────────────────────────────
 
@@ -160,7 +201,8 @@ const SUPPORTED_LOGIN_METHODS: LoginMethod[] = [
 
 export const razorpayAdapter: ProviderAdapter = {
   slug: "razorpay",
-  displayName: "Razorpay",
+  displayName: "Razorpay API Read-Only Connector",
+  adapterKind: "api_key_connector",
   category: "gateway",
   supportedLoginMethods: SUPPORTED_LOGIN_METHODS,
 
