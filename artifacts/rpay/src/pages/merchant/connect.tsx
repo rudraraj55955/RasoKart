@@ -172,6 +172,32 @@ function progressColor(pct: number) {
   return "[&>div]:bg-emerald-500";
 }
 
+// ── API helpers ───────────────────────────────────────────────────────────────
+
+/** Get the stored JWT exactly as every other merchant page does. */
+function getToken(): string {
+  return localStorage.getItem("rasokart_token") ?? "";
+}
+
+function authHeaders(extra?: Record<string, string>): Record<string, string> {
+  const token = getToken();
+  return {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...extra,
+  };
+}
+
+async function enrollFetch(
+  path: string,
+  init?: RequestInit,
+): Promise<Response> {
+  const isJson = init?.body != null;
+  return fetch(path, {
+    ...init,
+    headers: authHeaders(isJson ? { "Content-Type": "application/json" } : {}),
+  });
+}
+
 // ── API hooks ─────────────────────────────────────────────────────────────────
 
 const ENROLLMENT_QUERY_KEY = ["merchant", "enrollments"] as const;
@@ -180,7 +206,7 @@ function useEnrollments() {
   return useQuery<Enrollment[]>({
     queryKey: ENROLLMENT_QUERY_KEY,
     queryFn: async () => {
-      const res = await fetch("/api/merchant/enrollments", { credentials: "include" });
+      const res = await enrollFetch("/api/merchant/enrollments");
       if (!res.ok) throw new Error(`Failed to fetch enrollments: ${res.status}`);
       return res.json();
     },
@@ -192,10 +218,8 @@ function useInitiateEnrollment() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (payload: { providerSlug: string }) => {
-      const res = await fetch("/api/merchant/enrollments", {
+      const res = await enrollFetch("/api/merchant/enrollments", {
         method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
       if (!res.ok) {
@@ -218,12 +242,10 @@ function useSubmitCredentials() {
       webhookSecret?: string;
     }) => {
       const { providerSlug, ...creds } = payload;
-      const res = await fetch(`/api/merchant/enrollments/${providerSlug}/credentials`, {
-        method: "PUT",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(creds),
-      });
+      const res = await enrollFetch(
+        `/api/merchant/enrollments/${providerSlug}/credentials`,
+        { method: "PUT", body: JSON.stringify(creds) },
+      );
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "Unknown error" }));
         throw new Error(err.error ?? "Failed to submit credentials");
@@ -238,10 +260,10 @@ function useDisconnect() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (providerSlug: string) => {
-      const res = await fetch(`/api/merchant/enrollments/${providerSlug}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
+      const res = await enrollFetch(
+        `/api/merchant/enrollments/${providerSlug}`,
+        { method: "DELETE" },
+      );
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "Unknown error" }));
         throw new Error(err.error ?? "Failed to disconnect");

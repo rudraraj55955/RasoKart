@@ -21,7 +21,7 @@ import { and, eq, isNotNull, lt, sql } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { ekqrCheckOrderStatus, ekqrFormatDate } from "./ekqr";
 import { decryptSecret } from "./cryptoUtils";
-import { notifyAdminsOfStuckEkqrQrCodes } from "./adminNotifyEmail";
+import { notifyAdminsOfStuckEkqrQrCodes, notifyAdminsOfEkqrSchedulerConsecutiveFailure } from "./adminNotifyEmail";
 import { creditEkqrQrPayment } from "./ekqrCredit";
 
 let syncTask: ScheduledTask | null = null;
@@ -276,10 +276,8 @@ export function initEkqrSyncScheduler(): void {
             { consecutiveFailures: next },
             "EKQR sync scheduler: consecutive failure threshold reached — notifying admins"
           );
-          notifyAdminsOfStuckEkqrQrCodes({
-            stuck: 0,
-            threshold: 0,
-            staleMinutes: 0,
+          notifyAdminsOfEkqrSchedulerConsecutiveFailure({
+            consecutiveFailures: next,
             cooldownHours: 4,
           }).catch((notifyErr) => {
             logger.error({ notifyErr }, "EKQR sync: failed to send consecutive-failure alert");

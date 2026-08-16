@@ -1646,3 +1646,110 @@ export async function notifyAdminsOfStuckPayuOrders(
     logger.error({ err }, "Failed to send admin stuck PayU order alert emails");
   }
 }
+
+// ── Constant for EKQR scheduler consecutive-failure alert ─────────────────────
+const EKQR_SCHEDULER_FAILURE_ALERT_LAST_SENT_KEY = "ekqr_scheduler_failure_alert_last_sent_at";
+
+function buildEkqrSchedulerFailureHtml(opts: {
+  consecutiveFailures: number;
+  firstFailedAt: string;
+}): string {
+  const { consecutiveFailures, firstFailedAt } = opts;
+  return `
+    <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
+      <h2 style="color:#dc2626">🔴 EKQR Sync Scheduler — ${consecutiveFailures} Consecutive Failures</h2>
+      <p>The EKQR automatic QR-code sync scheduler has failed <strong>${consecutiveFailures} times in a row</strong>.</p>
+      <table style="border-collapse:collapse;width:100%;margin:16px 0">
+        <tr>
+          <td style="padding:8px;border:1px solid #e5e7eb;font-weight:bold;background:#f9fafb">Consecutive Failures</td>
+          <td style="padding:8px;border:1px solid #e5e7eb">${consecutiveFailures}</td>
+        </tr>
+        <tr>
+          <td style="padding:8px;border:1px solid #e5e7eb;font-weight:bold;background:#f9fafb">First Failure Detected</td>
+          <td style="padding:8px;border:1px solid #e5e7eb">${firstFailedAt}</td>
+        </tr>
+        <tr>
+          <td style="padding:8px;border:1px solid #e5e7eb;font-weight:bold;background:#f9fafb">Impact</td>
+          <td style="padding:8px;border:1px solid #e5e7eb">Automatic EKQR QR-code deposit syncs are not running. Merchant deposits via EKQR QR codes may not be credited.</td>
+        </tr>
+      </table>
+      <p style="color:#6b7280;font-size:0.85em">
+        This alert fires on the 3rd consecutive failure and every 3rd thereafter.
+        It clears automatically once the scheduler runs successfully.
+        Check the EKQR sync logs and EKQR provider API status for root cause.
+      </p>
+    </div>
+  `;
+}
+
+/**
+ * Notify opted-in admins when the EKQR sync scheduler fails consecutively.
+ * This is distinct from the "stuck QR" alert which fires on individual sync
+ * runs where QR codes are stuck past a stale threshold. This alert fires when
+ * the scheduler itself cannot run at all — the entire sync pipeline is broken.
+ *
+ * Uses a separate cooldown key so the two alerts don't suppress each other.
+ */
+export async function notifyAdminsOfEkqrSchedulerConsecutiveFailure(
+  opts: {
+    consecutiveFailures: number;
+    cooldownHours: number;
+  },
+  _sendMail: typeof sendMail = sendMail,
+): Promise<void> {
+  try {
+    const recipients = await getAdminEmails("ekqrSyncAlertEmails");
+
+    if (recipients.length === 0) {
+      logger.info("No admins opted in to EKQR sync alert emails — skipping consecutive-failure alert");
+      return;
+    }
+
+    // Cooldown check — avoid spamming during prolonged outages
+    const cooldownCutoff = new Date(Date.now() - opts.cooldownHours * 60 * 60 * 1000);
+    const [lastSentRow] = await db
+      .select({ value: systemConfigTable.value })
+      .from(systemConfigTable)
+      .where(eq(systemConfigTable.key, EKQR_SCHEDULER_FAILURE_ALERT_LAST_SENT_KEY))
+      .limit(1);
+
+    if (lastSentRow?.value) {
+      const lastSentAt = new Date(lastSentRow.value);
+      if (lastSentAt > cooldownCutoff) {
+        logger.info(
+          { cooldownHours: opts.cooldownHours, lastSentAt: lastSentRow.value },
+          "EKQR scheduler consecutive-failure alert suppressed — within cooldown window",
+        );
+        return;
+      }
+    }
+
+    const firstFailedAt = new Date().toISOString();
+    const html = buildEkqrSchedulerFailureHtml({ consecutiveFailures: opts.consecutiveFailures, firstFailedAt });
+    const subject = `[RasoKart] 🔴 EKQR Sync Scheduler Down — ${opts.consecutiveFailures} Consecutive Failures`;
+
+    const results = await Promise.allSettled(
+      recipients.map(email => _sendMail({ to: email, subject, html })),
+    );
+
+    const sent = results.filter(r => r.status === "fulfilled" && r.value).length;
+
+    if (sent > 0) {
+      const now = new Date().toISOString();
+      await db
+        .insert(systemConfigTable)
+        .values({ key: EKQR_SCHEDULER_FAILURE_ALERT_LAST_SENT_KEY, value: now })
+        .onConflictDoUpdate({
+          target: systemConfigTable.key,
+          set: { value: now, updatedAt: sql`now()` },
+        });
+    }
+
+    logger.info(
+      { consecutiveFailures: opts.consecutiveFailures, totalAdmins: recipients.length, sent },
+      "EKQR scheduler consecutive-failure alert emails dispatched",
+    );
+  } catch (err) {
+    logger.error({ err }, "Failed to send EKQR scheduler consecutive-failure alert emails");
+  }
+}
