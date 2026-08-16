@@ -105,6 +105,7 @@ import adminCashfreePayinReconRouter from "./adminCashfreePayinRecon";
 import adminPineLabsRouter from "./adminPineLabs";
 import { devHelperRouter } from "./devHelper";
 import platformConnectionsRouter from "./platformConnections";
+import portalSessionsRouter from "./portalSessions";
 
 const router: IRouter = Router();
 
@@ -279,6 +280,7 @@ router.use("/agent/activate", agentActivateRouter);
 
 // Platform Connections — RasoKart's own provider accounts (Super Admin only)
 router.use("/platform-connections", platformConnectionsRouter);
+router.use("/portal-sessions", portalSessionsRouter);
 
 // Dev-only test support: OTP capture helper.
 // NEVER reachable in production — guarded both here and inside the handler.

@@ -2823,6 +2823,132 @@ async function runGuard(executor: GuardExecutor = db): Promise<void> {
     logger.info({ table: "merchant_provider_enrollments" }, "schema_guard_table_created");
   });
 
+  // ── portal_sessions ──────────────────────────────────────────────────────────
+  // Connector Engine: encrypted provider-portal sessions per platform_connection.
+  // Written exclusively by the portalSessions route via the ConnectorEngine.
+  await block("portal_sessions", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS portal_sessions (
+        id                    SERIAL PRIMARY KEY,
+        platform_connection_id INTEGER NOT NULL REFERENCES platform_connections(id) ON DELETE CASCADE,
+        provider_slug         TEXT NOT NULL,
+        status                TEXT NOT NULL DEFAULT 'PENDING',
+        next_step             TEXT,
+        next_step_prompt      TEXT,
+        encrypted_session     TEXT,
+        fail_reason           TEXT,
+        fail_detail           TEXT,
+        help_url              TEXT,
+        discovery_snapshot    TEXT,
+        last_discovered_at    TIMESTAMPTZ,
+        last_validated_at     TIMESTAMPTZ,
+        expires_at            TIMESTAMPTZ,
+        last_health_check_at  TIMESTAMPTZ,
+        last_health_status    TEXT,
+        initiated_by_email    TEXT,
+        disconnected_by_email TEXT,
+        disconnected_at       TIMESTAMPTZ,
+        created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS portal_sessions_connection_idx ON portal_sessions(platform_connection_id)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS portal_sessions_provider_status_idx ON portal_sessions(provider_slug, status)`);
+    logger.info({ table: "portal_sessions" }, "schema_guard_table_created");
+  });
+
+  // ── portal_discovered_entities ───────────────────────────────────────────────
+  // Connector Engine: merchants, stores, devices, and QR codes discovered
+  // from an authenticated portal session. Read-only after creation.
+  await block("portal_discovered_entities", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS portal_discovered_entities (
+        id                    SERIAL PRIMARY KEY,
+        platform_connection_id INTEGER NOT NULL REFERENCES platform_connections(id) ON DELETE CASCADE,
+        portal_session_id     INTEGER NOT NULL REFERENCES portal_sessions(id) ON DELETE CASCADE,
+        entity_type           TEXT NOT NULL,
+        provider_entity_id    TEXT NOT NULL,
+        provider_entity_name  TEXT,
+        parent_entity_id      TEXT,
+        is_primary            BOOLEAN NOT NULL DEFAULT FALSE,
+        metadata              TEXT,
+        is_active             BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS portal_discovery_connection_idx ON portal_discovered_entities(platform_connection_id)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS portal_discovery_session_idx ON portal_discovered_entities(portal_session_id)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS portal_discovery_entity_type_idx ON portal_discovered_entities(entity_type)`);
+    logger.info({ table: "portal_discovered_entities" }, "schema_guard_table_created");
+  });
+
+  // ── portal_transactions ───────────────────────────────────────────────────────
+  // Connector Engine: normalised payment records fetched from provider portals.
+  // Idempotent on (provider_slug, provider_tx_id) via idempotency_key unique constraint.
+  await block("portal_transactions", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS portal_transactions (
+        id                    SERIAL PRIMARY KEY,
+        platform_connection_id INTEGER NOT NULL REFERENCES platform_connections(id) ON DELETE CASCADE,
+        portal_session_id     INTEGER REFERENCES portal_sessions(id) ON DELETE SET NULL,
+        provider_slug         TEXT NOT NULL,
+        provider_tx_id        TEXT NOT NULL,
+        utr                   TEXT,
+        rrn                   TEXT,
+        amount                NUMERIC(18,2) NOT NULL,
+        currency              TEXT NOT NULL DEFAULT 'INR',
+        status                TEXT NOT NULL,
+        provider_status       TEXT,
+        tx_timestamp          TIMESTAMPTZ,
+        settlement_timestamp  TIMESTAMPTZ,
+        merchant_id_provider  TEXT,
+        store_id_provider     TEXT,
+        device_tid            TEXT,
+        qr_code_id            TEXT,
+        settlement_reference  TEXT,
+        idempotency_key       TEXT NOT NULL,
+        is_credited           BOOLEAN NOT NULL DEFAULT FALSE,
+        credited_at           TIMESTAMPTZ,
+        raw_payload           TEXT,
+        created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT portal_transactions_idempotency_uniq UNIQUE (idempotency_key)
+      )
+    `);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS portal_transactions_connection_idx ON portal_transactions(platform_connection_id)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS portal_transactions_provider_tx_idx ON portal_transactions(provider_slug, provider_tx_id)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS portal_transactions_status_credited_idx ON portal_transactions(status, is_credited)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS portal_transactions_tx_timestamp_idx ON portal_transactions(tx_timestamp)`);
+    logger.info({ table: "portal_transactions" }, "schema_guard_table_created");
+  });
+
+  // ── portal_wallet_credits ─────────────────────────────────────────────────────
+  // Connector Engine: immutable record of every RasoKart wallet credit from a
+  // portal transaction. One row per portal_transaction (unique constraint).
+  await block("portal_wallet_credits", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS portal_wallet_credits (
+        id                    SERIAL PRIMARY KEY,
+        portal_transaction_id INTEGER NOT NULL REFERENCES portal_transactions(id) ON DELETE RESTRICT,
+        platform_connection_id INTEGER NOT NULL REFERENCES platform_connections(id) ON DELETE RESTRICT,
+        merchant_id           INTEGER NOT NULL,
+        amount                NUMERIC(18,2) NOT NULL,
+        currency              TEXT NOT NULL DEFAULT 'INR',
+        wallet_ledger_id      INTEGER,
+        idempotency_key       TEXT NOT NULL,
+        credited_by           TEXT NOT NULL DEFAULT 'auto',
+        verification_record   TEXT NOT NULL,
+        created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT portal_wallet_credits_tx_uniq          UNIQUE (portal_transaction_id),
+        CONSTRAINT portal_wallet_credits_idempotency_uniq UNIQUE (idempotency_key)
+      )
+    `);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS portal_wallet_credits_merchant_idx ON portal_wallet_credits(merchant_id)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS portal_wallet_credits_connection_idx ON portal_wallet_credits(platform_connection_id)`);
+    logger.info({ table: "portal_wallet_credits" }, "schema_guard_table_created");
+  });
+
   _guardStatus = "pass";
   logger.info("schema_guard_completed");
 }

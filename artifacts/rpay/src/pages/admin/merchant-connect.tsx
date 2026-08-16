@@ -296,13 +296,95 @@ function RasoKartConnections() {
   // Disconnect confirm
   const [disconnectTarget, setDisconnectTarget] = useState<PlatformConn | null>(null);
 
+  // Portal session state (keyed by platformConnectionId)
+  // Tracks the latest portal session for each connection managed by the ConnectorEngine.
+  const [portalSessions, setPortalSessions] = useState<Record<number, {
+    id: number;
+    status: string;
+    failReason: string | null;
+    failDetail: string | null;
+    helpUrl: string | null;
+    nextStep: string | null;
+    nextStepPrompt: string | null;
+    updatedAt: string;
+  }>>({});
+  const [initiatingSession, setInitiatingSession] = useState<number | null>(null);
+
+  /** Slugs that are managed by the ConnectorEngine (portal-session-based) */
+  const PORTAL_PROVIDER_SLUGS = new Set(["pinelabs_one"]);
+
+  const loadPortalSessions = useCallback(async () => {
+    try {
+      const sessions = await apiGet<Array<{
+        id: number; platformConnectionId: number; status: string;
+        failReason: string | null; failDetail: string | null;
+        helpUrl: string | null; nextStep: string | null;
+        nextStepPrompt: string | null; updatedAt: string;
+      }>>("/api/portal-sessions");
+      // Keep only the latest session per connection
+      const latestByConn: typeof portalSessions = {};
+      for (const s of sessions) {
+        const existing = latestByConn[s.platformConnectionId];
+        if (!existing || new Date(s.updatedAt) > new Date(existing.updatedAt)) {
+          latestByConn[s.platformConnectionId] = s;
+        }
+      }
+      setPortalSessions(latestByConn);
+    } catch {
+      // Portal sessions are supplementary; don't block the main load on failure
+    }
+  }, []);
+
   const load = useCallback(() => {
     setLoading(true);
     Promise.all([fetchAllProviders(), apiGet<PlatformConn[]>("/api/platform-connections")])
-      .then(([p, c]) => { setProviders(p); setConnections(c); setError(null); })
+      .then(([p, c]) => { setProviders(p); setConnections(c); setError(null); loadPortalSessions(); })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [loadPortalSessions]);
+
+  /** Initiate a connector-engine portal session for a platform connection */
+  const handleInitiateSession = async (conn: PlatformConn) => {
+    setInitiatingSession(conn.id);
+    try {
+      const result = await apiPost<{
+        session: { id: number; status: string; updatedAt: string } | null;
+        failReason?: string;
+        failDetail?: string;
+        helpUrl?: string;
+      }>(`/api/portal-sessions/${conn.id}/initiate`, {
+        loginMethod: "default",
+        encryptedIdentifier: "",
+      });
+      // Refresh portal sessions to show the new status
+      await loadPortalSessions();
+      if (result.session?.status === "PARTNER_API_REQUIRED") {
+        toast.info("Partner API required — see session details for next steps.");
+      } else if (result.session?.status === "CONNECTED") {
+        toast.success("Session connected successfully.");
+      } else {
+        toast.info(`Session status: ${result.session?.status ?? "unknown"}`);
+      }
+    } catch (err: any) {
+      toast.error(`Session initiation failed: ${err?.message ?? "Unknown error"}`);
+    } finally {
+      setInitiatingSession(null);
+    }
+  };
+
+  const handleDisconnectSession = async (sessionId: number, connId: number) => {
+    try {
+      await apiPost(`/api/portal-sessions/${sessionId}/disconnect`, {});
+      setPortalSessions((prev) => {
+        const next = { ...prev };
+        delete next[connId];
+        return next;
+      });
+      toast.success("Session disconnected.");
+    } catch (err: any) {
+      toast.error(`Disconnect failed: ${err?.message ?? "Unknown error"}`);
+    }
+  };
 
   useEffect(() => { load(); }, [load]);
 
@@ -487,11 +569,25 @@ function RasoKartConnections() {
             const conn = connByProvider[p.slug];
             const isTesting = testingId === (conn?.id ?? -1);
             const latestTest = conn ? (testResults[conn.id] ?? null) : null;
+            const isPortalProvider = PORTAL_PROVIDER_SLUGS.has(p.slug);
+            const portalSession = conn ? (portalSessions[conn.id] ?? null) : null;
+            const isInitiating = initiatingSession === (conn?.id ?? -1);
+
+            // Portal session status colour
+            const portalStatusColor = !portalSession ? "text-zinc-500"
+              : portalSession.status === "CONNECTED"           ? "text-emerald-400"
+              : portalSession.status === "MONITORING"          ? "text-blue-400"
+              : portalSession.status === "PARTNER_API_REQUIRED" ? "text-amber-400"
+              : portalSession.status === "AWAITING_OTP"        ? "text-yellow-400"
+              : portalSession.status === "EXPIRED"             ? "text-orange-400"
+              : "text-red-400";
 
             return (
               <div key={p.id}
                 className={`bg-zinc-900 border rounded-lg p-4 transition-colors
-                  ${conn?.isActive ? "border-emerald-500/20" : conn ? "border-zinc-800" : "border-zinc-800/60"}`}
+                  ${conn?.isActive ? "border-emerald-500/20"
+                    : isPortalProvider && portalSession?.status === "PARTNER_API_REQUIRED" ? "border-amber-500/15"
+                    : conn ? "border-zinc-800" : "border-zinc-800/60"}`}
               >
                 <div className="flex items-center gap-3">
                   {/* Provider info */}
@@ -501,13 +597,25 @@ function RasoKartConnections() {
                       <StatusBadge status={p.status} />
                       {conn && <EnvBadge env={conn.environment} />}
                       {conn && <ConnectionStatusBadge status={conn.connectionStatus} />}
+                      {/* Portal session status badge */}
+                      {isPortalProvider && portalSession && (
+                        <span className={`text-xs font-medium flex items-center gap-1 ${portalStatusColor}`}
+                          title={portalSession.failDetail ?? undefined}>
+                          {portalSession.status === "CONNECTED"    && <CheckCircle className="w-3 h-3" />}
+                          {portalSession.status === "MONITORING"   && <Zap className="w-3 h-3" />}
+                          {portalSession.status === "AWAITING_OTP" && <Clock className="w-3 h-3" />}
+                          {portalSession.status === "EXPIRED"      && <Clock className="w-3 h-3" />}
+                          {["PARTNER_API_REQUIRED","BLOCKED","FAILED"].includes(portalSession.status) && <AlertTriangle className="w-3 h-3" />}
+                          Session: {portalSession.status.replace(/_/g, " ")}
+                        </span>
+                      )}
                     </div>
                     <div className="text-xs text-zinc-500 mt-0.5">{p.slug} · {p.category}</div>
                     {conn?.label && <div className="text-xs text-zinc-400 mt-0.5 italic">{conn.label}</div>}
                   </div>
 
-                  {/* Status indicators */}
-                  {conn && (
+                  {/* Status indicators (non-portal) */}
+                  {conn && !isPortalProvider && (
                     <div className="hidden sm:flex items-center gap-4 text-xs">
                       <div className="text-center">
                         <div className="text-zinc-500 mb-0.5">Verified</div>
@@ -530,13 +638,68 @@ function RasoKartConnections() {
                     </div>
                   )}
 
+                  {/* Portal session health indicator */}
+                  {conn && isPortalProvider && (
+                    <div className="hidden sm:flex items-center gap-4 text-xs">
+                      <div className="text-center">
+                        <div className="text-zinc-500 mb-0.5">Session</div>
+                        <span className={`font-medium ${portalStatusColor}`}>
+                          {portalSession ? portalSession.status.replace(/_/g, " ") : "No session"}
+                        </span>
+                      </div>
+                      {portalSession?.updatedAt && (
+                        <div className="text-center">
+                          <div className="text-zinc-500 mb-0.5">Updated</div>
+                          <div className="text-zinc-400">{new Date(portalSession.updatedAt).toLocaleDateString()}</div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* Actions */}
                   <div className="flex items-center gap-1.5 shrink-0">
                     {!conn ? (
                       <Button size="sm" variant="outline" onClick={() => openCreate(p)} className="gap-1 text-xs h-7">
                         <Plus className="w-3 h-3" /> Connect
                       </Button>
+                    ) : isPortalProvider ? (
+                      /* Portal providers: Start Session + Disconnect */
+                      <>
+                        <Button
+                          size="sm" variant="outline"
+                          onClick={() => handleInitiateSession(conn)}
+                          disabled={isInitiating}
+                          className="gap-1 text-xs h-7"
+                          title="Start a new portal session via the connector engine"
+                        >
+                          {isInitiating
+                            ? <Loader2 className="w-3 h-3 animate-spin" />
+                            : <Plug className="w-3 h-3" />}
+                          <span className="hidden sm:inline">
+                            {portalSession?.status === "CONNECTED" ? "Re-connect" : "Start Session"}
+                          </span>
+                        </Button>
+                        {portalSession && (
+                          <Button
+                            size="sm" variant="ghost"
+                            onClick={() => handleDisconnectSession(portalSession.id, conn.id)}
+                            className="gap-1 text-xs h-7 text-red-500 hover:text-red-400"
+                            title="Disconnect and clear session"
+                          >
+                            <Unplug className="w-3 h-3" />
+                          </Button>
+                        )}
+                        <Button
+                          size="sm" variant="ghost"
+                          onClick={() => openEdit(conn, p)}
+                          className="gap-1 text-xs h-7 text-zinc-400 hover:text-white"
+                          title="Edit connection settings"
+                        >
+                          <Pencil className="w-3 h-3" />
+                        </Button>
+                      </>
                     ) : (
+                      /* API-key providers: Verify + Edit + Disconnect */
                       <>
                         <Button
                           size="sm" variant="outline"
@@ -569,12 +732,58 @@ function RasoKartConnections() {
                   </div>
                 </div>
 
-                {/* Inline test result */}
-                {latestTest && (
+                {/* Inline test result (API-key providers only) */}
+                {!isPortalProvider && latestTest && (
                   <div className={`mt-3 p-2.5 rounded-md text-xs flex items-start gap-2
                     ${latestTest.pass ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-300" : "bg-red-500/10 border border-red-500/20 text-red-300"}`}>
                     {latestTest.pass ? <CheckCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" /> : <XCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />}
                     <span>{latestTest.message} <span className="text-zinc-500 ml-1">{new Date(latestTest.testedAt).toLocaleTimeString()}</span></span>
+                  </div>
+                )}
+
+                {/* Portal session status callout */}
+                {isPortalProvider && portalSession && ["PARTNER_API_REQUIRED","BLOCKED","FAILED"].includes(portalSession.status) && (
+                  <div className="mt-3 p-3 rounded-md text-xs bg-amber-500/8 border border-amber-500/20 text-amber-300 space-y-1.5">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                      <div>
+                        <div className="font-medium mb-0.5">
+                          {portalSession.status === "PARTNER_API_REQUIRED"
+                            ? "Official Partner API Access Required"
+                            : portalSession.status === "BLOCKED"
+                            ? "Connection Blocked by Provider"
+                            : "Session Failed"}
+                        </div>
+                        {portalSession.failDetail && (
+                          <div className="text-amber-400/70 leading-relaxed">{portalSession.failDetail}</div>
+                        )}
+                        {portalSession.helpUrl && (
+                          <a
+                            href={portalSession.helpUrl}
+                            target="_blank" rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 mt-1.5 text-amber-300 hover:text-amber-200 underline underline-offset-2 transition-colors"
+                          >
+                            Apply for partner access <ArrowRight className="w-3 h-3" />
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Portal session connected callout */}
+                {isPortalProvider && portalSession?.status === "CONNECTED" && (
+                  <div className="mt-3 p-2.5 rounded-md text-xs bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 flex items-center gap-2">
+                    <CheckCircle className="w-3.5 h-3.5 shrink-0" />
+                    <span>Session authenticated — ready for merchant/store discovery and transaction sync.</span>
+                  </div>
+                )}
+
+                {/* Portal session awaiting OTP callout */}
+                {isPortalProvider && portalSession && ["AWAITING_OTP","AWAITING_PASSWORD","AWAITING_CAPTCHA"].includes(portalSession.status) && (
+                  <div className="mt-3 p-2.5 rounded-md text-xs bg-yellow-500/10 border border-yellow-500/20 text-yellow-300 flex items-start gap-2">
+                    <Clock className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                    <span>{portalSession.nextStepPrompt ?? "Awaiting manual step — check provider portal or use the session API to submit OTP/password."}</span>
                   </div>
                 )}
               </div>

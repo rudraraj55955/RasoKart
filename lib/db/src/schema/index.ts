@@ -101,3 +101,7 @@ export * from "./promotionalCampaigns";
 export * from "./razorpayRefunds";
 export * from "./agentCommissionLedger";
 export * from "./platformConnections";
+export * from "./portalSessions";
+export * from "./portalDiscovery";
+export * from "./portalTransactions";
+export * from "./portalWalletCredits";
