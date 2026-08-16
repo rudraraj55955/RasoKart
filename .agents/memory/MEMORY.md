@@ -1,4 +1,6 @@
 - [Credential-first portal login audit](credential-first-portal-audit.md) — all major Indian PG portals block server-side login; Playwright required for portal_session_connector adapters.
+- [Playwright chromium on Replit NixOS](playwright-chromium-nixos.md) — playwright-downloaded headless shell fails (libgbm.so.1); use system `which chromium` from pkgs.chromium; probe via probeBrowserReady() not healthCheck.
+- [Portal session security pattern](portal-session-security-pattern.md) — 4-gate OTP security: max-attempts (stepFailureCount≥3), expiry (updatedAt+10min), status guard (AWAITING_* only), in-flight Set lock; all four enforced before adapter call.
 - [schemaGuard exec vs db deadlock](schemaguard-exec-vs-db-deadlock.md) — every SQL inside runGuard() must use exec, never global db; cross-connection lock conflicts cause indefinite hangs.
 - [CI login rate-limit budget](ci-login-ratelimit-budget.md) — 10 password logins / 15 min on shared localhost IP; global-setup×4 invocations = 8 slots; plan-feature-gates must read cached Gold token, never login fresh.
 - [Connector Engine Phase Status](connector-engine-phase-status.md) — 7-phase build status: Phase 1+2 complete, Phase 3 all-blocked, Phases 4-7 blocked pending provider partner agreement.

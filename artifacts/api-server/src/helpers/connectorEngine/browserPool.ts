@@ -5,7 +5,30 @@
  * contexts. Used exclusively by the Connector Engine's portal_session_connector
  * adapters.
  *
- * DESIGN:
+ * ── CHROMIUM RESOLUTION (no hardcoded paths) ─────────────────────────────────
+ *
+ * Priority chain for locating the Chromium executable:
+ *
+ *   1. PLAYWRIGHT_CHROMIUM_EXECUTABLE (env var)
+ *      Set this on the VPS/production server to an absolute path.
+ *      Example: /usr/bin/chromium-browser  or  /opt/playwright/chrome
+ *
+ *   2. PLAYWRIGHT_BROWSERS_PATH (env var, any environment)
+ *      If set, the code scans this directory for versioned chromium dirs
+ *      (chromium_headless_shell-*  or  chromium-*) and picks the first
+ *      binary found. Playwright itself also reads this env var, so setting
+ *      it is the recommended approach for CI.
+ *
+ *   3. Auto-scan common workspace-relative locations
+ *      Checks ../.. .cache/ms-playwright and ./.cache/ms-playwright relative
+ *      to process.cwd(), scanning for versioned chromium directories.
+ *      This covers the Replit dev workspace layout without hardcoding it.
+ *
+ *   4. Fallback: executablePath = undefined
+ *      Playwright uses its own default detection (works when chromium is
+ *      installed system-wide via `npx playwright install chromium`).
+ *
+ * ── DESIGN ───────────────────────────────────────────────────────────────────
  *   Contexts are NOT kept alive between adapter calls. Each call:
  *     1. Decrypts the session token → gets serialized storage state
  *     2. Creates a fresh context pre-loaded with that storage state
@@ -15,49 +38,180 @@
  *     6. Re-encrypts and returns the updated session token
  *   This is stateless and avoids memory leaks from zombie contexts.
  *
- * SECURITY:
+ * ── SECURITY ─────────────────────────────────────────────────────────────────
  *   - Screenshots, video capture, and tracing are DISABLED.
  *   - Storage state (cookies/localStorage) contains auth tokens and must be
  *     encrypted by the caller before persistence. Never log or return it.
  *   - Passwords and OTPs are typed into page fields and the local string
  *     variable goes out of scope immediately after the fill() call.
- *   - No stealth plugins, fingerprint spoofing, or anti-bot evasion are used.
- *   - OTP interception via network request hooking is never used.
+ *   - No stealth plugins, fingerprint spoofing, or anti-bot evasion.
+ *   - OTP interception via network request hooking is NOT used.
  *
- * LIMITS:
+ * ── LIMITS ───────────────────────────────────────────────────────────────────
  *   - MAX_CONCURRENT = 5 simultaneous browser contexts.
  *   - Navigation timeout: 30 s.
  *   - Action timeout: 10 s.
  *   - Browser crash → singleton cleared → re-initialized on next request.
- *
- * ENVIRONMENT:
- *   Set PLAYWRIGHT_BROWSERS_PATH to override the default chromium location.
- *   Default: /home/runner/workspace/.cache/ms-playwright (Replit dev env).
- *   For VPS/production deployment, install chromium via `npx playwright install chromium`.
  */
 
 import path from "path";
+import fs from "fs";
+import { execFileSync } from "child_process";
 import { chromium, type Browser, type BrowserContext } from "playwright";
 import { logger } from "../../lib/logger";
 
-// ── Environment setup ─────────────────────────────────────────────────────────
+// ── Chromium binary resolution ────────────────────────────────────────────────
 
-// Point playwright to the pre-installed chromium binary if the env var is not
-// already set. The binary was installed at this path by the workspace setup.
-if (!process.env["PLAYWRIGHT_BROWSERS_PATH"]) {
-  // Attempt: workspace root relative to this module's runtime location.
-  // In dev: process.cwd() is artifacts/api-server → two levels up = workspace root.
-  // In prod (VPS): override via PLAYWRIGHT_BROWSERS_PATH env var.
-  const wsRoot = path.resolve(process.cwd(), "../..");
-  const candidate = path.join(wsRoot, ".cache/ms-playwright");
-  process.env["PLAYWRIGHT_BROWSERS_PATH"] = candidate;
+/**
+ * Look up a system-installed Chromium binary using `which`.
+ * On Replit (NixOS) with `pkgs.chromium` in `replit.nix`, this resolves to
+ * the nix-store chromium which has correct library RPATHs and does not require
+ * additional LD_LIBRARY_PATH setup.
+ *
+ * Returns undefined if no system chromium is found in PATH.
+ */
+function findSystemChromium(): string | undefined {
+  const candidates = [
+    "chromium",
+    "chromium-browser",
+    "google-chrome",
+    "google-chrome-stable",
+  ];
+  for (const name of candidates) {
+    try {
+      const p = execFileSync("which", [name], {
+        encoding: "utf8",
+        timeout: 2_000,
+        stdio: ["ignore", "pipe", "ignore"],
+      }).trim();
+      if (p && fs.existsSync(p)) return p;
+    } catch {
+      // not in PATH — try next
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Scan a playwright browsers directory for a Chromium binary.
+ * Looks for versioned directories matching chromium_headless_shell-* or
+ * chromium-* and returns the first executable found.
+ *
+ * Does NOT hardcode any revision number — scans by prefix so it works with
+ * any installed playwright revision.
+ */
+function scanForChromium(browsersDir: string): string | undefined {
+  if (!fs.existsSync(browsersDir)) return undefined;
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(browsersDir);
+  } catch {
+    return undefined;
+  }
+
+  // Try headless shell first (lighter, preferred for automation)
+  // then fall back to full Chromium
+  const prefixCandidates = [
+    {
+      prefix: "chromium_headless_shell-",
+      binRelPaths: ["chrome-headless-shell-linux64/chrome-headless-shell"],
+    },
+    {
+      prefix: "chromium-",
+      binRelPaths: ["chrome-linux64/chrome", "chrome-linux/chrome"],
+    },
+  ];
+
+  for (const { prefix, binRelPaths } of prefixCandidates) {
+    // Sort descending so highest revision wins (matches playwright's own logic)
+    const dirs = entries
+      .filter((d) => d.startsWith(prefix))
+      .sort()
+      .reverse();
+
+    for (const dir of dirs) {
+      for (const rel of binRelPaths) {
+        const candidate = path.join(browsersDir, dir, rel);
+        if (fs.existsSync(candidate)) {
+          logger.debug({ candidate }, "browser_pool_chromium_found");
+          return candidate;
+        }
+      }
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Resolve the Chromium executable path using a priority chain.
+ * Returns undefined to let Playwright use its own detection when no candidate
+ * is found — this works after `npx playwright install chromium`.
+ */
+function resolveChromiumExecutable(): string | undefined {
+  // Priority 1: explicit env var — for VPS / production
+  const explicit = process.env["PLAYWRIGHT_CHROMIUM_EXECUTABLE"];
+  if (explicit) {
+    if (fs.existsSync(explicit)) {
+      logger.info({ path: explicit }, "browser_pool_using_explicit_executable");
+      return explicit;
+    }
+    logger.warn(
+      { path: explicit },
+      "browser_pool_explicit_executable_not_found",
+    );
+  }
+
+  // Priority 2: system chromium via `which chromium` (NixOS / apt / brew)
+  // On Replit, `pkgs.chromium` in replit.nix provides a nix-store binary with
+  // all library RPATHs correctly set — far more reliable than the playwright-
+  // downloaded headless shell which has no LD_LIBRARY_PATH hints.
+  const systemChromium = findSystemChromium();
+  if (systemChromium) {
+    logger.info({ path: systemChromium }, "browser_pool_using_system_chromium");
+    return systemChromium;
+  }
+
+  // Priority 3: scan PLAYWRIGHT_BROWSERS_PATH
+  const envBrowsersPath = process.env["PLAYWRIGHT_BROWSERS_PATH"];
+  if (envBrowsersPath) {
+    const found = scanForChromium(envBrowsersPath);
+    if (found) return found;
+  }
+
+  // Priority 3: auto-scan workspace-relative locations.
+  // We check multiple candidates so this works regardless of the CWD at launch.
+  // None of these are hardcoded final paths — they are search roots.
+  const searchRoots = [
+    path.resolve(process.cwd(), "../..", ".cache/ms-playwright"),
+    path.resolve(process.cwd(), "..", ".cache/ms-playwright"),
+    path.resolve(process.cwd(), ".cache/ms-playwright"),
+    "/home/runner/.cache/ms-playwright",           // common Replit home path
+    "/root/.cache/ms-playwright",                  // common Linux home path
+  ];
+
+  for (const root of searchRoots) {
+    const found = scanForChromium(root);
+    if (found) {
+      logger.info({ root, found }, "browser_pool_chromium_auto_detected");
+      return found;
+    }
+  }
+
+  // Priority 4: undefined — Playwright's own PLAYWRIGHT_BROWSERS_PATH handling
+  // will take over, which works after `npx playwright install chromium`
+  logger.warn(
+    {},
+    "browser_pool_chromium_not_found_using_playwright_default",
+  );
+  return undefined;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-export const NAV_TIMEOUT_MS    = 30_000;  // 30 s — page navigation / goto
-export const ACTION_TIMEOUT_MS = 10_000;  // 10 s — click, fill, waitFor, etc.
-const MAX_CONCURRENT           = 5;       // max simultaneous open contexts
+export const NAV_TIMEOUT_MS    = 30_000;
+export const ACTION_TIMEOUT_MS = 10_000;
+const MAX_CONCURRENT           = 5;
 
 // ── Browser singleton ─────────────────────────────────────────────────────────
 
@@ -65,23 +219,29 @@ let browserSingleton: Browser | null = null;
 let launchPromise: Promise<Browser> | null = null;
 let concurrentCount = 0;
 
+const CHROMIUM_LAUNCH_ARGS = [
+  "--no-sandbox",
+  "--disable-setuid-sandbox",
+  "--disable-dev-shm-usage",
+  "--disable-gpu",
+  "--disable-accelerated-2d-canvas",
+  "--single-process",
+  "--no-zygote",
+  // Security: explicitly absent — no stealth flags, no user-agent overrides,
+  // no fingerprint spoofing, no anti-bot args
+];
+
 async function getOrCreateBrowser(): Promise<Browser> {
   if (browserSingleton?.isConnected()) return browserSingleton;
   if (launchPromise) return launchPromise;
 
+  const executablePath = resolveChromiumExecutable();
+
   launchPromise = chromium
     .launch({
       headless: true,
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-gpu",
-        "--disable-accelerated-2d-canvas",
-        "--single-process",
-        "--no-zygote",
-        // Explicitly absent: no stealth flags, no user-agent spoofing
-      ],
+      executablePath,           // undefined = let playwright find it
+      args: CHROMIUM_LAUNCH_ARGS,
       timeout: 30_000,
     })
     .then((browser) => {
@@ -92,12 +252,18 @@ async function getOrCreateBrowser(): Promise<Browser> {
         browserSingleton = null;
         launchPromise = null;
       });
-      logger.info({}, "browser_pool_launched");
+      logger.info(
+        { executablePath: executablePath ?? "playwright-default" },
+        "browser_pool_launched",
+      );
       return browser;
     })
     .catch((err: any) => {
       launchPromise = null;
-      logger.error({ err: err?.message }, "browser_pool_launch_failed");
+      logger.error(
+        { err: err?.message, executablePath: executablePath ?? "playwright-default" },
+        "browser_pool_launch_failed",
+      );
       throw err;
     });
 
@@ -108,10 +274,8 @@ async function getOrCreateBrowser(): Promise<Browser> {
 
 /**
  * Serialized browser storage state (cookies + localStorage + sessionStorage).
- * Returned by extractStorageState and accepted by newIsolatedContext.
- *
- * SECURITY: This object contains authentication cookies. The caller MUST
- * encrypt it before persistence and MUST NOT log or return it to the client.
+ * SECURITY: This object contains authentication cookies. Encrypt before
+ * persistence; never log or return to the client.
  */
 export type BrowserStorageState = Awaited<ReturnType<BrowserContext["storageState"]>>;
 
@@ -127,14 +291,11 @@ export interface IsolatedContext {
  * Create an isolated browser context.
  *
  * @param storageState  Pre-serialized storage state from a previous session.
- *                      When provided, the new context is pre-authenticated
- *                      (cookies + localStorage restored). When absent, the
- *                      context starts fresh (no cookies).
+ *                      When provided the new context is pre-authenticated.
+ *                      When absent the context starts fresh (no cookies).
  *
- * The caller MUST call release() when finished, even on error, to avoid
- * leaking the concurrent slot.
- *
- * Throws if the pool is at capacity or if Chromium fails to start.
+ * The caller MUST call release() when finished, even on error.
+ * Throws if the pool is at capacity or Chromium fails to start.
  */
 export async function newIsolatedContext(
   storageState?: BrowserStorageState,
@@ -158,13 +319,12 @@ export async function newIsolatedContext(
   }
 
   const context = await browser.newContext({
-    storageState:         storageState ?? undefined,
-    permissions:          [],          // no geolocation, camera, notifications
-    geolocation:          undefined,
-    serviceWorkers:       "block",     // reduce noise / side-effects
-    // ── Security: all capture disabled ───────────────────────────────────────
-    recordVideo:          undefined,
-    // recordHar is not set → no HAR capture
+    storageState:   storageState ?? undefined,
+    permissions:    [],
+    geolocation:    undefined,
+    serviceWorkers: "block",
+    // Security: all capture disabled
+    recordVideo:    undefined,
   });
 
   context.setDefaultNavigationTimeout(NAV_TIMEOUT_MS);
@@ -186,10 +346,10 @@ export async function newIsolatedContext(
 
 /**
  * Extract the current storage state (cookies + localStorage) from a context.
- * Call this BEFORE release() — the context must still be open.
+ * Call BEFORE release() — the context must still be open.
  *
- * SECURITY: The returned object contains authentication cookies. Encrypt
- * before persistence; never log or return to the client.
+ * SECURITY: Contains authentication cookies. Encrypt before persistence;
+ * never log or return to the client.
  */
 export async function extractStorageState(
   context: BrowserContext,
@@ -197,30 +357,64 @@ export async function extractStorageState(
   return context.storageState();
 }
 
+// ── Browser readiness probe ───────────────────────────────────────────────────
+
 /**
- * Pool health status for health checks and monitoring.
+ * Lightweight browser readiness check that does NOT visit any portal.
+ * Opens a blank page, verifies JS execution, and closes immediately.
+ * Safe to call from a health-check endpoint with no authentication.
+ *
+ * Returns:
+ *   { ready: true, durationMs: number }
+ *   { ready: false, reason: string }
  */
+export async function probeBrowserReady(): Promise<
+  { ready: true; durationMs: number } | { ready: false; reason: string }
+> {
+  const t0 = Date.now();
+  let ctx: IsolatedContext | null = null;
+  try {
+    ctx = await newIsolatedContext();
+    const page = await ctx.context.newPage();
+    // Load a blank page and execute a trivial JS expression
+    await page.goto("about:blank", { timeout: 10_000 });
+    const val = await page.evaluate(() => 1 + 1);
+    if (val !== 2) {
+      return { ready: false, reason: "js_evaluation_mismatch" };
+    }
+    return { ready: true, durationMs: Date.now() - t0 };
+  } catch (err: any) {
+    return { ready: false, reason: err?.message ?? "unknown_error" };
+  } finally {
+    await ctx?.release();
+  }
+}
+
+// ── Pool status ───────────────────────────────────────────────────────────────
+
 export function browserPoolStatus(): {
   browserConnected: boolean;
   concurrent: number;
   capacity: number;
+  executablePath: string;
 } {
   return {
     browserConnected: browserSingleton?.isConnected() ?? false,
     concurrent:       concurrentCount,
     capacity:         MAX_CONCURRENT,
+    executablePath:   resolveChromiumExecutable() ?? "playwright-default",
   };
 }
 
 /**
- * Close all contexts and shut down the browser. Called on server shutdown.
+ * Close all contexts and shut down the browser (server shutdown hook).
  */
 export async function closeBrowserPool(): Promise<void> {
   if (browserSingleton) {
     try {
       await browserSingleton.close();
     } catch {
-      // swallow — shutdown path
+      // swallow
     }
     browserSingleton = null;
   }

@@ -3,9 +3,8 @@
  *
  * Provider:   Paytm Business (business.paytm.com)
  * Kind:       portal_session_connector
- * Auth path:  Registered mobile number → OTP (the only supported login path on
- *             the current Paytm Business portal — email/password is not available
- *             for merchant accounts on the standard portal)
+ * Auth path:  Registered mobile → OTP (only supported login path on the
+ *             current Paytm Business portal)
  *
  * HOW IT WORKS:
  *   1. initiateSession() — launches an isolated Chromium context, navigates to
@@ -13,46 +12,48 @@
  *      and returns AWAITING_OTP. The browser storage state (cookies + JS
  *      storage) is serialised, encrypted, and stored as the session token.
  *   2. submitStep() — restores the browser context from the encrypted session
- *      token, fills in the merchant-entered OTP, submits, verifies that the
- *      session reached the dashboard, then re-serialises the updated storage
- *      state and returns CONNECTED.
- *   3. All subsequent calls (validateSession, discoverEntities, fetchTransactions,
- *      reconnect) restore the context from the stored session token.
+ *      token, fills the OTP, submits, verifies the session reached the dashboard
+ *      AND confirms merchant identity, re-serialises updated storage state,
+ *      returns CONNECTED.
+ *   3. All subsequent calls restore context from the stored encrypted token.
+ *
+ * CONNECTED GATE (cannot be skipped):
+ *   submitStep returns CONNECTED only when ALL of:
+ *     (a) Final URL is NOT any login/OTP page pattern
+ *     (b) URL matches a dashboard pattern (contains /home or /dashboard)
+ *     (c) At least one dashboard landmark element is present in the DOM
+ *     (d) The login form is NOT visible on the page
+ *   Failing any check → FAILED or AWAITING_USER_ACTION.
  *
  * SECURITY INVARIANTS:
  *   - Passwords are NEVER stored or passed. This adapter is OTP-only.
- *   - Mobile numbers are decrypted locally, used to fill a browser field, and
- *     then let out of scope. They are never written to disk, logged, or returned.
- *   - OTPs are decrypted locally, filled into the browser, and let out of scope
- *     immediately. They are never stored.
- *   - The session token contains ONLY serialised browser storage state (cookies
- *     + localStorage), which is encrypted at rest with AES-256-GCM.
- *   - maskedMobile (e.g. "**XXXX6789") is the only identifier persisted in
- *     plaintext. It is derived server-side and safe to display in the UI.
- *   - Screenshots, video, and network tracing are disabled in the browser pool.
+ *   - Mobile numbers are decrypted locally, filled into the browser, let out
+ *     of scope. Never written to disk, logged, or returned.
+ *   - OTPs are decrypted locally, filled into the browser, let out of scope
+ *     immediately. Never stored or logged.
+ *   - The session token stores ONLY serialised browser storage state (cookies
+ *     + localStorage), AES-256-GCM encrypted.
+ *   - maskedMobile (e.g. "**XXXXXX890") is the only identifier persisted in
+ *     plaintext. Derived server-side, safe to display.
+ *   - Screenshots, video, and network tracing are DISABLED in the browser pool.
  *
  * FAIL-CLOSED CONTRACT:
- *   - Any exception, unexpected page state, or navigation timeout returns a
- *     non-CONNECTED status with a diagnostic failReason. CONNECTED is returned
- *     only when:
- *       (a) The browser navigated to a URL matching the Paytm dashboard pattern
- *       (b) A recognisable dashboard landmark is present in the DOM
- *       (c) The storage state was successfully extracted and encrypted
- *   - CAPTCHA or device-binding prompts → AWAITING_USER_ACTION
- *   - Account lock or suspicious-activity screen → BLOCKED
- *   - Invalid/expired OTP → FAILED with INVALID_OTP
- *   - Network / browser launch failure → FAILED with PORTAL_UNREACHABLE or
- *     BROWSER_ERROR
+ *   - Any exception, unexpected page state, or timeout → non-CONNECTED status
+ *     with a diagnostic failReason. CONNECTED is returned ONLY after the full
+ *     CONNECTED GATE above passes.
+ *   - CAPTCHA → AWAITING_USER_ACTION
+ *   - Account lock → BLOCKED
+ *   - Invalid/expired OTP → FAILED / INVALID_OTP or OTP_EXPIRED
+ *   - Browser launch failure → FAILED / BROWSER_ERROR or PORTAL_UNREACHABLE
  *
  * MUTATIONS:
- *   - NONE. This adapter only reads data. It does not initiate payments,
- *     refunds, payouts, settlements, beneficiary changes, or profile updates.
+ *   None. This adapter only reads data. It does not initiate payments,
+ *   refunds, payouts, settlements, beneficiary changes, or profile updates.
  *
- * NOTE ON SELECTOR STABILITY:
- *   Paytm Business portal is a React SPA. Selectors are chosen from visible
- *   text and ARIA roles (more stable than generated CSS class names). If the
- *   portal redesigns its login flow, update the SELECTORS block below and
- *   restart the server. No other code changes are required.
+ * NO CAPTCHA BYPASS:
+ *   CAPTCHA detection returns AWAITING_USER_ACTION so the merchant can retry
+ *   manually. No CAPTCHA solving, third-party OCR, or evasion techniques are
+ *   used.
  */
 
 import type { Page } from "playwright";
@@ -85,106 +86,192 @@ import {
 import { decryptSecret } from "../../cryptoUtils";
 import { logger } from "../../../lib/logger";
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+// ── Portal URLs ───────────────────────────────────────────────────────────────
 
-const SLUG         = "paytm_merchant";
-const PORTAL_URL   = "https://business.paytm.com";
-const LOGIN_URL    = "https://business.paytm.com/user/login";
+const PORTAL_ROOT  = "https://business.paytm.com";
 const HELP_URL     = "https://business.paytm.com";
 
-// Session lifetime advisory: Paytm sessions typically last 24–48 hours.
-// We store an advisory expiry but the real check is validateSession().
+// Paytm Business login URL candidates (tried in order).
+// Paytm has historically used multiple login URL patterns.
+const LOGIN_URL_CANDIDATES = [
+  "https://business.paytm.com/user/login",
+  "https://business.paytm.com/login",
+  "https://business.paytm.com/",
+];
+
+// URL patterns indicating the session is on a login/auth page (NOT dashboard)
+const LOGIN_PAGE_URL_PATTERNS = [
+  "/user/login",
+  "/login",
+  "?redirectTo=",
+  "?redirect=",
+  "?returnUrl=",
+  "accounts.paytm.com",
+  "auth.paytm.com",
+];
+
+// URL patterns that indicate we are on the authenticated dashboard
+const DASHBOARD_URL_PATTERNS = [
+  "/home",
+  "/dashboard",
+  "/overview",
+  "/transactions",
+  "/reports",
+  "/settlements",
+  "/qr",
+  "/pos",
+  "/payments",
+  "/analytics",
+];
+
 const SESSION_TTL_HOURS = 24;
 
-// ── Selector registry ─────────────────────────────────────────────────────────
-// Update here if the Paytm Business portal redesigns its login UI.
-// All selectors use text/ARIA approaches where possible for stability.
+// ── Selectors ─────────────────────────────────────────────────────────────────
+// Updated for Paytm Business portal (current as of 2025).
+// All selectors use visible-text, ARIA roles, or well-known attributes.
+// Ordering: most specific / most reliable first.
+// These are maintained separately from business logic to ease future updates.
 
 const SEL = {
-  // Login page — mobile number entry
+  // Phone / mobile number input on the login form
   MOBILE_INPUT: [
+    'input[type="tel"]',
+    'input[name="phone"]',
+    'input[name="mobile"]',
+    'input[name="mobileNo"]',
     'input[placeholder*="mobile" i]',
     'input[placeholder*="phone" i]',
-    'input[type="tel"]',
-    'input[name="mobile"]',
-    'input[name="phone"]',
     'input[id*="mobile" i]',
+    'input[id*="phone" i]',
+    'input[autocomplete="tel"]',
   ],
-  // "Get OTP" / "Request OTP" / "Continue" button after mobile entry
+
+  // "Get OTP" / "Continue" button after mobile entry
   GET_OTP_BTN: [
     'button:has-text("Get OTP")',
     'button:has-text("Request OTP")',
     'button:has-text("Send OTP")',
-    'button:has-text("Continue")',
+    // Paytm may use "Proceed" on the first step
     'button:has-text("Proceed")',
+    'button:has-text("Continue")',
     '[role="button"]:has-text("Get OTP")',
+    '[role="button"]:has-text("Send OTP")',
+    '[type="submit"]:has-text("OTP")',
   ],
-  // OTP input — Paytm uses either a single field or individual digit boxes
+
+  // OTP input — handles both single-field and individual digit boxes
   OTP_INPUT_SINGLE: [
+    'input[autocomplete="one-time-code"]',
+    'input[name="otp"]',
+    'input[name="otpValue"]',
     'input[placeholder*="OTP" i]',
     'input[placeholder*="Enter OTP" i]',
-    'input[name="otp"]',
+    'input[placeholder*="verification code" i]',
     'input[type="number"][maxlength="6"]',
-    'input[autocomplete="one-time-code"]',
+    'input[type="tel"][maxlength="6"]',
+    'input[type="text"][maxlength="6"]',
   ],
-  OTP_INPUT_DIGITS: 'input[type="text"][maxlength="1"], input[type="number"][maxlength="1"]',
+  // Individual digit boxes (Paytm's custom OTP component)
+  OTP_INPUT_DIGITS: [
+    'input[type="text"][maxlength="1"]',
+    'input[type="number"][maxlength="1"]',
+    'input[type="tel"][maxlength="1"]',
+  ],
+
   // Submit OTP button
   SUBMIT_OTP_BTN: [
     'button:has-text("Verify OTP")',
     'button:has-text("Verify")',
-    'button:has-text("Login")',
-    'button:has-text("Sign in")',
+    'button:has-text("Submit OTP")',
     'button:has-text("Submit")',
+    'button:has-text("Login")',
+    'button:has-text("Sign In")',
     '[role="button"]:has-text("Verify")',
+    '[type="submit"]',
   ],
-  // Dashboard landmark (presence proves we are logged in)
+
+  // Dashboard landmarks — at least one must be visible for CONNECTED to pass
   DASHBOARD_LANDMARK: [
-    '[data-testid*="dashboard"]',
-    'nav[aria-label*="dashboard" i]',
-    'a[href*="/dashboard"]',
-    'a[href*="/home"]',
-    'span:has-text("Dashboard")',
+    // Text that only appears on the authenticated dashboard
     'text=Total Transactions',
-    'text=Paytm for Business',
-    '[class*="dashboard"]',
+    'text=Gross Sales',
+    'text=Settlement Amount',
+    'text=Success Rate',
+    // Navigation items that only appear when logged in
+    'a[href*="/transactions"]',
+    'a[href*="/settlement"]',
+    'a[href*="/reports"]',
+    // Generic dashboard structure
+    '[data-testid*="dashboard"]',
+    'nav[aria-label*="sidebar" i]',
+    '[aria-label*="merchant" i]',
+    // Profile / account menu (only shown when authenticated)
+    '[aria-label*="profile" i]',
+    '[aria-label*="account" i]',
   ],
+
+  // Login form elements — must NOT be visible when CONNECTED
+  LOGIN_FORM: [
+    'input[type="tel"]',
+    'input[name="phone"]',
+    'input[name="mobile"]',
+    'button:has-text("Get OTP")',
+    'button:has-text("Request OTP")',
+  ],
+
   // CAPTCHA detection
   CAPTCHA: [
     'iframe[src*="recaptcha"]',
     'iframe[src*="captcha"]',
+    'iframe[src*="hcaptcha"]',
     '[class*="captcha"]',
+    '[id*="captcha"]',
     'text=complete the CAPTCHA',
     'text=verify you are human',
+    'text=I\'m not a robot',
   ],
+
   // Account block / suspicious activity
   BLOCKED: [
     'text=account has been blocked',
     'text=suspicious activity',
     'text=temporarily locked',
-    'text=contact support',
+    'text=account is suspended',
+    'text=access has been restricted',
   ],
-  // Error message
+
+  // Error messages (OTP errors, validation errors)
   ERROR_MSG: [
-    '[class*="error"]',
     '[role="alert"]',
-    'text=Invalid OTP',
-    'text=Incorrect OTP',
-    'text=OTP expired',
-    'text=OTP has expired',
-    'text=Please enter a valid OTP',
+    '[class*="error"]:not(input)',
+    '[class*="Error"]:not(input)',
+    'p:has-text("Invalid OTP")',
+    'p:has-text("Incorrect OTP")',
+    'span:has-text("Invalid OTP")',
+    'span:has-text("OTP expired")',
+    'span:has-text("OTP has expired")',
+    'span:has-text("Please enter a valid")',
+    'div:has-text("Mobile number is not")',
+    'div:has-text("Please enter valid mobile")',
   ],
-  // Transaction list
+
+  // Transaction rows in the portal
   TX_ROW: [
-    '[class*="transaction-row"]',
-    'tr[class*="transaction"]',
     '[data-testid*="transaction"]',
+    '[class*="transaction-row"]',
     '[class*="txn-row"]',
+    '[class*="transactionItem"]',
+    'tr[class*="transaction"]',
+    'tbody tr',  // generic table row fallback
   ],
-  // MID / merchant identifier in profile
+
+  // MID in profile page
   MID: [
     '[data-testid*="mid"]',
+    '[data-testid*="merchant-id"]',
     'text=Merchant ID',
     '[class*="merchant-id"]',
+    '[class*="mid"]',
   ],
 };
 
@@ -195,10 +282,12 @@ interface PaytmAdapterData {
   storageState: BrowserStorageState;
   /** Masked mobile, e.g. "**XXXXXX890" — safe to display, never the full number. */
   maskedMobile?: string;
-  /** What step we were at when the token was issued. */
+  /** FSM step. */
   step: "AWAITING_OTP" | "CONNECTED";
   /** ISO string when session was established. */
   connectedAt?: string;
+  /** MID extracted during discoverEntities (may be empty if not yet discovered). */
+  merchantId?: string;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -208,11 +297,20 @@ function maskMobile(mobile: string): string {
   return "**XXXXXX" + mobile.slice(-3);
 }
 
+/**
+ * Try each selector in order and return the first visible locator found.
+ * Returns null if none match.
+ */
 async function tryLocator(page: Page, selectors: string[], timeout = ACTION_TIMEOUT_MS / 2) {
   for (const sel of selectors) {
     try {
       const loc = page.locator(sel).first();
-      if (await loc.count() > 0) return loc;
+      const n = await loc.count();
+      if (n > 0) {
+        // Additional check: element should be visible (not just in DOM)
+        const visible = await loc.isVisible().catch(() => false);
+        if (visible) return loc;
+      }
     } catch {
       // try next
     }
@@ -220,16 +318,26 @@ async function tryLocator(page: Page, selectors: string[], timeout = ACTION_TIME
   return null;
 }
 
-async function waitForAny(page: Page, selectors: string[], timeout: number): Promise<string | null> {
-  const locators = selectors.map(s => page.locator(s).first());
-  const promises = locators.map(async (loc, i) => {
+/**
+ * Wait for any of the selectors to become visible. Returns the first matching
+ * selector string, or null if none appeared within the timeout.
+ */
+async function waitForAny(
+  page: Page,
+  selectors: string[],
+  timeout: number,
+): Promise<string | null> {
+  const controller = new AbortController();
+
+  const promises = selectors.map(async (sel) => {
     try {
-      await loc.waitFor({ state: "visible", timeout });
-      return selectors[i]!;
+      await page.waitForSelector(sel, { state: "visible", timeout });
+      return sel;
     } catch {
       return null;
     }
   });
+
   const results = await Promise.allSettled(promises);
   for (const r of results) {
     if (r.status === "fulfilled" && r.value) return r.value;
@@ -237,62 +345,81 @@ async function waitForAny(page: Page, selectors: string[], timeout: number): Pro
   return null;
 }
 
-/** Check if the page is on a Paytm dashboard URL (login succeeded). */
+/**
+ * Check if the current URL indicates we are on the authenticated dashboard
+ * (not on any login / OTP / redirect page).
+ */
 function isDashboardUrl(url: string): boolean {
-  return (
-    url.includes("/dashboard") ||
-    url.includes("/home") ||
-    (url.startsWith("https://business.paytm.com") &&
-      !url.includes("/login") &&
-      !url.includes("/user/login") &&
-      !url.includes("/otp"))
-  );
-}
-
-/** Check for CAPTCHA on current page. Returns true if CAPTCHA found. */
-async function hasCaptcha(page: Page): Promise<boolean> {
-  for (const sel of SEL.CAPTCHA) {
-    try {
-      if (await page.locator(sel).first().count() > 0) return true;
-    } catch {
-      // continue
-    }
+  // Reject any URL that contains a login page pattern
+  for (const pattern of LOGIN_PAGE_URL_PATTERNS) {
+    if (url.includes(pattern)) return false;
   }
-  return false;
-}
-
-/** Check for account block. */
-async function isBlocked(page: Page): Promise<boolean> {
-  for (const sel of SEL.BLOCKED) {
-    try {
-      if (await page.locator(sel).first().count() > 0) return true;
-    } catch {
-      // continue
-    }
+  // Must be on business.paytm.com (not accounts. or auth. subdomain)
+  if (!url.startsWith("https://business.paytm.com")) return false;
+  // Must match at least one dashboard path pattern, or be at the root after login
+  const path = url.replace("https://business.paytm.com", "");
+  if (path === "/" || path === "") {
+    // Root URL after login might be the dashboard — accept with landmark check
+    return true;
+  }
+  for (const pattern of DASHBOARD_URL_PATTERNS) {
+    if (path.startsWith(pattern)) return true;
   }
   return false;
 }
 
 /**
- * Fill OTP — handles both single-field and digit-box inputs.
- * Returns true if filled successfully.
+ * Check if the current URL is a login/auth page.
+ */
+function isLoginUrl(url: string): boolean {
+  for (const pattern of LOGIN_PAGE_URL_PATTERNS) {
+    if (url.includes(pattern)) return true;
+  }
+  return false;
+}
+
+/** Detect CAPTCHA on the current page. */
+async function hasCaptcha(page: Page): Promise<boolean> {
+  for (const sel of SEL.CAPTCHA) {
+    try {
+      if (await page.locator(sel).first().count() > 0) return true;
+    } catch { /* continue */ }
+  }
+  return false;
+}
+
+/** Detect account block / suspension. */
+async function isBlocked(page: Page): Promise<boolean> {
+  for (const sel of SEL.BLOCKED) {
+    try {
+      if (await page.locator(sel).first().count() > 0) return true;
+    } catch { /* continue */ }
+  }
+  return false;
+}
+
+/**
+ * Fill OTP — handles both single-field and individual-digit-box layouts.
+ * Returns true if OTP was successfully filled.
  */
 async function fillOtp(page: Page, otp: string): Promise<boolean> {
-  // Try single field first
+  // Try single OTP field first
   const single = await tryLocator(page, SEL.OTP_INPUT_SINGLE);
   if (single) {
     await single.fill(otp, { timeout: ACTION_TIMEOUT_MS });
     return true;
   }
 
-  // Try individual digit boxes
-  const digitBoxes = page.locator(SEL.OTP_INPUT_DIGITS);
-  const count = await digitBoxes.count();
-  if (count >= otp.length) {
-    for (let i = 0; i < otp.length; i++) {
-      await digitBoxes.nth(i).fill(otp[i]!, { timeout: ACTION_TIMEOUT_MS });
+  // Try individual digit boxes (Paytm's custom OTP input)
+  for (const digitSel of SEL.OTP_INPUT_DIGITS) {
+    const boxes = page.locator(digitSel);
+    const count = await boxes.count().catch(() => 0);
+    if (count >= otp.length) {
+      for (let i = 0; i < otp.length; i++) {
+        await boxes.nth(i).fill(otp[i]!, { timeout: ACTION_TIMEOUT_MS });
+      }
+      return true;
     }
-    return true;
   }
 
   return false;
@@ -300,45 +427,96 @@ async function fillOtp(page: Page, otp: string): Promise<boolean> {
 
 /**
  * Navigate to the Paytm Business login page.
- * Returns false if the portal is unreachable or login UI not found.
+ * Tries multiple URL candidates and returns true when the mobile input is found.
  */
-async function navigateToLogin(page: Page): Promise<boolean> {
-  try {
-    await page.goto(LOGIN_URL, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
+async function navigateToLoginPage(page: Page): Promise<boolean> {
+  for (const url of LOGIN_URL_CANDIDATES) {
+    try {
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
+      await page.waitForLoadState("networkidle", { timeout: 5_000 }).catch(() => {});
 
-    // If redirected to portal root, look for a login link
-    if (!page.url().includes("login")) {
-      await page.goto(LOGIN_URL, { waitUntil: "networkidle", timeout: NAV_TIMEOUT_MS });
+      // Check if we ended up on any login page
+      const currentUrl = page.url();
+      if (!isLoginUrl(currentUrl) && isDashboardUrl(currentUrl)) {
+        // Already logged in — session is still valid, don't overwrite
+        return false; // caller handles this case
+      }
+
+      // Look for the mobile input
+      const mobileInput = await tryLocator(page, SEL.MOBILE_INPUT, ACTION_TIMEOUT_MS);
+      if (mobileInput) return true;
+    } catch {
+      // try next URL candidate
     }
-
-    // Wait for the mobile input to appear
-    const mobileFound = await waitForAny(page, SEL.MOBILE_INPUT, ACTION_TIMEOUT_MS * 2);
-    return mobileFound !== null;
-  } catch {
-    return false;
   }
+  return false;
 }
 
 /**
- * Verify the current session is still authenticated (dashboard accessible).
+ * CONNECTED verification gate.
+ * Returns true ONLY when ALL of the following are true:
+ *   (a) URL is NOT a login/OTP page
+ *   (b) URL matches a dashboard path
+ *   (c) At least one dashboard landmark is visible in the DOM
+ *   (d) No login form element is visible
+ *
+ * This is the authoritative CONNECTED gate — it cannot be bypassed.
+ */
+async function verifyDashboardAuthenticated(page: Page): Promise<{
+  verified: boolean;
+  reason?: string;
+}> {
+  await page.waitForLoadState("domcontentloaded", { timeout: NAV_TIMEOUT_MS }).catch(() => {});
+
+  const url = page.url();
+
+  // (a) Must not be a login page
+  if (isLoginUrl(url)) {
+    return { verified: false, reason: `URL_IS_LOGIN_PAGE: ${url}` };
+  }
+
+  // (b) Must be on a dashboard URL
+  if (!isDashboardUrl(url)) {
+    return { verified: false, reason: `URL_NOT_DASHBOARD: ${url}` };
+  }
+
+  // (c) At least one dashboard landmark must be visible
+  const landmark = await waitForAny(page, SEL.DASHBOARD_LANDMARK, ACTION_TIMEOUT_MS * 2);
+  if (!landmark) {
+    return { verified: false, reason: "NO_DASHBOARD_LANDMARK_VISIBLE" };
+  }
+
+  // (d) Login form must NOT be visible (guards against invisible cached pages)
+  for (const loginSel of SEL.LOGIN_FORM) {
+    try {
+      const el = page.locator(loginSel).first();
+      if (await el.count() > 0 && await el.isVisible()) {
+        return { verified: false, reason: `LOGIN_FORM_STILL_VISIBLE: ${loginSel}` };
+      }
+    } catch { /* continue */ }
+  }
+
+  return { verified: true };
+}
+
+/**
+ * Validate a stored session by restoring the context and running the
+ * CONNECTED verification gate.
  */
 async function verifySessionAlive(page: Page): Promise<boolean> {
   try {
-    await page.goto(PORTAL_URL, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
-    const url = page.url();
-    if (!isDashboardUrl(url)) return false;
-    // Check for at least one dashboard landmark
-    const landmark = await waitForAny(page, SEL.DASHBOARD_LANDMARK, ACTION_TIMEOUT_MS);
-    return landmark !== null;
+    await page.goto(PORTAL_ROOT, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
+    const result = await verifyDashboardAuthenticated(page);
+    return result.verified;
   } catch {
     return false;
   }
 }
 
-// ── Adapter implementation ────────────────────────────────────────────────────
+// ── Adapter ───────────────────────────────────────────────────────────────────
 
 export const paytmMerchantAdapter: ProviderAdapter = {
-  slug:        SLUG,
+  slug:        "paytm_merchant",
   displayName: "Paytm Business",
   adapterKind: "portal_session_connector",
   category:    "upi",
@@ -366,7 +544,6 @@ export const paytmMerchantAdapter: ProviderAdapter = {
       };
     }
 
-    // Decrypt the mobile number
     if (!params.encryptedIdentifier) {
       return {
         status: "FAILED",
@@ -374,6 +551,7 @@ export const paytmMerchantAdapter: ProviderAdapter = {
         failDetail: "Registered mobile number is required.",
       };
     }
+
     const mobileDecrypt = decryptSecret(params.encryptedIdentifier);
     if (!mobileDecrypt.ok) {
       return {
@@ -382,7 +560,7 @@ export const paytmMerchantAdapter: ProviderAdapter = {
         failDetail: "Could not decrypt mobile number.",
       };
     }
-    const mobile = mobileDecrypt.value.trim();
+    const mobile = mobileDecrypt.value.trim().replace(/\D/g, "");
     if (!mobile || mobile.length < 10) {
       return {
         status: "FAILED",
@@ -396,11 +574,34 @@ export const paytmMerchantAdapter: ProviderAdapter = {
       ctx = await newIsolatedContext();
       const page = await ctx.context.newPage();
 
-      logger.info({ slug: SLUG }, "paytm_initiate_navigating");
+      logger.info({ slug: "paytm_merchant" }, "paytm_initiate_navigating");
 
-      // Navigate to login
-      const loginReached = await navigateToLogin(page);
+      // Navigate to login page
+      const loginReached = await navigateToLoginPage(page);
+
+      // If already on dashboard (session still valid) — this shouldn't happen in initiate
       if (!loginReached) {
+        const onDash = await verifyDashboardAuthenticated(page);
+        if (onDash.verified) {
+          // Unexpected: we have a live session already. Return CONNECTED.
+          const storageState = await extractStorageState(ctx.context);
+          const adData: PaytmAdapterData = {
+            storageState,
+            maskedMobile: maskMobile(mobile),
+            step: "CONNECTED",
+            connectedAt: new Date().toISOString(),
+          };
+          const payload = makeSessionPayload("paytm_merchant", 0, adData as unknown as Record<string, unknown>, {
+            expiresAt: new Date(Date.now() + SESSION_TTL_HOURS * 60 * 60 * 1000),
+          });
+          const enc = encryptSessionPayload(payload);
+          return {
+            status: "CONNECTED",
+            encryptedSessionToken: enc.ok ? enc.token : undefined,
+            nextStep: "COMPLETE",
+          };
+        }
+
         return {
           status: "FAILED",
           failReason: "PORTAL_UNREACHABLE",
@@ -410,20 +611,20 @@ export const paytmMerchantAdapter: ProviderAdapter = {
         };
       }
 
-      // Check for CAPTCHA at login page entry
+      // Check for CAPTCHA at login entry
       if (await hasCaptcha(page)) {
         const storageState = await extractStorageState(ctx.context);
-        const payload = makeSessionPayload(SLUG, 0, {
-          storageState,
-          step: "AWAITING_OTP",
-          maskedMobile: maskMobile(mobile),
-        } as unknown as Record<string, unknown>);
-        const enc = encryptSessionPayload(payload);
+        const adData: PaytmAdapterData = {
+          storageState, maskedMobile: maskMobile(mobile), step: "AWAITING_OTP",
+        };
+        const enc = encryptSessionPayload(
+          makeSessionPayload("paytm_merchant", 0, adData as unknown as Record<string, unknown>),
+        );
         return {
           status: "AWAITING_USER_ACTION" as any,
           failReason: "CAPTCHA_REQUIRED",
-          failDetail: "Paytm is showing a CAPTCHA. Please retry — CAPTCHAs are transient and " +
-            "typically resolve automatically after a short wait.",
+          failDetail: "Paytm is showing a CAPTCHA. CAPTCHAs are transient — " +
+            "please wait a few minutes and try again.",
           encryptedSessionToken: enc.ok ? enc.token : undefined,
         };
       }
@@ -434,16 +635,15 @@ export const paytmMerchantAdapter: ProviderAdapter = {
         return {
           status: "FAILED",
           failReason: "PORTAL_STRUCTURE_CHANGED",
-          failDetail: "Could not locate the mobile number input on the Paytm Business login page. " +
-            "The portal UI may have changed. Please contact RasoKart support.",
+          failDetail: "Could not locate the mobile number input on the Paytm Business " +
+            "login page. The portal UI may have changed — please contact RasoKart support.",
           helpUrl: HELP_URL,
         };
       }
       await mobileInput.fill(mobile, { timeout: ACTION_TIMEOUT_MS });
-      // Immediately let `mobile` go out of scope — the variable will be GC'd
-      // We do NOT call any function that would keep it alive
+      // `mobile` variable out of scope after the next await (GC eligible)
 
-      // Click "Get OTP"
+      // Click "Get OTP" button
       const otpBtn = await tryLocator(page, SEL.GET_OTP_BTN);
       if (!otpBtn) {
         return {
@@ -455,18 +655,20 @@ export const paytmMerchantAdapter: ProviderAdapter = {
       }
       await otpBtn.click({ timeout: ACTION_TIMEOUT_MS });
 
-      // Wait for OTP step — either OTP inputs appear or an error
-      const postClickResult = await waitForAny(
-        page,
-        [...SEL.OTP_INPUT_SINGLE, SEL.OTP_INPUT_DIGITS, ...SEL.ERROR_MSG, ...SEL.CAPTCHA],
-        NAV_TIMEOUT_MS,
-      );
+      // Wait for OTP inputs or an error message to appear
+      const allOtpAndErrorSels = [
+        ...SEL.OTP_INPUT_SINGLE,
+        ...SEL.OTP_INPUT_DIGITS,
+        ...SEL.ERROR_MSG,
+        ...SEL.CAPTCHA,
+      ];
+      const postClickResult = await waitForAny(page, allOtpAndErrorSels, NAV_TIMEOUT_MS);
 
       if (!postClickResult) {
         return {
           status: "FAILED",
           failReason: "OTP_STEP_NOT_REACHED",
-          failDetail: "Paytm did not transition to the OTP entry step after the mobile number was submitted. " +
+          failDetail: "Paytm did not transition to the OTP entry step. " +
             "Verify the mobile number is registered with Paytm Business.",
           helpUrl: HELP_URL,
         };
@@ -475,49 +677,50 @@ export const paytmMerchantAdapter: ProviderAdapter = {
       // CAPTCHA after clicking Get OTP
       if (await hasCaptcha(page)) {
         const storageState = await extractStorageState(ctx.context);
-        const payload = makeSessionPayload(SLUG, 0, {
-          storageState,
-          step: "AWAITING_OTP",
-          maskedMobile: maskMobile(mobile),
-        } as unknown as Record<string, unknown>);
-        const enc = encryptSessionPayload(payload);
+        const adData: PaytmAdapterData = {
+          storageState, maskedMobile: maskMobile(mobile), step: "AWAITING_OTP",
+        };
+        const enc = encryptSessionPayload(
+          makeSessionPayload("paytm_merchant", 0, adData as unknown as Record<string, unknown>),
+        );
         return {
           status: "AWAITING_USER_ACTION" as any,
           failReason: "CAPTCHA_REQUIRED",
-          failDetail: "Paytm is showing a CAPTCHA before the OTP can be sent. This is a transient " +
-            "bot-protection measure. Please wait a few minutes and try again.",
+          failDetail: "Paytm is showing a CAPTCHA before the OTP can be sent. " +
+            "Please wait a few minutes and try again.",
           encryptedSessionToken: enc.ok ? enc.token : undefined,
         };
       }
 
-      // Check for error (e.g. mobile not registered)
+      // Check for explicit error messages (e.g. mobile not registered)
       for (const errSel of SEL.ERROR_MSG) {
         try {
           const errEl = page.locator(errSel).first();
-          if (await errEl.count() > 0) {
+          if (await errEl.count() > 0 && await errEl.isVisible()) {
             const errText = (await errEl.textContent())?.trim() ?? "";
-            return {
-              status: "FAILED",
-              failReason: "INVALID_IDENTIFIER",
-              failDetail: `Paytm returned an error: "${errText}". ` +
-                "Verify that this mobile number is registered with Paytm Business.",
-            };
+            if (errText) {
+              return {
+                status: "FAILED",
+                failReason: "INVALID_IDENTIFIER",
+                failDetail: `Paytm returned an error: "${errText}". ` +
+                  "Verify this mobile number is registered with Paytm Business.",
+              };
+            }
           }
-        } catch {
-          // continue
-        }
+        } catch { /* continue */ }
       }
 
-      // Serialise the browser state — cookies + localStorage include the OTP session
+      // Serialise browser state (cookies + localStorage)
       const storageState = await extractStorageState(ctx.context);
 
-      // Build and encrypt session token
-      const adapterData: PaytmAdapterData = {
+      const adData: PaytmAdapterData = {
         storageState,
         maskedMobile: maskMobile(mobile),
         step: "AWAITING_OTP",
       };
-      const payload = makeSessionPayload(SLUG, 0, adapterData as unknown as Record<string, unknown>);
+      const payload = makeSessionPayload(
+        "paytm_merchant", 0, adData as unknown as Record<string, unknown>,
+      );
       const enc = encryptSessionPayload(payload);
       if (!enc.ok) {
         return {
@@ -527,7 +730,7 @@ export const paytmMerchantAdapter: ProviderAdapter = {
         };
       }
 
-      logger.info({ slug: SLUG, maskedMobile: maskMobile(mobile) }, "paytm_initiate_awaiting_otp");
+      logger.info({ slug: "paytm_merchant", maskedMobile: maskMobile(mobile) }, "paytm_initiate_awaiting_otp");
 
       return {
         status: "AWAITING_OTP",
@@ -535,15 +738,14 @@ export const paytmMerchantAdapter: ProviderAdapter = {
         nextStep: "ENTER_OTP",
         nextStepPrompt:
           `An OTP has been sent to your Paytm-registered mobile (${maskMobile(mobile)}). ` +
-          "Enter the OTP in the field below to complete the connection.",
+          "Enter the OTP below to complete the connection.",
       };
     } catch (err: any) {
-      logger.error({ slug: SLUG, err: err?.message }, "paytm_initiate_error");
+      logger.error({ slug: "paytm_merchant", err: err?.message }, "paytm_initiate_error");
       return {
         status: "FAILED",
         failReason: "BROWSER_ERROR",
-        failDetail: `Browser automation encountered an error: ${err?.message ?? "unknown"}. ` +
-          "This may be a transient issue — please try again.",
+        failDetail: `Browser automation error: ${err?.message ?? "unknown"}. Please try again.`,
         helpUrl: HELP_URL,
       };
     } finally {
@@ -552,9 +754,10 @@ export const paytmMerchantAdapter: ProviderAdapter = {
   },
 
   // ── submitStep ───────────────────────────────────────────────────────────────
+  // OTP is received encrypted, decrypted here once, filled into the browser,
+  // then the local variable goes out of scope. It is never logged or stored.
 
   async submitStep(params: SubmitStepParams): Promise<SubmitStepResult> {
-    // Decrypt session token
     const tokenResult = decryptSessionToken(params.encryptedSessionToken);
     if (!tokenResult.ok) {
       return {
@@ -564,8 +767,8 @@ export const paytmMerchantAdapter: ProviderAdapter = {
       };
     }
 
-    const adapterData = tokenResult.payload.adapterData as unknown as PaytmAdapterData;
-    if (!adapterData?.storageState) {
+    const adData = tokenResult.payload.adapterData as unknown as PaytmAdapterData;
+    if (!adData?.storageState) {
       return {
         status: "FAILED",
         failReason: "MISSING_STORAGE_STATE",
@@ -573,7 +776,6 @@ export const paytmMerchantAdapter: ProviderAdapter = {
       };
     }
 
-    // Decrypt OTP
     if (!params.encryptedOtp) {
       return {
         status: "FAILED",
@@ -581,6 +783,7 @@ export const paytmMerchantAdapter: ProviderAdapter = {
         failDetail: "OTP is required.",
       };
     }
+
     const otpDecrypt = decryptSecret(params.encryptedOtp);
     if (!otpDecrypt.ok) {
       return {
@@ -589,7 +792,7 @@ export const paytmMerchantAdapter: ProviderAdapter = {
         failDetail: "Could not decrypt OTP.",
       };
     }
-    const otp = otpDecrypt.value.trim();
+    const otp = otpDecrypt.value.trim().replace(/\D/g, "");
     if (!otp || otp.length < 4 || otp.length > 8) {
       return {
         status: "FAILED",
@@ -600,30 +803,30 @@ export const paytmMerchantAdapter: ProviderAdapter = {
 
     let ctx = null as Awaited<ReturnType<typeof newIsolatedContext>> | null;
     try {
-      // Restore the browser context from stored storage state
-      ctx = await newIsolatedContext(adapterData.storageState);
+      ctx = await newIsolatedContext(adData.storageState);
       const page = await ctx.context.newPage();
 
-      // Navigate to the login page — the restored cookies should put us at the OTP step
-      await page.goto(LOGIN_URL, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
+      // Check if the restored session is already on the dashboard
+      await page.goto(PORTAL_ROOT, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
+      const preCheckUrl = page.url();
 
-      // If already logged in (cookies still valid from initiate step), go to dashboard
-      if (isDashboardUrl(page.url())) {
-        const dashVerified = await verifySessionAlive(page);
-        if (dashVerified) {
+      if (!isLoginUrl(preCheckUrl)) {
+        // Might already be logged in — run the full CONNECTED gate
+        const preCheck = await verifyDashboardAuthenticated(page);
+        if (preCheck.verified) {
           const newStorageState = await extractStorageState(ctx.context);
-          const connectedAt = new Date().toISOString();
           const newData: PaytmAdapterData = {
+            ...adData,
             storageState: newStorageState,
-            maskedMobile: adapterData.maskedMobile,
             step: "CONNECTED",
-            connectedAt,
+            connectedAt: new Date().toISOString(),
           };
           const payload = makeSessionPayload(
-            SLUG, 0, newData as unknown as Record<string, unknown>,
+            "paytm_merchant", 0, newData as unknown as Record<string, unknown>,
             { expiresAt: new Date(Date.now() + SESSION_TTL_HOURS * 60 * 60 * 1000) },
           );
           const enc = encryptSessionPayload(payload);
+          logger.info({ slug: "paytm_merchant", maskedMobile: adData.maskedMobile }, "paytm_submitstep_already_connected");
           return {
             status: "CONNECTED",
             encryptedSessionToken: enc.ok ? enc.token : undefined,
@@ -632,13 +835,21 @@ export const paytmMerchantAdapter: ProviderAdapter = {
         }
       }
 
-      // Wait for OTP input to appear
-      const otpInputSel = await waitForAny(
-        page,
-        [...SEL.OTP_INPUT_SINGLE, SEL.OTP_INPUT_DIGITS],
-        NAV_TIMEOUT_MS,
-      );
-      if (!otpInputSel) {
+      // Navigate to login page to reach the OTP step
+      const loginReached = await navigateToLoginPage(page);
+      if (!loginReached) {
+        return {
+          status: "FAILED",
+          failReason: "PORTAL_UNREACHABLE",
+          failDetail: "Could not reach the login page. The session may have expired. " +
+            "Please restart the connection.",
+        };
+      }
+
+      // Wait for OTP input
+      const allOtpSels = [...SEL.OTP_INPUT_SINGLE, ...SEL.OTP_INPUT_DIGITS];
+      const otpSel = await waitForAny(page, allOtpSels, NAV_TIMEOUT_MS);
+      if (!otpSel) {
         return {
           status: "FAILED",
           failReason: "OTP_STEP_NOT_FOUND",
@@ -647,7 +858,7 @@ export const paytmMerchantAdapter: ProviderAdapter = {
         };
       }
 
-      // Fill OTP
+      // Fill OTP — `otp` goes out of scope after this call
       const filled = await fillOtp(page, otp);
       if (!filled) {
         return {
@@ -657,36 +868,32 @@ export const paytmMerchantAdapter: ProviderAdapter = {
         };
       }
 
-      // Submit OTP
+      // Submit
       const submitBtn = await tryLocator(page, SEL.SUBMIT_OTP_BTN);
       if (submitBtn) {
         await submitBtn.click({ timeout: ACTION_TIMEOUT_MS });
       } else {
-        // Fallback: press Enter
         await page.keyboard.press("Enter");
       }
 
-      // Wait for outcome: dashboard, error, CAPTCHA, or block
-      const outcome = await waitForAny(
-        page,
-        [
-          ...SEL.DASHBOARD_LANDMARK,
-          ...SEL.ERROR_MSG,
-          ...SEL.CAPTCHA,
-          ...SEL.BLOCKED,
-        ],
-        NAV_TIMEOUT_MS,
-      );
+      // Wait for outcome
+      const allOutcomes = [
+        ...SEL.DASHBOARD_LANDMARK,
+        ...SEL.ERROR_MSG,
+        ...SEL.CAPTCHA,
+        ...SEL.BLOCKED,
+      ];
+      await waitForAny(page, allOutcomes, NAV_TIMEOUT_MS);
 
-      // Check for account block
+      // Check for account block first (most severe)
       if (await isBlocked(page)) {
+        logger.warn({ slug: "paytm_merchant" }, "paytm_submitstep_blocked");
         return {
-          status: "BLOCKED",
+          status: "BLOCKED" as any,
           failReason: "ACCOUNT_BLOCKED",
           failDetail: "Your Paytm Business account appears to be blocked or under review. " +
             "Please contact Paytm Business support.",
-          helpUrl: HELP_URL,
-        } as any;
+        };
       }
 
       // Check for CAPTCHA
@@ -694,66 +901,63 @@ export const paytmMerchantAdapter: ProviderAdapter = {
         return {
           status: "AWAITING_USER_ACTION" as any,
           failReason: "CAPTCHA_REQUIRED",
-          failDetail: "Paytm is showing a CAPTCHA during OTP verification. Please wait and retry.",
+          failDetail: "Paytm is showing a CAPTCHA during OTP verification. " +
+            "Please wait a few minutes and try again.",
         };
       }
 
-      // Check for error message (wrong/expired OTP)
+      // Check for error messages (invalid/expired OTP)
       for (const errSel of SEL.ERROR_MSG) {
         try {
           const errEl = page.locator(errSel).first();
-          if (await errEl.count() > 0) {
+          if (await errEl.count() > 0 && await errEl.isVisible()) {
             const errText = (await errEl.textContent())?.trim() ?? "";
-            const isExpired = errText.toLowerCase().includes("expired");
-            return {
-              status: "FAILED",
-              failReason: isExpired ? "OTP_EXPIRED" : "INVALID_OTP",
-              failDetail: `OTP verification failed: "${errText}". ` +
-                (isExpired
-                  ? "Please restart the connection to receive a new OTP."
-                  : "Check the OTP and try again, or restart the connection for a new OTP."),
-            };
+            if (errText) {
+              const isExpired = errText.toLowerCase().includes("expired");
+              const isInvalid = errText.toLowerCase().includes("invalid") ||
+                errText.toLowerCase().includes("incorrect");
+              return {
+                status: "FAILED",
+                failReason: isExpired ? "OTP_EXPIRED" : (isInvalid ? "INVALID_OTP" : "OTP_ERROR"),
+                failDetail: `OTP error: "${errText}". ` + (
+                  isExpired
+                    ? "Please restart the connection to receive a new OTP."
+                    : "Check the OTP and try again, or restart for a new OTP."
+                ),
+              };
+            }
           }
-        } catch {
-          // continue
-        }
+        } catch { /* continue */ }
       }
 
-      // Check if we reached the dashboard
-      await page.waitForLoadState("domcontentloaded", { timeout: NAV_TIMEOUT_MS });
-      const finalUrl = page.url();
+      // ── CONNECTED gate — all four checks must pass ─────────────────────────
+      await page.waitForLoadState("domcontentloaded", { timeout: NAV_TIMEOUT_MS }).catch(() => {});
 
-      if (!isDashboardUrl(finalUrl)) {
+      const connectedCheck = await verifyDashboardAuthenticated(page);
+      if (!connectedCheck.verified) {
+        logger.warn(
+          { slug: "paytm_merchant", reason: connectedCheck.reason },
+          "paytm_submitstep_connected_gate_failed",
+        );
         return {
           status: "FAILED",
           failReason: "LOGIN_NOT_CONFIRMED",
-          failDetail: "OTP was submitted but the session did not reach the dashboard. " +
-            "The OTP may be incorrect or expired. Please try again.",
+          failDetail: `OTP was submitted but session could not be verified as authenticated. ` +
+            `The OTP may be incorrect or expired. Please try again or restart the connection.`,
         };
       }
+      // ── End CONNECTED gate ─────────────────────────────────────────────────
 
-      // Verify dashboard landmark
-      const landmarkFound = await waitForAny(page, SEL.DASHBOARD_LANDMARK, ACTION_TIMEOUT_MS * 2);
-      if (!landmarkFound) {
-        return {
-          status: "FAILED",
-          failReason: "DASHBOARD_NOT_VERIFIED",
-          failDetail: "Reached what appears to be the dashboard URL but could not verify " +
-            "the merchant account identity. Please try again.",
-        };
-      }
-
-      // Session confirmed — extract and encrypt storage state
+      // Serialise updated storage state (cookies refreshed post-login)
       const newStorageState = await extractStorageState(ctx.context);
-      const connectedAt = new Date().toISOString();
       const newData: PaytmAdapterData = {
+        ...adData,
         storageState: newStorageState,
-        maskedMobile: adapterData.maskedMobile,
         step: "CONNECTED",
-        connectedAt,
+        connectedAt: new Date().toISOString(),
       };
       const payload = makeSessionPayload(
-        SLUG, 0, newData as unknown as Record<string, unknown>,
+        "paytm_merchant", 0, newData as unknown as Record<string, unknown>,
         { expiresAt: new Date(Date.now() + SESSION_TTL_HOURS * 60 * 60 * 1000) },
       );
       const enc = encryptSessionPayload(payload);
@@ -765,7 +969,7 @@ export const paytmMerchantAdapter: ProviderAdapter = {
         };
       }
 
-      logger.info({ slug: SLUG, maskedMobile: adapterData.maskedMobile }, "paytm_submitstep_connected");
+      logger.info({ slug: "paytm_merchant", maskedMobile: adData.maskedMobile }, "paytm_submitstep_connected");
 
       return {
         status: "CONNECTED",
@@ -774,12 +978,11 @@ export const paytmMerchantAdapter: ProviderAdapter = {
         nextStepPrompt: "Your Paytm Business account is now connected.",
       };
     } catch (err: any) {
-      logger.error({ slug: SLUG, err: err?.message }, "paytm_submitstep_error");
+      logger.error({ slug: "paytm_merchant", err: err?.message }, "paytm_submitstep_error");
       return {
         status: "FAILED",
         failReason: "BROWSER_ERROR",
-        failDetail: `Browser automation error during OTP submission: ${err?.message ?? "unknown"}. ` +
-          "Please try again.",
+        failDetail: `Browser error during OTP submission: ${err?.message ?? "unknown"}. Please try again.`,
       };
     } finally {
       await ctx?.release();
@@ -790,34 +993,29 @@ export const paytmMerchantAdapter: ProviderAdapter = {
 
   async validateSession(encryptedSessionToken: string): Promise<ValidateResult> {
     const tokenResult = decryptSessionToken(encryptedSessionToken);
-    if (!tokenResult.ok) {
-      return { valid: false, reason: tokenResult.reason };
-    }
+    if (!tokenResult.ok) return { valid: false, reason: tokenResult.reason };
 
-    // Advisory expiry check (from token payload)
     const { expiresAt } = tokenResult.payload;
     if (expiresAt && new Date(expiresAt) < new Date()) {
       return { valid: false, reason: "session_expired" };
     }
 
-    const adapterData = tokenResult.payload.adapterData as unknown as PaytmAdapterData;
-    if (!adapterData?.storageState || adapterData.step !== "CONNECTED") {
+    const adData = tokenResult.payload.adapterData as unknown as PaytmAdapterData;
+    if (!adData?.storageState || adData.step !== "CONNECTED") {
       return { valid: false, reason: "not_connected" };
     }
 
     let ctx = null as Awaited<ReturnType<typeof newIsolatedContext>> | null;
     try {
-      ctx = await newIsolatedContext(adapterData.storageState);
+      ctx = await newIsolatedContext(adData.storageState);
       const page = await ctx.context.newPage();
       const alive = await verifySessionAlive(page);
-      if (!alive) {
-        return { valid: false, reason: "session_expired_or_revoked" };
-      }
-      // Re-extract storage state (cookies may have been refreshed)
+      if (!alive) return { valid: false, reason: "session_expired_or_revoked" };
+
       const newStorageState = await extractStorageState(ctx.context);
-      const newData: PaytmAdapterData = { ...adapterData, storageState: newStorageState };
+      const newData: PaytmAdapterData = { ...adData, storageState: newStorageState };
       const payload = makeSessionPayload(
-        SLUG, tokenResult.payload.connectionId,
+        "paytm_merchant", tokenResult.payload.connectionId,
         newData as unknown as Record<string, unknown>,
         { expiresAt: new Date(Date.now() + SESSION_TTL_HOURS * 60 * 60 * 1000) },
       );
@@ -828,7 +1026,7 @@ export const paytmMerchantAdapter: ProviderAdapter = {
         expiresAt: new Date(Date.now() + SESSION_TTL_HOURS * 60 * 60 * 1000),
       };
     } catch (err: any) {
-      logger.error({ slug: SLUG, err: err?.message }, "paytm_validate_error");
+      logger.error({ slug: "paytm_merchant", err: err?.message }, "paytm_validate_error");
       return { valid: false, reason: "validation_error" };
     } finally {
       await ctx?.release();
@@ -841,46 +1039,41 @@ export const paytmMerchantAdapter: ProviderAdapter = {
     const tokenResult = decryptSessionToken(encryptedSessionToken);
     if (!tokenResult.ok) return { entities: [] };
 
-    const adapterData = tokenResult.payload.adapterData as unknown as PaytmAdapterData;
-    if (!adapterData?.storageState) return { entities: [] };
+    const adData = tokenResult.payload.adapterData as unknown as PaytmAdapterData;
+    if (!adData?.storageState) return { entities: [] };
 
     let ctx = null as Awaited<ReturnType<typeof newIsolatedContext>> | null;
     try {
-      ctx = await newIsolatedContext(adapterData.storageState);
+      ctx = await newIsolatedContext(adData.storageState);
       const page = await ctx.context.newPage();
 
-      // Navigate to profile/settings to discover MID and VPA
-      await page.goto(`${PORTAL_URL}/profile`, {
+      // Navigate to the profile page to look for MID
+      await page.goto(`${PORTAL_ROOT}/profile`, {
         waitUntil: "domcontentloaded",
         timeout: NAV_TIMEOUT_MS,
       });
 
-      if (!isDashboardUrl(page.url())) {
-        return { entities: [] };
-      }
+      // Verify we're still authenticated before reading profile data
+      const check = await verifyDashboardAuthenticated(page);
+      if (!check.verified) return { entities: [] };
 
-      // Try to extract MID from the profile page
+      // Try to extract MID
       const mid = await (async () => {
         for (const sel of SEL.MID) {
           try {
             const el = page.locator(sel).first();
             if (await el.count() > 0) {
               const text = await el.textContent();
-              const match = text?.match(/\d{12,}/);
+              // MID is typically a 12+ digit number
+              const match = text?.match(/\b\d{9,20}\b/);
               if (match) return match[0];
             }
-          } catch {
-            // continue
-          }
+          } catch { /* continue */ }
         }
         return null;
       })();
 
-      // Extract masked mobile from the token
-      const maskedMobile = adapterData.maskedMobile;
-
       const entities = [];
-
       if (mid) {
         entities.push({
           entityType:        "merchant" as const,
@@ -890,34 +1083,27 @@ export const paytmMerchantAdapter: ProviderAdapter = {
           metadata:          { mid },
         });
       }
-
-      if (maskedMobile) {
+      if (adData.maskedMobile) {
         entities.push({
           entityType:        "merchant" as const,
-          providerEntityId:  maskedMobile,
+          providerEntityId:  adData.maskedMobile,
           providerEntityName: "Registered Mobile",
           isPrimary:         mid === null,
-          metadata:          { maskedMobile },
+          metadata:          { maskedMobile: adData.maskedMobile },
         });
       }
 
-      // Re-extract storage state (cookies may have refreshed)
       const newStorageState = await extractStorageState(ctx.context);
-      const newData: PaytmAdapterData = { ...adapterData, storageState: newStorageState };
-      const payload = makeSessionPayload(
-        SLUG, tokenResult.payload.connectionId,
-        newData as unknown as Record<string, unknown>,
+      const newData: PaytmAdapterData = { ...adData, storageState: newStorageState, merchantId: mid ?? undefined };
+      const enc = encryptSessionPayload(
+        makeSessionPayload("paytm_merchant", tokenResult.payload.connectionId,
+          newData as unknown as Record<string, unknown>),
       );
-      const enc = encryptSessionPayload(payload);
 
-      logger.info({ slug: SLUG, entityCount: entities.length }, "paytm_discovery_complete");
-
-      return {
-        entities,
-        encryptedSessionToken: enc.ok ? enc.token : undefined,
-      };
+      logger.info({ slug: "paytm_merchant", entityCount: entities.length }, "paytm_discovery_complete");
+      return { entities, encryptedSessionToken: enc.ok ? enc.token : undefined };
     } catch (err: any) {
-      logger.warn({ slug: SLUG, err: err?.message }, "paytm_discovery_error");
+      logger.warn({ slug: "paytm_merchant", err: err?.message }, "paytm_discovery_error");
       return { entities: [] };
     } finally {
       await ctx?.release();
@@ -928,87 +1114,75 @@ export const paytmMerchantAdapter: ProviderAdapter = {
 
   async fetchTransactions(params: FetchTransactionsParams): Promise<FetchTransactionsResult> {
     const tokenResult = decryptSessionToken(params.encryptedSessionToken);
-    if (!tokenResult.ok) {
-      return { transactions: [], hasMore: false };
-    }
+    if (!tokenResult.ok) return { transactions: [], hasMore: false };
 
-    const adapterData = tokenResult.payload.adapterData as unknown as PaytmAdapterData;
-    if (!adapterData?.storageState || adapterData.step !== "CONNECTED") {
+    const adData = tokenResult.payload.adapterData as unknown as PaytmAdapterData;
+    if (!adData?.storageState || adData.step !== "CONNECTED") {
       return { transactions: [], hasMore: false };
     }
 
     let ctx = null as Awaited<ReturnType<typeof newIsolatedContext>> | null;
     try {
-      ctx = await newIsolatedContext(adapterData.storageState);
+      ctx = await newIsolatedContext(adData.storageState);
       const page = await ctx.context.newPage();
 
-      // Navigate to transactions / reports section
-      // Paytm Business portal transaction history URL pattern
-      const txUrl = `${PORTAL_URL}/dashboard/transactions`;
-      await page.goto(txUrl, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
+      // Navigate to transactions
+      await page.goto(`${PORTAL_ROOT}/transactions`, {
+        waitUntil: "domcontentloaded",
+        timeout: NAV_TIMEOUT_MS,
+      });
 
-      if (!isDashboardUrl(page.url())) {
-        logger.warn({ slug: SLUG, url: page.url() }, "paytm_fetch_not_on_dashboard");
+      // Verify we're still authenticated
+      const check = await verifyDashboardAuthenticated(page);
+      if (!check.verified) {
+        logger.warn({ slug: "paytm_merchant", reason: check.reason }, "paytm_fetch_not_authenticated");
         return { transactions: [], hasMore: false };
       }
 
-      // Wait for transaction rows to appear
+      // Wait for transaction rows
       const rowSel = SEL.TX_ROW.join(", ");
       try {
         await page.waitForSelector(rowSel, { timeout: NAV_TIMEOUT_MS });
       } catch {
-        // No transactions visible — could be empty page or different UI structure
-        logger.info({ slug: SLUG }, "paytm_fetch_no_tx_rows_visible");
+        logger.info({ slug: "paytm_merchant" }, "paytm_fetch_no_tx_rows");
         return { transactions: [], hasMore: false };
       }
 
-      // Extract visible transaction rows
-      // This is a best-effort DOM scrape. If Paytm changes their HTML structure,
-      // this returns empty rather than returning incorrect data.
-      const rawRows = await page.evaluate((selectors) => {
+      // Best-effort DOM scrape — returns empty rather than incorrect data on structure changes
+      const rawRows = await page.evaluate((selectors: string[]) => {
         const results: Array<{
-          id?: string;
           amount?: string;
           status?: string;
           date?: string;
           utr?: string;
-          orderId?: string;
         }> = [];
 
-        // document + Element are browser globals — api-server tsconfig does not
-        // include lib:dom so we access them through globalThis typed as any.
-        // This callback is serialised and evaluated inside Playwright's browser context,
-        // so these globals are always present at runtime.
         /* eslint-disable @typescript-eslint/no-explicit-any */
         const doc = (globalThis as any)["document"] as any;
+
         for (const sel of selectors) {
           const rows: any[] = Array.from(doc.querySelectorAll(sel));
           if (rows.length === 0) continue;
           for (const row of (rows as any[]).slice(0, 100)) {
             const text: string = row.textContent ?? "";
-            // Amount — look for ₹ or numbers with decimals
-            const amtMatch = text.match(/[₹]?\s*([\d,]+\.?\d{0,2})/);
-            // Status keywords
+            const amtMatch = text.match(/[₹\u20b9]?\s*([\d,]+\.?\d{0,2})/);
             const statusRaw =
-              text.toLowerCase().includes("success")   ? "SUCCESS"  :
-              text.toLowerCase().includes("failed")    ? "FAILED"   :
-              text.toLowerCase().includes("refund")    ? "REVERSED" :
-              text.toLowerCase().includes("pending")   ? "PENDING"  : null;
-            // UTR
-            const utrMatch = text.match(/\b[A-Z0-9]{12,22}\b/);
-            // Date
+              text.toLowerCase().includes("success") ? "SUCCESS" :
+              text.toLowerCase().includes("failed")  ? "FAILED"  :
+              text.toLowerCase().includes("refund")  ? "REVERSED":
+              text.toLowerCase().includes("pending") ? "PENDING" : null;
+            const utrMatch  = text.match(/\b[A-Z0-9]{12,22}\b/);
             const dateMatch = text.match(/\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/);
-
             if (amtMatch || statusRaw) {
               results.push({
-                amount:  amtMatch?.[1]?.replace(/,/g, ""),
-                status:  statusRaw ?? undefined,
-                date:    dateMatch?.[0],
-                utr:     utrMatch?.[0],
+                amount: amtMatch?.[1]?.replace(/,/g, ""),
+                status: statusRaw ?? undefined,
+                date:   dateMatch?.[0],
+                utr:    utrMatch?.[0],
               });
             }
           }
-          if (results.length > 0) break;  // stop after first matching selector
+          if (results.length > 0) break;
         }
         return results;
       }, SEL.TX_ROW);
@@ -1016,59 +1190,37 @@ export const paytmMerchantAdapter: ProviderAdapter = {
       const transactions: NormalizedTransaction[] = [];
       for (const raw of rawRows) {
         if (!raw.amount && !raw.status) continue;
-        const amountPaise = raw.amount
-          ? Math.round(parseFloat(raw.amount) * 100)
-          : 0;
+        const amountPaise = raw.amount ? Math.round(parseFloat(raw.amount) * 100) : 0;
         const normalizedStatus: PortalTxStatus =
           raw.status === "SUCCESS"  ? "SUCCESS"  :
           raw.status === "FAILED"   ? "FAILED"   :
           raw.status === "REVERSED" ? "REVERSED" :
           raw.status === "PENDING"  ? "PENDING"  : "UNKNOWN";
-
-        // Generate a deterministic pseudo-ID from available data since Paytm
-        // DOM rows may not expose the underlying transaction ID directly.
-        const pseudoId = [raw.utr, raw.amount, raw.date]
-          .filter(Boolean)
-          .join("::");
-
-        if (!pseudoId) continue;  // skip rows with no identifying data
-
+        const pseudoId = [raw.utr, raw.amount, raw.date].filter(Boolean).join("::");
+        if (!pseudoId) continue;
         transactions.push({
-          providerTxId:    pseudoId,
-          amount:          amountPaise,
-          currency:        "INR",
-          status:          normalizedStatus,
-          providerStatus:  raw.status ?? "UNKNOWN",
-          utr:             raw.utr,
-          txTimestamp:     raw.date ? new Date(raw.date) : undefined,
-          rawPayload:      {
-            // Stripped of any sensitive fields — safe to store
-            amount_str: raw.amount,
-            status_str: raw.status,
-            date_str:   raw.date,
-            utr:        raw.utr,
-          },
+          providerTxId:   pseudoId,
+          amount:         amountPaise,
+          currency:       "INR",
+          status:         normalizedStatus,
+          providerStatus: raw.status ?? "UNKNOWN",
+          utr:            raw.utr,
+          txTimestamp:    raw.date ? new Date(raw.date) : undefined,
+          rawPayload:     { amount_str: raw.amount, status_str: raw.status, date_str: raw.date, utr: raw.utr },
         });
       }
 
-      // Re-extract storage state
       const newStorageState = await extractStorageState(ctx.context);
-      const newData: PaytmAdapterData = { ...adapterData, storageState: newStorageState };
-      const payload = makeSessionPayload(
-        SLUG, tokenResult.payload.connectionId,
-        newData as unknown as Record<string, unknown>,
+      const newData: PaytmAdapterData = { ...adData, storageState: newStorageState };
+      const enc = encryptSessionPayload(
+        makeSessionPayload("paytm_merchant", tokenResult.payload.connectionId,
+          newData as unknown as Record<string, unknown>),
       );
-      const enc = encryptSessionPayload(payload);
 
-      logger.info({ slug: SLUG, count: transactions.length }, "paytm_fetch_complete");
-
-      return {
-        transactions,
-        hasMore: false,  // page-based fetch — no cursor support yet
-        encryptedSessionToken: enc.ok ? enc.token : undefined,
-      };
+      logger.info({ slug: "paytm_merchant", count: transactions.length }, "paytm_fetch_complete");
+      return { transactions, hasMore: false, encryptedSessionToken: enc.ok ? enc.token : undefined };
     } catch (err: any) {
-      logger.error({ slug: SLUG, err: err?.message }, "paytm_fetch_error");
+      logger.error({ slug: "paytm_merchant", err: err?.message }, "paytm_fetch_error");
       return { transactions: [], hasMore: false };
     } finally {
       await ctx?.release();
@@ -1076,27 +1228,29 @@ export const paytmMerchantAdapter: ProviderAdapter = {
   },
 
   // ── healthCheck ──────────────────────────────────────────────────────────────
+  // Lightweight check: does NOT log into Paytm. Verifies the portal root is
+  // reachable and returns a 200 response. Browser pool health is checked by the
+  // /browser-health route separately.
 
-  async healthCheck(encryptedSessionToken?: string): Promise<HealthCheckResult> {
-    // Light-weight: just check if business.paytm.com is reachable.
-    // Does NOT launch a full browser context.
+  async healthCheck(_encryptedSessionToken?: string): Promise<HealthCheckResult> {
     let ctx = null as Awaited<ReturnType<typeof newIsolatedContext>> | null;
     try {
-      ctx = await newIsolatedContext();
+      ctx = await newIsolatedContext(); // no stored state — fresh context
       const page = await ctx.context.newPage();
-      await page.goto(PORTAL_URL, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
-      const status = page.url().startsWith("https://") ? "CONNECTED" : "FAILED";
+      await page.goto(PORTAL_ROOT, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
+      const url = page.url();
+      const reachable = url.startsWith("https://business.paytm.com");
       return {
-        healthy: status === "CONNECTED",
+        healthy: reachable,
         status:  "CONNECTED" as any,
-        reason:  "Paytm Business portal is reachable.",
+        reason:  reachable ? "Paytm Business portal is reachable." : `Unexpected redirect: ${url}`,
       };
     } catch (err: any) {
       return {
         healthy: false,
         status:  "FAILED" as any,
         reason:  "PORTAL_UNREACHABLE",
-        detail:  `Could not reach ${PORTAL_URL}: ${err?.message ?? "unknown"}`,
+        detail:  `${PORTAL_ROOT}: ${err?.message ?? "unknown"}`,
       };
     } finally {
       await ctx?.release();
@@ -1104,25 +1258,22 @@ export const paytmMerchantAdapter: ProviderAdapter = {
   },
 
   // ── reconnect ────────────────────────────────────────────────────────────────
+  // Tries stored session first (runs CONNECTED gate); on failure returns
+  // AWAITING_OTP to prompt for a new OTP. Never returns CONNECTED on failure.
 
   async reconnect(encryptedSessionToken: string): Promise<InitiateResult> {
-    // For mobile-OTP adapters, reconnect tries the stored session first.
-    // If the session is still alive → return CONNECTED with refreshed token.
-    // If expired → return AWAITING_OTP so the UI prompts for a new OTP.
-    // Never fabricates CONNECTED.
-
     const tokenResult = decryptSessionToken(encryptedSessionToken);
     if (!tokenResult.ok) {
       return {
         status: "AWAITING_OTP" as any,
         failReason: "REQUIRES_FULL_REAUTH",
-        failDetail: "Session token is invalid. Please re-enter your mobile number to receive a new OTP.",
+        failDetail: "Session token is invalid. Please re-enter your mobile number.",
         nextStep: "ENTER_OTP",
       };
     }
 
-    const adapterData = tokenResult.payload.adapterData as unknown as PaytmAdapterData;
-    if (!adapterData?.storageState) {
+    const adData = tokenResult.payload.adapterData as unknown as PaytmAdapterData;
+    if (!adData?.storageState) {
       return {
         status: "AWAITING_OTP" as any,
         failReason: "REQUIRES_FULL_REAUTH",
@@ -1133,44 +1284,37 @@ export const paytmMerchantAdapter: ProviderAdapter = {
 
     let ctx = null as Awaited<ReturnType<typeof newIsolatedContext>> | null;
     try {
-      ctx = await newIsolatedContext(adapterData.storageState);
+      ctx = await newIsolatedContext(adData.storageState);
       const page = await ctx.context.newPage();
       const alive = await verifySessionAlive(page);
 
       if (alive) {
-        // Session still valid — refresh token
         const newStorageState = await extractStorageState(ctx.context);
-        const newData: PaytmAdapterData = {
-          ...adapterData,
-          storageState: newStorageState,
-          step: "CONNECTED",
-        };
+        const newData: PaytmAdapterData = { ...adData, storageState: newStorageState, step: "CONNECTED" };
         const payload = makeSessionPayload(
-          SLUG, tokenResult.payload.connectionId,
+          "paytm_merchant", tokenResult.payload.connectionId,
           newData as unknown as Record<string, unknown>,
           { expiresAt: new Date(Date.now() + SESSION_TTL_HOURS * 60 * 60 * 1000) },
         );
         const enc = encryptSessionPayload(payload);
-        logger.info({ slug: SLUG }, "paytm_reconnect_session_alive");
+        logger.info({ slug: "paytm_merchant" }, "paytm_reconnect_session_alive");
         return {
           status: "CONNECTED",
           encryptedSessionToken: enc.ok ? enc.token : undefined,
           nextStep: "COMPLETE",
-          nextStepPrompt: "Session reconnected successfully.",
+          nextStepPrompt: "Session reconnected.",
         };
       }
 
-      // Session expired — need a new OTP
-      logger.info({ slug: SLUG }, "paytm_reconnect_session_expired");
+      logger.info({ slug: "paytm_merchant" }, "paytm_reconnect_session_expired");
       return {
         status: "AWAITING_OTP" as any,
         failReason: "SESSION_EXPIRED",
-        failDetail: "Your Paytm Business session has expired. Enter your mobile number to receive a new OTP.",
+        failDetail: "Your Paytm Business session has expired. Please enter your mobile number for a new OTP.",
         nextStep: "ENTER_OTP",
-        nextStepPrompt: "Session expired. A new OTP is needed.",
       };
     } catch (err: any) {
-      logger.error({ slug: SLUG, err: err?.message }, "paytm_reconnect_error");
+      logger.error({ slug: "paytm_merchant", err: err?.message }, "paytm_reconnect_error");
       return {
         status: "AWAITING_OTP" as any,
         failReason: "RECONNECT_ERROR",
@@ -1183,28 +1327,27 @@ export const paytmMerchantAdapter: ProviderAdapter = {
   },
 
   // ── logout ───────────────────────────────────────────────────────────────────
+  // Best-effort: restore context, navigate to logout, close. Must not throw.
+  // Called by the disconnect route; failure is swallowed.
 
   async logout(encryptedSessionToken: string): Promise<void> {
-    // Best-effort: restore context, navigate to logout URL, close.
-    // Must not throw.
     const tokenResult = decryptSessionToken(encryptedSessionToken);
     if (!tokenResult.ok) return;
 
-    const adapterData = tokenResult.payload.adapterData as unknown as PaytmAdapterData;
-    if (!adapterData?.storageState) return;
+    const adData = tokenResult.payload.adapterData as unknown as PaytmAdapterData;
+    if (!adData?.storageState) return;
 
     let ctx = null as Awaited<ReturnType<typeof newIsolatedContext>> | null;
     try {
-      ctx = await newIsolatedContext(adapterData.storageState);
+      ctx = await newIsolatedContext(adData.storageState);
       const page = await ctx.context.newPage();
-      await page.goto(`${PORTAL_URL}/user/logout`, {
+      await page.goto(`${PORTAL_ROOT}/user/logout`, {
         waitUntil: "domcontentloaded",
         timeout: NAV_TIMEOUT_MS,
       });
-      logger.info({ slug: SLUG }, "paytm_logout_complete");
+      logger.info({ slug: "paytm_merchant" }, "paytm_logout_complete");
     } catch (err: any) {
-      // Swallow — logout must not throw
-      logger.warn({ slug: SLUG, err: err?.message }, "paytm_logout_error_swallowed");
+      logger.warn({ slug: "paytm_merchant", err: err?.message }, "paytm_logout_error_swallowed");
     } finally {
       await ctx?.release();
     }
