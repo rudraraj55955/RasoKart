@@ -6,17 +6,37 @@
  *   D  — OFFICIAL API/PARTNER REQUIRED (merchant self-service after partnership)
  *   E  — UNSUPPORTED/UNSAFE (banking regulation or deprecated)
  *
- * For Category D providers: merchant must complete KYC/onboarding on the
- * provider's own portal, obtain API credentials, then return to RasoKart
- * to enter those credentials. RasoKart never automates login, OTP, CAPTCHA,
- * or KYC on the merchant's behalf.
+ * Connection model for Category D providers
+ * ─────────────────────────────────────────
+ * NONE of these providers offer OAuth or any API-level mechanism that lets a
+ * third-party platform connect to an existing merchant's account on their behalf.
+ * "Connecting an existing account" always means:
+ *   1. Merchant independently logs into the provider's business portal.
+ *   2. Merchant locates their API credentials (MID, keys, secrets) in the portal.
+ *   3. Merchant submits those credentials to RasoKart via this form.
+ *
+ * RasoKart never automates login, OTP, CAPTCHA, or KYC on the merchant's behalf.
+ * OTP is always entered directly by the merchant on the provider's own page.
  *
  * For Category E providers: no connection supported; kept disabled.
- *
  * For Category A (EKQR): admin-managed; no merchant self-service needed.
  */
 
 export type ProviderCategory = "A" | "D" | "E";
+
+/** Credential field definition — maps to one of the 3 stored slots */
+export interface CredentialField {
+  /** Storage slot */
+  slot: "merchantId" | "apiKey" | "apiSecret" | "webhookSecret";
+  /** Human label shown in the form */
+  label: string;
+  /** Where/how to find this value in the provider portal */
+  hint: string;
+  /** Whether the form blocks submission without this field */
+  required: boolean;
+  /** Whether the field is a shared/public identifier (not a secret) */
+  isIdentifier?: boolean;
+}
 
 export interface ProviderOnboardingInfo {
   /** Provider slug — matches providers.slug in the DB */
@@ -25,14 +45,38 @@ export interface ProviderOnboardingInfo {
   category: ProviderCategory;
   /** Human-readable reason for category assignment */
   categoryReason: string;
+
+  // ── Existing-merchant connection ──────────────────────────────────────────
+  /**
+   * Whether "connect existing merchant account" is a viable path.
+   * Always false for banking-regulated Category E providers.
+   * For Category D: true — but connection is via credential submission only,
+   * not OAuth (directOAuthSupported is always false).
+   */
+  existingConnectionSupported: boolean;
+  /**
+   * Clear explanation shown under "Connect Existing Account":
+   * what the merchant needs to do and what happens.
+   */
+  existingConnectionNote?: string;
+  /** The login methods a merchant uses when signing in to the provider portal */
+  loginMethods?: string[];
+  /** URL of the existing-merchant business dashboard / API-keys page */
+  merchantPortalUrl?: string;
+  /** Friendly name for the portal link, e.g. "Paytm Business Dashboard" */
+  portalDisplayName?: string;
+  /** Named credential fields the merchant must retrieve and submit */
+  credentialFields?: CredentialField[];
+
+  // ── New-merchant onboarding ───────────────────────────────────────────────
   /** Official merchant signup URL (Category D only) */
   signupUrl?: string;
   /** KYC documents required during provider onboarding */
   kycDocuments?: string[];
-  /** Login methods supported on the provider portal */
-  loginMethods?: string[];
   /** Estimated onboarding timeline */
   onboardingTimeline?: string;
+
+  // ── Misc ──────────────────────────────────────────────────────────────────
   /** Whether merchant credentials can be self-submitted in RasoKart */
   supportsSelfSubmit: boolean;
   /** Phase D final status label */
@@ -49,6 +93,39 @@ export const PROVIDER_ONBOARDING_METADATA: Record<string, ProviderOnboardingInfo
     category: "D",
     categoryReason:
       "PhonePe Business portal uses mobile OTP with device-binding. Official PhonePe for Business API requires a PhonePe partnership agreement. Web-session automation is prohibited by PhonePe ToS.",
+
+    existingConnectionSupported: true,
+    existingConnectionNote:
+      "PhonePe does not offer OAuth or third-party API access to merchant accounts. " +
+      "To connect, log into your PhonePe for Business portal using your registered mobile number and OTP, " +
+      "then navigate to Settings → Integration to copy your Merchant ID, Salt Key, and Salt Index.",
+    loginMethods: [
+      "Mobile number + OTP (on the PhonePe for Business portal — not intercepted by RasoKart)",
+    ],
+    merchantPortalUrl: "https://business.phonepe.com/login",
+    portalDisplayName: "PhonePe for Business Dashboard",
+    credentialFields: [
+      {
+        slot: "merchantId",
+        label: "Merchant ID",
+        hint: "Settings → Integration → Merchant ID in your PhonePe Business portal",
+        required: true,
+        isIdentifier: true,
+      },
+      {
+        slot: "apiKey",
+        label: "Salt Key",
+        hint: "Settings → Integration → Salt Key (keep this secret)",
+        required: true,
+      },
+      {
+        slot: "apiSecret",
+        label: "Salt Index",
+        hint: "Settings → Integration → Salt Index (usually '1')",
+        required: true,
+      },
+    ],
+
     signupUrl: "https://business.phonepe.com/signup",
     kycDocuments: [
       "GST Registration Certificate",
@@ -57,7 +134,6 @@ export const PROVIDER_ONBOARDING_METADATA: Record<string, ProviderOnboardingInfo
       "Certificate of Incorporation (for Pvt Ltd / LLP)",
       "Aadhaar of Authorised Signatory",
     ],
-    loginMethods: ["Mobile number + OTP"],
     onboardingTimeline: "3–7 business days after document submission",
     supportsSelfSubmit: true,
     finalStatus: "PROVIDER READY — MERCHANT KYC/OTP/CREDENTIALS REQUIRED",
@@ -68,6 +144,45 @@ export const PROVIDER_ONBOARDING_METADATA: Record<string, ProviderOnboardingInfo
     category: "D",
     categoryReason:
       "Paytm Business portal uses mobile OTP with CAPTCHA. Paytm Payment Gateway API requires Paytm Business onboarding agreement. Session scraping is prohibited by Paytm ToS.",
+
+    existingConnectionSupported: true,
+    existingConnectionNote:
+      "Paytm does not offer OAuth or third-party API access to merchant accounts. " +
+      "To connect, log into your Paytm Business portal using your registered mobile number and OTP, " +
+      "then go to API Keys to copy your Merchant ID (MID), Client ID, and Client Secret.",
+    loginMethods: [
+      "Mobile number + OTP (on the Paytm Business portal — not intercepted by RasoKart)",
+    ],
+    merchantPortalUrl: "https://business.paytm.com",
+    portalDisplayName: "Paytm Business Portal",
+    credentialFields: [
+      {
+        slot: "merchantId",
+        label: "Merchant ID (MID)",
+        hint: "Visible in the Paytm Business dashboard header or Account → Profile",
+        required: true,
+        isIdentifier: true,
+      },
+      {
+        slot: "apiKey",
+        label: "Client ID",
+        hint: "API Keys section in your Paytm Business dashboard",
+        required: true,
+      },
+      {
+        slot: "apiSecret",
+        label: "Client Secret",
+        hint: "API Keys section in your Paytm Business dashboard (keep this secret)",
+        required: true,
+      },
+      {
+        slot: "webhookSecret",
+        label: "Webhook Secret",
+        hint: "Webhooks section → signing secret (optional, set if you use Paytm callbacks)",
+        required: false,
+      },
+    ],
+
     signupUrl: "https://business.paytm.com/payment-gateway",
     kycDocuments: [
       "GST Registration Certificate",
@@ -76,7 +191,6 @@ export const PROVIDER_ONBOARDING_METADATA: Record<string, ProviderOnboardingInfo
       "Aadhaar of Authorised Signatory",
       "Shop and Establishment Certificate (for proprietorships)",
     ],
-    loginMethods: ["Mobile number + OTP"],
     onboardingTimeline: "3–5 business days",
     supportsSelfSubmit: true,
     finalStatus: "PROVIDER READY — MERCHANT KYC/OTP/CREDENTIALS REQUIRED",
@@ -87,6 +201,20 @@ export const PROVIDER_ONBOARDING_METADATA: Record<string, ProviderOnboardingInfo
     category: "D",
     categoryReason:
       "BharatPe merchant portal uses mobile OTP with CAPTCHA and device fingerprinting. BharatPe Enterprise API requires a direct agreement. No public transaction API without partnership.",
+
+    existingConnectionSupported: false,
+    existingConnectionNote:
+      "Direct merchant login connection is not supported for BharatPe. " +
+      "BharatPe does not provide a payment gateway API for third-party platforms — " +
+      "it operates exclusively as a QR-based UPI settlement platform for its own ecosystem. " +
+      "Integration requires a direct BharatPe Enterprise partnership agreement, " +
+      "which is arranged by the RasoKart team. Contact support to initiate a partnership inquiry.",
+    loginMethods: [
+      "Mobile number + OTP (BharatPe Business app — not intercepted by RasoKart)",
+    ],
+    merchantPortalUrl: "https://bharatpe.com/business",
+    portalDisplayName: "BharatPe for Business",
+
     signupUrl: "https://bharatpe.com/business",
     kycDocuments: [
       "GST Registration Certificate (optional for small merchants)",
@@ -94,10 +222,9 @@ export const PROVIDER_ONBOARDING_METADATA: Record<string, ProviderOnboardingInfo
       "Aadhaar of Proprietor/Director",
       "Bank account details",
     ],
-    loginMethods: ["Mobile number + OTP"],
     onboardingTimeline: "1–3 business days for basic QR; 7–14 days for API access",
-    supportsSelfSubmit: true,
-    finalStatus: "PROVIDER READY — MERCHANT KYC/OTP/CREDENTIALS REQUIRED",
+    supportsSelfSubmit: false,
+    finalStatus: "ENTERPRISE PARTNERSHIP REQUIRED — CONTACT RASOKART SUPPORT",
   },
 
   freecharge: {
@@ -105,6 +232,7 @@ export const PROVIDER_ONBOARDING_METADATA: Record<string, ProviderOnboardingInfo
     category: "E",
     categoryReason:
       "Freecharge Business merchant portal is no longer actively onboarding new merchants. The product is largely deprecated for new business registrations.",
+    existingConnectionSupported: false,
     supportsSelfSubmit: false,
     finalStatus: "PROVIDER UNSUPPORTED — SAFELY DISABLED",
   },
@@ -114,6 +242,39 @@ export const PROVIDER_ONBOARDING_METADATA: Record<string, ProviderOnboardingInfo
     category: "D",
     categoryReason:
       "Amazon Pay for Business uses Amazon account authentication with 2FA. Official Amazon Pay India API requires an Amazon Pay merchant agreement and approval.",
+
+    existingConnectionSupported: true,
+    existingConnectionNote:
+      "Amazon Pay does not offer OAuth that allows RasoKart to connect to your merchant account on your behalf. " +
+      "To connect, log into Amazon Seller Central using your Amazon account (email + password + 2FA), " +
+      "then navigate to Apps & Services → Manage Your Apps → Amazon Pay to retrieve your integration credentials.",
+    loginMethods: [
+      "Amazon account — email + password + 2FA (on Amazon Seller Central — not intercepted by RasoKart)",
+    ],
+    merchantPortalUrl: "https://sellercentral.amazon.in/apps/manage",
+    portalDisplayName: "Amazon Seller Central",
+    credentialFields: [
+      {
+        slot: "merchantId",
+        label: "Seller ID (Merchant ID)",
+        hint: "Amazon Seller Central → Settings → Account Info → Merchant Token",
+        required: true,
+        isIdentifier: true,
+      },
+      {
+        slot: "apiKey",
+        label: "Client ID",
+        hint: "Amazon Pay → Integration → Keys → Client ID (starts with amzn1.application-oa2-client…)",
+        required: true,
+      },
+      {
+        slot: "apiSecret",
+        label: "Client Secret",
+        hint: "Amazon Pay → Integration → Keys → Client Secret (keep this secret)",
+        required: true,
+      },
+    ],
+
     signupUrl: "https://pay.amazon.in/merchant",
     kycDocuments: [
       "GST Registration Certificate",
@@ -122,7 +283,6 @@ export const PROVIDER_ONBOARDING_METADATA: Record<string, ProviderOnboardingInfo
       "Bank account details",
       "Business registration documents",
     ],
-    loginMethods: ["Amazon account (email + password + 2FA)"],
     onboardingTimeline: "5–10 business days",
     supportsSelfSubmit: true,
     finalStatus: "PROVIDER READY — MERCHANT KYC/OTP/CREDENTIALS REQUIRED",
@@ -133,6 +293,33 @@ export const PROVIDER_ONBOARDING_METADATA: Record<string, ProviderOnboardingInfo
     category: "D",
     categoryReason:
       "MobiKwik for Business uses mobile OTP. No public transaction API for third-party access without a MobiKwik partner agreement.",
+
+    existingConnectionSupported: true,
+    existingConnectionNote:
+      "MobiKwik does not offer OAuth or third-party API access to merchant accounts. " +
+      "To connect, log into your MobiKwik for Business portal using your registered mobile number and OTP, " +
+      "then navigate to Integration → API Keys to copy your Merchant ID and Secret Key.",
+    loginMethods: [
+      "Mobile number + OTP (on the MobiKwik for Business portal — not intercepted by RasoKart)",
+    ],
+    merchantPortalUrl: "https://business.mobikwik.com/login",
+    portalDisplayName: "MobiKwik for Business Dashboard",
+    credentialFields: [
+      {
+        slot: "merchantId",
+        label: "Merchant ID",
+        hint: "Integration → API Keys → Merchant ID in your MobiKwik Business portal",
+        required: true,
+        isIdentifier: true,
+      },
+      {
+        slot: "apiKey",
+        label: "Secret Key",
+        hint: "Integration → API Keys → Secret Key (keep this secret)",
+        required: true,
+      },
+    ],
+
     signupUrl: "https://business.mobikwik.com",
     kycDocuments: [
       "GST Registration Certificate",
@@ -140,7 +327,6 @@ export const PROVIDER_ONBOARDING_METADATA: Record<string, ProviderOnboardingInfo
       "Cancelled cheque / Bank statement",
       "Business registration documents",
     ],
-    loginMethods: ["Mobile number + OTP"],
     onboardingTimeline: "5–10 business days",
     supportsSelfSubmit: true,
     finalStatus: "PROVIDER READY — MERCHANT KYC/OTP/CREDENTIALS REQUIRED",
@@ -151,6 +337,7 @@ export const PROVIDER_ONBOARDING_METADATA: Record<string, ProviderOnboardingInfo
     category: "E",
     categoryReason:
       "SBI YONO Business is a regulated banking application. Automated login violates the RBI Circular on Cyber Security Framework for Banks, SBI ToS, and the IT Act 2000. Unsafe at any technical level.",
+    existingConnectionSupported: false,
     supportsSelfSubmit: false,
     finalStatus: "PROVIDER UNSUPPORTED — SAFELY DISABLED",
   },
@@ -160,6 +347,7 @@ export const PROVIDER_ONBOARDING_METADATA: Record<string, ProviderOnboardingInfo
     category: "E",
     categoryReason:
       "HDFC SmartHub Vyapar is a regulated banking product. Same RBI regulatory constraint as SBI YONO. Device-bound OTP and hardware token requirement. Automated access is a financial regulation violation.",
+    existingConnectionSupported: false,
     supportsSelfSubmit: false,
     finalStatus: "PROVIDER UNSUPPORTED — SAFELY DISABLED",
   },
@@ -169,6 +357,7 @@ export const PROVIDER_ONBOARDING_METADATA: Record<string, ProviderOnboardingInfo
     category: "E",
     categoryReason:
       "ICICI Eazypay is a regulated banking product. Automated login to banking portals is prohibited under the RBI Circular on Cyber Security Framework for Banks.",
+    existingConnectionSupported: false,
     supportsSelfSubmit: false,
     finalStatus: "PROVIDER UNSUPPORTED — SAFELY DISABLED",
   },
@@ -178,6 +367,7 @@ export const PROVIDER_ONBOARDING_METADATA: Record<string, ProviderOnboardingInfo
     category: "E",
     categoryReason:
       "Axis Bank Pay is a regulated banking product. Same RBI regulatory constraint. Unsafe at any technical level.",
+    existingConnectionSupported: false,
     supportsSelfSubmit: false,
     finalStatus: "PROVIDER UNSUPPORTED — SAFELY DISABLED",
   },
@@ -187,6 +377,7 @@ export const PROVIDER_ONBOARDING_METADATA: Record<string, ProviderOnboardingInfo
     category: "E",
     categoryReason:
       "Kotak Smart Collect is a regulated banking product. Same RBI regulatory constraint. Unsafe at any technical level.",
+    existingConnectionSupported: false,
     supportsSelfSubmit: false,
     finalStatus: "PROVIDER UNSUPPORTED — SAFELY DISABLED",
   },
@@ -196,6 +387,7 @@ export const PROVIDER_ONBOARDING_METADATA: Record<string, ProviderOnboardingInfo
     category: "A",
     categoryReason:
       "RasoKart-controlled gateway. Full auto-deposit pipeline live: ekqrCredit.ts (idempotent credit), ekqrSyncScheduler.ts (5-min polling), paymentWebhook.ts (real-time webhook). No merchant login required — direct API integration.",
+    existingConnectionSupported: false,
     supportsSelfSubmit: false,
     finalStatus: "PROVIDER CONNECTED AND LIVE",
   },
@@ -211,9 +403,14 @@ export function toPublicOnboardingInfo(info: ProviderOnboardingInfo) {
   return {
     slug: info.slug,
     category: info.category,
+    existingConnectionSupported: info.existingConnectionSupported,
+    existingConnectionNote: info.existingConnectionNote ?? null,
+    loginMethods: info.loginMethods ?? [],
+    merchantPortalUrl: info.merchantPortalUrl ?? null,
+    portalDisplayName: info.portalDisplayName ?? null,
+    credentialFields: info.credentialFields ?? [],
     signupUrl: info.signupUrl ?? null,
     kycDocuments: info.kycDocuments ?? [],
-    loginMethods: info.loginMethods ?? [],
     onboardingTimeline: info.onboardingTimeline ?? null,
     supportsSelfSubmit: info.supportsSelfSubmit,
     finalStatus: info.finalStatus,

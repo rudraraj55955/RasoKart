@@ -3,10 +3,19 @@
  *
  * Shows all 12 providers with their self-service enrollment status:
  *   • Category A (EKQR): admin-managed, shows live status from connections API
- *   • Category D (PhonePe, Paytm, BharatPe, Amazon Pay, MobiKwik): self-service
- *     enrollment: onboarding link → KYC → credential submission → active
+ *   • Category D (PhonePe, Paytm, Amazon Pay, MobiKwik): two distinct paths —
+ *       A. Connect Existing Merchant Account (credential submission)
+ *       B. Apply for New Merchant Account (KYC / signup)
+ *   • Category D (BharatPe): enterprise partnership required; no self-service creds
  *   • Category E (Freecharge, SBI YONO, HDFC SmartHub, ICICI Eazypay, Axis Pay,
  *     Kotak Smart): unsupported due to banking regulation / ToS
+ *
+ * IMPORTANT — connection model for all Category D providers:
+ *   None of these providers offer OAuth or third-party API access that lets
+ *   RasoKart connect to an existing merchant account on their behalf.
+ *   "Connect Existing Account" always means: merchant logs into the provider's
+ *   portal independently → retrieves API credentials → submits them here.
+ *   RasoKart never intercepts OTPs, bypasses CAPTCHA/2FA, or stores passwords.
  *
  * Credentials are write-only — never pre-populated after submission.
  * Audit log shows non-secret events (connect, credential update, disconnect).
@@ -20,9 +29,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
-import { Separator } from "@/components/ui/separator";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
@@ -31,20 +38,34 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  Search, AtSign, Smartphone, Store, Landmark, Building, Zap, RefreshCw, Link2,
+  Search, RefreshCw, Link2,
   ExternalLink, ShieldOff, CheckCircle2, Clock, AlertTriangle, XCircle, FileText,
-  Key, Unlink, ArrowRight, Info, ChevronRight,
+  Key, Unlink, ArrowRight, Info, ChevronRight, LogIn, UserPlus, ArrowLeft,
+  Lock, AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
+interface CredentialFieldDef {
+  slot: "merchantId" | "apiKey" | "apiSecret" | "webhookSecret";
+  label: string;
+  hint: string;
+  required: boolean;
+  isIdentifier?: boolean;
+}
+
 interface OnboardingInfo {
   slug: string;
   category: "A" | "D" | "E";
+  existingConnectionSupported: boolean;
+  existingConnectionNote: string | null;
+  loginMethods: string[];
+  merchantPortalUrl: string | null;
+  portalDisplayName: string | null;
+  credentialFields: CredentialFieldDef[];
   signupUrl: string | null;
   kycDocuments: string[];
-  loginMethods: string[];
   onboardingTimeline: string | null;
   supportsSelfSubmit: boolean;
   finalStatus: string;
@@ -115,66 +136,59 @@ const CATEGORY_META: Record<string, { label: string; color: string }> = {
 };
 
 const STATUS_META: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
-  live:                 { label: "Live",         color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30", icon: <CheckCircle2 className="w-3 h-3" /> },
-  testing:              { label: "Testing",      color: "bg-amber-500/10 text-amber-400 border-amber-500/30",       icon: <Clock className="w-3 h-3" /> },
-  coming_soon:          { label: "Coming Soon",  color: "bg-sky-500/10 text-sky-400 border-sky-500/30",             icon: <Clock className="w-3 h-3" /> },
-  disabled:             { label: "Disabled",     color: "bg-muted text-muted-foreground border-border",             icon: <XCircle className="w-3 h-3" /> },
+  live:        { label: "Live",        color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30", icon: <CheckCircle2 className="w-3 h-3" /> },
+  testing:     { label: "Testing",     color: "bg-amber-500/10 text-amber-400 border-amber-500/30",       icon: <Clock className="w-3 h-3" /> },
+  coming_soon: { label: "Coming Soon", color: "bg-sky-500/10 text-sky-400 border-sky-500/30",             icon: <Clock className="w-3 h-3" /> },
+  disabled:    { label: "Disabled",    color: "bg-muted text-muted-foreground border-border",             icon: <XCircle className="w-3 h-3" /> },
 };
 
 const ENROLLMENT_BADGE: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
-  not_enrolled:           { label: "Not Connected",    color: "bg-muted text-muted-foreground border-border",                icon: <XCircle className="w-3 h-3" /> },
-  pending_kyc:            { label: "Pending KYC",      color: "bg-amber-500/10 text-amber-400 border-amber-500/30",          icon: <Clock className="w-3 h-3" /> },
-  credentials_submitted:  { label: "Under Review",     color: "bg-sky-500/10 text-sky-400 border-sky-500/30",                icon: <Clock className="w-3 h-3" /> },
-  active:                 { label: "Connected",        color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",    icon: <CheckCircle2 className="w-3 h-3" /> },
-  suspended:              { label: "Suspended",        color: "bg-rose-500/10 text-rose-400 border-rose-500/30",             icon: <AlertTriangle className="w-3 h-3" /> },
-  disconnected:           { label: "Disconnected",     color: "bg-muted text-muted-foreground border-border",                icon: <XCircle className="w-3 h-3" /> },
+  not_enrolled:          { label: "Not Connected",  color: "bg-muted text-muted-foreground border-border",                icon: <XCircle className="w-3 h-3" /> },
+  pending_kyc:           { label: "Pending KYC",    color: "bg-amber-500/10 text-amber-400 border-amber-500/30",          icon: <Clock className="w-3 h-3" /> },
+  credentials_submitted: { label: "Under Review",   color: "bg-sky-500/10 text-sky-400 border-sky-500/30",                icon: <Clock className="w-3 h-3" /> },
+  active:                { label: "Connected",      color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",    icon: <CheckCircle2 className="w-3 h-3" /> },
+  suspended:             { label: "Suspended",      color: "bg-rose-500/10 text-rose-400 border-rose-500/30",             icon: <AlertTriangle className="w-3 h-3" /> },
+  disconnected:          { label: "Disconnected",   color: "bg-muted text-muted-foreground border-border",                icon: <XCircle className="w-3 h-3" /> },
 };
 
-const ICONS: Record<string, React.ReactNode> = {
-  phonepe:       <Smartphone className="w-7 h-7 text-purple-400" />,
-  paytm:         <Smartphone className="w-7 h-7 text-blue-500" />,
-  bharatpe:      <Store className="w-7 h-7 text-green-400" />,
-  freecharge:    <Zap className="w-7 h-7 text-rose-400" />,
-  sbi_yono:      <Landmark className="w-7 h-7 text-red-400" />,
-  hdfc_smarthub: <Building className="w-7 h-7 text-yellow-400" />,
-  icici_eazypay: <Building className="w-7 h-7 text-orange-400" />,
-  axis_pay:      <Building className="w-7 h-7 text-amber-400" />,
-  kotak_smart:   <Building className="w-7 h-7 text-red-500" />,
-  amazon_pay:    <Store className="w-7 h-7 text-orange-400" />,
-  mobikwik:      <Smartphone className="w-7 h-7 text-indigo-400" />,
-  ekqr:          <Zap className="w-7 h-7 text-emerald-400" />,
-  upi_id:        <AtSign className="w-7 h-7 text-emerald-400" />,
-  google_pay:    <Zap className="w-7 h-7 text-blue-400" />,
-};
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-function ProviderIcon({ slug }: { slug: string }) {
-  return ICONS[slug] ?? <Zap className="w-7 h-7 text-muted-foreground" />;
+function wlName(slug: string, fallback: string): string {
+  return PROVIDER_WHITE_LABEL[slug] ?? fallback;
 }
 
-function wlName(slug: string, name: string): string {
-  return PROVIDER_WHITE_LABEL[slug] ?? name;
-}
-
-function usagePct(used: number, limit: number) {
-  if (limit <= 0) return 0;
+function usagePct(used: number, limit: number): number {
+  if (!limit) return 0;
   return Math.min(100, Math.round((used / limit) * 100));
 }
 
-function usageColor(pct: number) {
-  if (pct >= 100) return "text-rose-400";
-  if (pct >= 80) return "text-amber-400";
+function usageColor(pct: number): string {
+  if (pct >= 90) return "text-rose-400";
+  if (pct >= 70) return "text-amber-400";
   return "text-emerald-400";
 }
 
-function progressColor(pct: number) {
-  if (pct >= 100) return "[&>div]:bg-rose-500";
-  if (pct >= 80) return "[&>div]:bg-amber-500";
+function progressColor(pct: number): string {
+  if (pct >= 90) return "[&>div]:bg-rose-500";
+  if (pct >= 70) return "[&>div]:bg-amber-500";
   return "[&>div]:bg-emerald-500";
 }
 
-// ── API helpers ───────────────────────────────────────────────────────────────
+// ── Provider icon ─────────────────────────────────────────────────────────────
 
-/** Get the stored JWT exactly as every other merchant page does. */
+function ProviderIcon({ slug }: { slug: string }) {
+  const icons: Record<string, string> = {
+    phonepe:       "📱", paytm: "💳", bharatpe: "🏪",
+    freecharge:    "⚡", amazon_pay: "🛒", mobikwik: "📲",
+    sbi_yono:      "🏦", hdfc_smarthub: "🏦", icici_eazypay: "🏦",
+    axis_pay:      "🏦", kotak_smart: "🏦",
+    ekqr:          "⚡", razorpay: "🔷", cashfree: "💰", payu: "💸",
+  };
+  return <span className="text-xl leading-none">{icons[slug] ?? "💳"}</span>;
+}
+
+// ── Auth helper ───────────────────────────────────────────────────────────────
+
 function getToken(): string {
   return localStorage.getItem("rasokart_token") ?? "";
 }
@@ -187,10 +201,7 @@ function authHeaders(extra?: Record<string, string>): Record<string, string> {
   };
 }
 
-async function enrollFetch(
-  path: string,
-  init?: RequestInit,
-): Promise<Response> {
+async function enrollFetch(path: string, init?: RequestInit): Promise<Response> {
   const isJson = init?.body != null;
   return fetch(path, {
     ...init,
@@ -237,6 +248,7 @@ function useSubmitCredentials() {
   return useMutation({
     mutationFn: async (payload: {
       providerSlug: string;
+      merchantId?: string;
       apiKey?: string;
       apiSecret?: string;
       webhookSecret?: string;
@@ -274,9 +286,15 @@ function useDisconnect() {
   });
 }
 
-// ── Enrollment flow dialog ────────────────────────────────────────────────────
+// ── Step types ────────────────────────────────────────────────────────────────
 
-type FlowStep = "onboarding" | "credentials";
+type FlowStep =
+  | "choice"           // initial: choose Existing or New
+  | "existing_info"    // explain how to get credentials + login methods
+  | "credentials"      // form with provider-specific field labels
+  | "new_account";     // KYC docs + signup link
+
+// ── Enrollment flow dialog ────────────────────────────────────────────────────
 
 function EnrollFlowDialog({
   provider,
@@ -289,65 +307,475 @@ function EnrollFlowDialog({
   open: boolean;
   onClose: () => void;
 }) {
-  const [step, setStep] = useState<FlowStep>("onboarding");
-  const [apiKey, setApiKey] = useState("");
-  const [apiSecret, setApiSecret] = useState("");
-  const [webhookSecret, setWebhookSecret] = useState("");
+  const [step, setStep] = useState<FlowStep>("choice");
+
+  // Credential form state — keyed by slot name
+  const [fields, setFields] = useState<Record<string, string>>({
+    merchantId: "", apiKey: "", apiSecret: "", webhookSecret: "",
+  });
 
   const initiateEnrollment = useInitiateEnrollment();
   const submitCredentials = useSubmitCredentials();
   const info = enrollment?.onboardingInfo;
 
-  // Auto-advance if already past onboarding step
+  // Reset on open
   useEffect(() => {
     if (!open) return;
+    setFields({ merchantId: "", apiKey: "", apiSecret: "", webhookSecret: "" });
+    // If they already have credentials submitted, go directly to existing path
     if (
-      enrollment?.enrollmentStatus === "pending_kyc" ||
       enrollment?.enrollmentStatus === "credentials_submitted" ||
-      enrollment?.enrollmentStatus === "disconnected"
+      enrollment?.enrollmentStatus === "active"
     ) {
-      setStep("onboarding");
+      setStep("existing_info");
+    } else {
+      setStep("choice");
     }
   }, [open, enrollment?.enrollmentStatus]);
 
-  // Reset form on dialog open
-  useEffect(() => {
-    if (open) {
-      setApiKey("");
-      setApiSecret("");
-      setWebhookSecret("");
-    }
-  }, [open]);
+  function setField(slot: string, value: string) {
+    setFields(prev => ({ ...prev, [slot]: value }));
+  }
 
-  async function handleInitiate() {
-    try {
-      await initiateEnrollment.mutateAsync({ providerSlug: provider.slug });
-      setStep("credentials");
-    } catch (err: any) {
-      toast.error(err.message ?? "Failed to initiate enrollment");
+  async function handleExistingPathContinue() {
+    // Initiate enrollment if not already started
+    if (!enrollment || enrollment.enrollmentStatus === "not_enrolled" || enrollment.enrollmentStatus === "disconnected") {
+      try {
+        await initiateEnrollment.mutateAsync({ providerSlug: provider.slug });
+      } catch (err: any) {
+        toast.error(err.message ?? "Failed to initiate enrollment");
+        return;
+      }
     }
+    setStep("credentials");
   }
 
   async function handleSubmitCredentials() {
-    if (!apiKey && !apiSecret && !webhookSecret) {
+    const credentialFields: CredentialFieldDef[] = info?.credentialFields ?? [];
+    const requiredFields = credentialFields.filter(f => f.required);
+    const missingRequired = requiredFields.filter(f => !fields[f.slot]?.trim());
+    if (missingRequired.length > 0) {
+      toast.error(`Please enter: ${missingRequired.map(f => f.label).join(", ")}`);
+      return;
+    }
+
+    // Check at least one secret field is provided (merchantId alone is not enough)
+    const secretSlots = ["apiKey", "apiSecret", "webhookSecret"] as const;
+    const hasAnySecret = secretSlots.some(s => fields[s]?.trim());
+    const hasMerchantId = fields.merchantId?.trim();
+    if (!hasAnySecret && !hasMerchantId) {
       toast.error("Please enter at least one credential field");
       return;
     }
+
     try {
+      const payload: Record<string, string> = {};
+      for (const [key, val] of Object.entries(fields)) {
+        if (val.trim()) payload[key] = val.trim();
+      }
       await submitCredentials.mutateAsync({
         providerSlug: provider.slug,
-        ...(apiKey ? { apiKey } : {}),
-        ...(apiSecret ? { apiSecret } : {}),
-        ...(webhookSecret ? { webhookSecret } : {}),
+        ...payload,
       });
-      toast.success("Credentials submitted successfully. Your account is under review.");
+      toast.success("Credentials submitted. Your account is under review by the RasoKart team.");
       onClose();
     } catch (err: any) {
       toast.error(err.message ?? "Failed to submit credentials");
     }
   }
 
-  const alreadyEnrolled = enrollment && enrollment.enrollmentStatus !== "not_enrolled" && enrollment.enrollmentStatus !== "disconnected";
+  async function handleNewAccountContinue() {
+    // Initiate enrollment (pending_kyc) if not already started
+    if (!enrollment || enrollment.enrollmentStatus === "not_enrolled" || enrollment.enrollmentStatus === "disconnected") {
+      try {
+        await initiateEnrollment.mutateAsync({ providerSlug: provider.slug });
+      } catch (err: any) {
+        toast.error(err.message ?? "Failed to start enrollment");
+        return;
+      }
+    }
+    if (info?.signupUrl) {
+      window.open(info.signupUrl, "_blank", "noopener,noreferrer");
+    }
+    toast.info("After completing KYC and getting approved, come back here to submit your API credentials.");
+    onClose();
+  }
+
+  const providerName = wlName(provider.slug, provider.name);
+  const credentialFields: CredentialFieldDef[] = info?.credentialFields ?? [];
+  const existingSupported = info?.existingConnectionSupported ?? false;
+
+  // ── Step: choice ─────────────────────────────────────────────────────────
+  function renderChoice() {
+    return (
+      <div className="space-y-4 py-2">
+        <p className="text-sm text-muted-foreground">
+          Choose how you want to connect <span className="font-medium text-foreground">{providerName}</span>:
+        </p>
+
+        {/* Option A: Existing account */}
+        <button
+          className="w-full text-left p-4 rounded-lg border border-border/60 hover:border-primary/40 hover:bg-primary/5 transition-colors group"
+          onClick={() => setStep("existing_info")}
+        >
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors">
+              <LogIn className="w-4 h-4 text-primary" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-foreground">Connect Existing Merchant Account</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {existingSupported
+                  ? "I already have a merchant account — I'll retrieve my API credentials from the provider portal and submit them here"
+                  : "View information about connecting an existing account"}
+              </p>
+            </div>
+            <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary mt-0.5 shrink-0 transition-colors" />
+          </div>
+        </button>
+
+        {/* Option B: New account */}
+        {info?.signupUrl && (
+          <button
+            className="w-full text-left p-4 rounded-lg border border-border/60 hover:border-emerald-500/40 hover:bg-emerald-500/5 transition-colors group"
+            onClick={() => setStep("new_account")}
+          >
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-lg bg-emerald-500/10 flex items-center justify-center shrink-0 group-hover:bg-emerald-500/20 transition-colors">
+                <UserPlus className="w-4 h-4 text-emerald-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-foreground">Apply for a New Merchant Account</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  I don't have an account yet — I'll apply at the provider's website, complete KYC, and return here to submit credentials after approval
+                </p>
+                {info.onboardingTimeline && (
+                  <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                    <Clock className="w-3 h-3" /> Estimated: {info.onboardingTimeline}
+                  </p>
+                )}
+              </div>
+              <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-emerald-400 mt-0.5 shrink-0 transition-colors" />
+            </div>
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  // ── Step: existing_info ───────────────────────────────────────────────────
+  function renderExistingInfo() {
+    return (
+      <div className="space-y-4 py-2">
+        {/* How connection works for this provider */}
+        <div className="p-3.5 rounded-lg bg-amber-500/5 border border-amber-500/20 space-y-2">
+          <p className="text-xs font-semibold text-amber-400 flex items-center gap-1.5">
+            <Info className="w-3.5 h-3.5" /> How existing-account connection works
+          </p>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            {info?.existingConnectionNote ?? (
+              existingSupported
+                ? "Log into the provider's business portal, retrieve your API credentials, and submit them here."
+                : "Direct merchant login connection is not available for this provider."
+            )}
+          </p>
+        </div>
+
+        {/* Not supported message */}
+        {!existingSupported && (
+          <div className="p-3.5 rounded-lg bg-rose-500/5 border border-rose-500/20">
+            <p className="text-xs font-semibold text-rose-400 flex items-center gap-1.5 mb-1">
+              <AlertCircle className="w-3.5 h-3.5" /> Direct merchant login connection is not supported
+            </p>
+            <p className="text-xs text-muted-foreground">
+              This provider does not offer a payment gateway API for third-party platforms. Contact RasoKart support for partnership enquiries.
+            </p>
+          </div>
+        )}
+
+        {/* Login methods */}
+        {existingSupported && info?.loginMethods && info.loginMethods.length > 0 && (
+          <div className="space-y-1.5">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              How to log in at the provider portal
+            </p>
+            <ul className="space-y-1.5">
+              {info.loginMethods.map(m => (
+                <li key={m} className="text-xs text-foreground flex items-start gap-2">
+                  <Smartphone className="w-3.5 h-3.5 text-muted-foreground mt-0.5 shrink-0" />
+                  <span>{m}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs text-muted-foreground italic mt-1">
+              OTP is entered directly on the provider's website — RasoKart never receives or intercepts it.
+            </p>
+          </div>
+        )}
+
+        {/* Portal link */}
+        {existingSupported && info?.merchantPortalUrl && (
+          <div className="p-3.5 rounded-lg bg-primary/5 border border-primary/20">
+            <p className="text-xs font-medium text-foreground mb-1">
+              Step 1 — Log into the provider portal and retrieve your credentials
+            </p>
+            <a
+              href={info.merchantPortalUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+            >
+              Open {info.portalDisplayName ?? "Provider Dashboard"}
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+            {credentialFields.length > 0 && (
+              <div className="mt-2.5 space-y-1">
+                <p className="text-xs text-muted-foreground font-medium">You will need to retrieve:</p>
+                <ul className="space-y-0.5">
+                  {credentialFields.map(f => (
+                    <li key={f.slot} className="text-xs text-muted-foreground flex items-start gap-1.5">
+                      <span className="text-primary mt-0.5">•</span>
+                      <span>
+                        <span className="font-medium text-foreground">{f.label}</span>
+                        {f.required ? "" : " (optional)"}
+                        {" — "}{f.hint}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Security note */}
+        {existingSupported && (
+          <div className="flex items-start gap-2 p-3 rounded-lg bg-muted/30 border border-border/50">
+            <Lock className="w-3.5 h-3.5 text-muted-foreground mt-0.5 shrink-0" />
+            <p className="text-xs text-muted-foreground">
+              Credentials you submit are encrypted and stored securely. They are write-only — you will not be able to view them after saving.
+            </p>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── Step: credentials ─────────────────────────────────────────────────────
+  function renderCredentials() {
+    // Build the fields to show: use provider-specific definitions if available,
+    // otherwise fall back to generic labels
+    const formFields: CredentialFieldDef[] = credentialFields.length > 0
+      ? credentialFields
+      : [
+          { slot: "apiKey", label: "API Key", hint: "From your provider's API Keys section", required: true },
+          { slot: "apiSecret", label: "API Secret", hint: "From your provider's API Keys section", required: true },
+          { slot: "webhookSecret", label: "Webhook Secret", hint: "From your provider's Webhooks section", required: false },
+        ];
+
+    return (
+      <div className="space-y-4 py-2">
+        {/* Step breadcrumb */}
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <span className="text-muted-foreground/60">Connect Existing Account</span>
+          <ChevronRight className="w-3 h-3" />
+          <span className="text-foreground font-medium">Submit API Credentials</span>
+        </div>
+
+        <div className="p-3 rounded-lg bg-amber-500/5 border border-amber-500/20 flex items-start gap-2">
+          <Key className="w-3.5 h-3.5 text-amber-400 mt-0.5 shrink-0" />
+          <p className="text-xs text-amber-400">
+            Credentials are encrypted and stored securely. They are write-only — you will not be able to view them after saving. Enter the full value each time you update.
+          </p>
+        </div>
+
+        <div className="space-y-3">
+          {formFields.map(f => {
+            const existing = f.slot === "merchantId"
+              ? enrollment?.maskedIdentifier
+              : f.slot === "apiKey" ? (enrollment?.hasApiKey ? "already set" : null)
+              : f.slot === "apiSecret" ? (enrollment?.hasApiSecret ? "already set" : null)
+              : (enrollment?.hasWebhookSecret ? "already set" : null);
+
+            const isSecret = !f.isIdentifier;
+
+            return (
+              <div key={f.slot} className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-medium">
+                    {f.label}
+                    {!f.required && <span className="text-muted-foreground ml-1">(optional)</span>}
+                  </Label>
+                  {f.isIdentifier && enrollment?.maskedIdentifier && (
+                    <span className="text-xs text-muted-foreground">Current: {enrollment.maskedIdentifier}</span>
+                  )}
+                </div>
+                <Input
+                  type={isSecret ? "password" : "text"}
+                  placeholder={existing
+                    ? `Currently set — enter new value to update`
+                    : f.hint}
+                  value={fields[f.slot] ?? ""}
+                  onChange={e => setField(f.slot, e.target.value)}
+                  autoComplete="new-password"
+                />
+                {fields[f.slot] === "" && !existing && f.hint && (
+                  <p className="text-xs text-muted-foreground">{f.hint}</p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <p className="text-xs text-muted-foreground">
+          Leave a field blank to keep the current value (if already set).
+        </p>
+      </div>
+    );
+  }
+
+  // ── Step: new_account ─────────────────────────────────────────────────────
+  function renderNewAccount() {
+    return (
+      <div className="space-y-4 py-2">
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <span className="text-muted-foreground/60">Options</span>
+          <ChevronRight className="w-3 h-3" />
+          <span className="text-foreground font-medium">Apply for New Merchant Account</span>
+        </div>
+
+        {/* Signup link */}
+        {info?.signupUrl && (
+          <div className="p-4 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
+            <p className="text-sm font-medium text-foreground mb-1">
+              Step 1 — Apply at the provider's official website
+            </p>
+            <p className="text-xs text-muted-foreground mb-3">
+              Complete business KYC on the provider's portal. After approval, return here to submit your API credentials.
+            </p>
+            <a
+              href={info.signupUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 text-xs font-medium text-emerald-400 hover:underline"
+            >
+              Apply at {info.portalDisplayName ?? provider.name}
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+          </div>
+        )}
+
+        {/* KYC documents */}
+        {info?.kycDocuments && info.kycDocuments.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+              <FileText className="w-3.5 h-3.5" /> Required KYC Documents
+            </p>
+            <ul className="space-y-1.5">
+              {info.kycDocuments.map(doc => (
+                <li key={doc} className="text-xs text-foreground flex items-start gap-2">
+                  <span className="text-muted-foreground mt-0.5">•</span> {doc}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Timeline */}
+        {info?.onboardingTimeline && (
+          <div className="flex items-start gap-2 p-3 rounded-lg bg-muted/30 border border-border/50">
+            <Clock className="w-3.5 h-3.5 text-muted-foreground mt-0.5 shrink-0" />
+            <p className="text-xs text-muted-foreground">
+              <span className="font-medium text-foreground">Estimated timeline: </span>
+              {info.onboardingTimeline}
+            </p>
+          </div>
+        )}
+
+        <div className="p-3 rounded-lg bg-sky-500/5 border border-sky-500/20 flex items-start gap-2">
+          <Info className="w-3.5 h-3.5 text-sky-400 mt-0.5 shrink-0" />
+          <p className="text-xs text-sky-400">
+            After your application is approved and you have received your API credentials, return to this page and choose "Connect Existing Account" to submit them.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Footer buttons ────────────────────────────────────────────────────────
+  function renderFooter() {
+    if (step === "choice") {
+      return (
+        <Button variant="outline" onClick={onClose}>Cancel</Button>
+      );
+    }
+
+    if (step === "existing_info") {
+      return (
+        <>
+          <Button variant="outline" onClick={() => setStep("choice")} className="gap-1.5">
+            <ArrowLeft className="w-3.5 h-3.5" /> Back
+          </Button>
+          {existingSupported && (
+            <Button
+              onClick={handleExistingPathContinue}
+              disabled={initiateEnrollment.isPending}
+              className="gap-2"
+            >
+              {initiateEnrollment.isPending ? "Starting…" : "Enter Credentials"}
+              <ArrowRight className="w-4 h-4" />
+            </Button>
+          )}
+        </>
+      );
+    }
+
+    if (step === "credentials") {
+      const hasAnyValue = Object.values(fields).some(v => v.trim().length > 0);
+      return (
+        <>
+          <Button variant="outline" onClick={() => setStep("existing_info")} className="gap-1.5">
+            <ArrowLeft className="w-3.5 h-3.5" /> Back
+          </Button>
+          <Button
+            onClick={handleSubmitCredentials}
+            disabled={submitCredentials.isPending || !hasAnyValue}
+            className="gap-2"
+          >
+            {submitCredentials.isPending ? "Submitting…" : "Submit Credentials"}
+          </Button>
+        </>
+      );
+    }
+
+    if (step === "new_account") {
+      return (
+        <>
+          <Button variant="outline" onClick={() => setStep("choice")} className="gap-1.5">
+            <ArrowLeft className="w-3.5 h-3.5" /> Back
+          </Button>
+          {info?.signupUrl && (
+            <Button
+              onClick={handleNewAccountContinue}
+              disabled={initiateEnrollment.isPending}
+              className="gap-2 bg-emerald-600 hover:bg-emerald-700"
+            >
+              {initiateEnrollment.isPending ? "Redirecting…" : "Open Application Portal"}
+              <ExternalLink className="w-3.5 h-3.5" />
+            </Button>
+          )}
+          {!info?.signupUrl && (
+            <Button variant="outline" onClick={onClose}>Close</Button>
+          )}
+        </>
+      );
+    }
+
+    return null;
+  }
+
+  // Existing credentials submitted — show a quick note at the top of choice
+  const isReenrolling = enrollment && enrollment.enrollmentStatus !== "not_enrolled" && enrollment.enrollmentStatus !== "disconnected";
 
   return (
     <Dialog open={open} onOpenChange={o => !o && onClose()}>
@@ -355,188 +783,32 @@ function EnrollFlowDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ProviderIcon slug={provider.slug} />
-            Connect {wlName(provider.slug, provider.name)}
+            Connect {providerName}
           </DialogTitle>
           <DialogDescription>
-            {step === "onboarding"
-              ? "Complete provider KYC before submitting credentials"
-              : "Enter your approved API credentials from the provider portal"}
+            {step === "choice" && "How would you like to connect this provider?"}
+            {step === "existing_info" && "Connect an existing merchant account"}
+            {step === "credentials" && "Submit your API credentials from the provider portal"}
+            {step === "new_account" && "Apply for a new merchant account"}
           </DialogDescription>
         </DialogHeader>
 
-        {step === "onboarding" && (
-          <div className="space-y-5 py-2">
-            {/* Step indicators */}
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <div className="flex items-center gap-1 text-primary font-medium">
-                <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-[10px] font-bold">1</span>
-                Sign up & KYC
-              </div>
-              <ChevronRight className="w-3 h-3" />
-              <div className="flex items-center gap-1">
-                <span className="w-5 h-5 rounded-full bg-muted text-muted-foreground flex items-center justify-center text-[10px] font-bold">2</span>
-                Submit credentials
-              </div>
-            </div>
-
-            {/* Onboarding link */}
-            {info?.signupUrl && (
-              <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
-                <p className="text-sm font-medium text-foreground mb-1">
-                  Step 1: Complete {wlName(provider.slug, provider.name)} KYC
-                </p>
-                <p className="text-xs text-muted-foreground mb-3">
-                  Open the provider portal, complete business KYC, and obtain your API credentials.
-                </p>
-                <a
-                  href={info.signupUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 text-xs font-medium text-primary hover:underline"
-                >
-                  Go to {provider.name} Business Portal <ExternalLink className="w-3.5 h-3.5" />
-                </a>
-              </div>
-            )}
-
-            {/* KYC documents */}
-            {info?.kycDocuments && info.kycDocuments.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-                  <FileText className="w-3.5 h-3.5" /> Required KYC Documents
-                </p>
-                <ul className="space-y-1">
-                  {info.kycDocuments.map(doc => (
-                    <li key={doc} className="text-xs text-foreground flex items-start gap-2">
-                      <span className="text-muted-foreground mt-0.5">•</span> {doc}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {/* Timeline */}
-            {info?.onboardingTimeline && (
-              <div className="flex items-start gap-2 p-3 rounded-lg bg-muted/30 border border-border/50">
-                <Clock className="w-3.5 h-3.5 text-muted-foreground mt-0.5 shrink-0" />
-                <p className="text-xs text-muted-foreground">
-                  <span className="font-medium text-foreground">Estimated timeline: </span>
-                  {info.onboardingTimeline}
-                </p>
-              </div>
-            )}
-
-            {/* Current enrollment status (if re-enrolling) */}
-            {alreadyEnrolled && (
-              <div className="p-3 rounded-lg bg-amber-500/5 border border-amber-500/20">
-                <p className="text-xs text-amber-400">
-                  You already started enrollment for this provider. Continuing will restart the onboarding flow.
-                </p>
-              </div>
-            )}
-
-            {enrollment?.enrollmentStatus === "credentials_submitted" && (
-              <div className="p-3 rounded-lg bg-sky-500/5 border border-sky-500/20">
-                <p className="text-xs text-sky-400">
-                  Your credentials are currently under review. You can update them below if needed.
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {step === "credentials" && (
-          <div className="space-y-5 py-2">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <div className="flex items-center gap-1 text-muted-foreground">
-                <span className="w-5 h-5 rounded-full bg-muted text-muted-foreground flex items-center justify-center text-[10px] font-bold">1</span>
-                Sign up &amp; KYC
-              </div>
-              <ChevronRight className="w-3 h-3" />
-              <div className="flex items-center gap-1 text-primary font-medium">
-                <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-[10px] font-bold">2</span>
-                Submit credentials
-              </div>
-            </div>
-
-            <div className="p-3 rounded-lg bg-amber-500/5 border border-amber-500/20 flex items-start gap-2">
-              <Key className="w-3.5 h-3.5 text-amber-400 mt-0.5 shrink-0" />
-              <p className="text-xs text-amber-400">
-                Credentials are encrypted and stored securely. They are write-only — you will not be able to view them after saving. Enter the full value each time you update.
-              </p>
-            </div>
-
-            <div className="space-y-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs">API Key</Label>
-                <Input
-                  type="password"
-                  placeholder={enrollment?.hasApiKey ? "Already set — enter new value to update" : "Enter API key from provider portal"}
-                  value={apiKey}
-                  onChange={e => setApiKey(e.target.value)}
-                  autoComplete="new-password"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">API Secret</Label>
-                <Input
-                  type="password"
-                  placeholder={enrollment?.hasApiSecret ? "Already set — enter new value to update" : "Enter API secret from provider portal"}
-                  value={apiSecret}
-                  onChange={e => setApiSecret(e.target.value)}
-                  autoComplete="new-password"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Webhook Secret <span className="text-muted-foreground">(optional)</span></Label>
-                <Input
-                  type="password"
-                  placeholder={enrollment?.hasWebhookSecret ? "Already set — enter new value to update" : "Enter webhook secret (if provided)"}
-                  value={webhookSecret}
-                  onChange={e => setWebhookSecret(e.target.value)}
-                  autoComplete="new-password"
-                />
-              </div>
-            </div>
-
-            <p className="text-xs text-muted-foreground">
-              Leave a field blank to keep the current value (if already set).
-              Enter at least one credential to submit.
+        {/* Re-enroll notice */}
+        {step === "choice" && isReenrolling && (
+          <div className="p-3 rounded-lg bg-amber-500/5 border border-amber-500/20 -mt-2">
+            <p className="text-xs text-amber-400">
+              You already have an active enrollment for this provider. Continuing will update your credentials or restart the onboarding flow.
             </p>
           </div>
         )}
 
+        {step === "choice" && renderChoice()}
+        {step === "existing_info" && renderExistingInfo()}
+        {step === "credentials" && renderCredentials()}
+        {step === "new_account" && renderNewAccount()}
+
         <DialogFooter className="flex-col sm:flex-row gap-2">
-          {step === "onboarding" ? (
-            <>
-              <Button variant="outline" onClick={onClose}>Cancel</Button>
-              {enrollment?.enrollmentStatus === "credentials_submitted" ? (
-                <Button onClick={() => setStep("credentials")} className="gap-2">
-                  Update Credentials <ArrowRight className="w-4 h-4" />
-                </Button>
-              ) : (
-                <Button
-                  onClick={handleInitiate}
-                  disabled={initiateEnrollment.isPending}
-                  className="gap-2"
-                >
-                  {initiateEnrollment.isPending ? "Starting…" : "Start Enrollment"}
-                  <ArrowRight className="w-4 h-4" />
-                </Button>
-              )}
-            </>
-          ) : (
-            <>
-              <Button variant="outline" onClick={() => setStep("onboarding")}>Back</Button>
-              <Button
-                onClick={handleSubmitCredentials}
-                disabled={submitCredentials.isPending || (!apiKey && !apiSecret && !webhookSecret)}
-                className="gap-2"
-              >
-                {submitCredentials.isPending ? "Submitting…" : "Submit Credentials"}
-              </Button>
-            </>
-          )}
+          {renderFooter()}
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -613,6 +885,8 @@ function EnrollmentCard({
   const canUpdate = status === "pending_kyc" || status === "credentials_submitted";
   const isActive = status === "active";
   const isSuspended = status === "suspended";
+  const info = enrollment?.onboardingInfo;
+  const existingSupported = info?.existingConnectionSupported ?? true;
 
   return (
     <>
@@ -636,6 +910,14 @@ function EnrollmentCard({
         <CardContent className="space-y-3">
           {desc && <p className="text-xs text-muted-foreground leading-relaxed">{desc}</p>}
 
+          {/* No-credential-API note for BharatPe */}
+          {!existingSupported && status === "not_enrolled" && (
+            <div className="p-2.5 rounded-lg bg-amber-500/5 border border-amber-500/20 flex items-start gap-2">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-400 mt-0.5 shrink-0" />
+              <p className="text-xs text-amber-400">Enterprise partnership required — contact RasoKart support</p>
+            </div>
+          )}
+
           {/* Suspended alert */}
           {isSuspended && (
             <div className="p-2.5 rounded-lg bg-rose-500/5 border border-rose-500/20 flex items-start gap-2">
@@ -650,19 +932,30 @@ function EnrollmentCard({
             </div>
           )}
 
-          {/* Credentials submitted info */}
+          {/* Credentials under review */}
           {status === "credentials_submitted" && (
             <div className="p-2.5 rounded-lg bg-sky-500/5 border border-sky-500/20 flex items-start gap-2">
               <Info className="w-3.5 h-3.5 text-sky-400 mt-0.5 shrink-0" />
-              <p className="text-xs text-sky-400">Credentials submitted. Under review by RasoKart team.</p>
+              <div>
+                <p className="text-xs text-sky-400">Credentials submitted — under review by RasoKart team.</p>
+                {enrollment?.maskedIdentifier && (
+                  <p className="text-xs text-muted-foreground mt-0.5">Merchant ID: {enrollment.maskedIdentifier}</p>
+                )}
+              </div>
             </div>
           )}
 
           {/* Connected timestamp */}
           {isActive && enrollment?.connectedAt && (
-            <p className="text-xs text-muted-foreground">
-              Connected {new Date(enrollment.connectedAt).toLocaleDateString("en-IN")}
-            </p>
+            <div className="flex items-center gap-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+              <p className="text-xs text-muted-foreground">
+                Connected {new Date(enrollment.connectedAt).toLocaleDateString("en-IN")}
+              </p>
+              {enrollment?.maskedIdentifier && (
+                <p className="text-xs text-muted-foreground">· MID: {enrollment.maskedIdentifier}</p>
+              )}
+            </div>
           )}
 
           {/* Action buttons */}
@@ -675,6 +968,11 @@ function EnrollmentCard({
             {canUpdate && (
               <Button size="sm" variant="outline" className="flex-1" onClick={() => setFlowOpen(true)}>
                 Manage Enrollment
+              </Button>
+            )}
+            {isActive && (
+              <Button size="sm" variant="outline" className="flex-1" onClick={() => setFlowOpen(true)}>
+                Update Credentials
               </Button>
             )}
             {(isActive || canUpdate || isSuspended) && (
@@ -736,7 +1034,7 @@ function UnsupportedCard({ provider }: { provider: any }) {
         {desc && <p className="text-xs text-muted-foreground leading-relaxed">{desc}</p>}
         <div className="p-2.5 rounded-lg bg-muted/30 border border-border/50">
           <p className="text-xs text-muted-foreground">
-            This provider is not available for merchant connection due to regulatory restrictions or deprecation.
+            Direct merchant login connection is not supported for this provider due to banking regulatory restrictions or product deprecation.
           </p>
         </div>
         <Button size="sm" className="w-full" variant="outline" disabled>
@@ -1012,10 +1310,10 @@ export default function MerchantConnect() {
             <div className="space-y-3">
               <div>
                 <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-                  Self-Service Enrollment
+                  Self-Service Provider Connection
                 </h2>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Complete KYC on the provider portal, then submit your API credentials here.
+                  Connect an existing account by submitting API credentials, or apply for a new merchant account at the provider's portal.
                 </p>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -1053,4 +1351,9 @@ export default function MerchantConnect() {
       )}
     </div>
   );
+}
+
+// ── Missing icon import used in renderExistingInfo ────────────────────────────
+function Smartphone({ className }: { className?: string }) {
+  return <span className={`inline-block ${className ?? ""}`}>📱</span>;
 }

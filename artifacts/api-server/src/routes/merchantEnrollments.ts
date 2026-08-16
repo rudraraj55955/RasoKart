@@ -278,7 +278,8 @@ router.put("/:providerSlug/credentials", enrollRateLimiter, async (req, res) => 
   if (!merchantId) return;
 
   const providerSlug = req.params["providerSlug"] as string;
-  const { apiKey, apiSecret, webhookSecret } = req.body as Record<string, string>;
+  // merchantId here is the non-secret public identifier (MID / Seller ID / etc.)
+  const { apiKey, apiSecret, webhookSecret, merchantId: identifierField } = req.body as Record<string, string>;
   const user = (req as any).user;
 
   if (!providerSlug) {
@@ -294,9 +295,9 @@ router.put("/:providerSlug/credentials", enrollRateLimiter, async (req, res) => 
     return;
   }
 
-  // At least one credential must be provided
-  if (!apiKey && !apiSecret && !webhookSecret) {
-    res.status(400).json({ error: "At least one credential (apiKey, apiSecret, webhookSecret) is required" });
+  // At least one field must be provided
+  if (!apiKey && !apiSecret && !webhookSecret && !identifierField) {
+    res.status(400).json({ error: "At least one credential field (merchantId, apiKey, apiSecret, webhookSecret) is required" });
     return;
   }
 
@@ -318,12 +319,17 @@ router.put("/:providerSlug/credentials", enrollRateLimiter, async (req, res) => 
       return;
     }
 
-    // Encrypt credentials — never store plaintext
+    // Encrypt secrets — never store plaintext. merchantId is not a secret
+    // and is stored unencrypted in maskedIdentifier for display/audit use.
     const update: Record<string, unknown> = {
       enrollmentStatus: "credentials_submitted",
       updatedAt: new Date(),
     };
 
+    if (identifierField && identifierField.trim()) {
+      // Store the identifier as-is (not encrypted); it is a public MID/Seller-ID
+      update.maskedIdentifier = identifierField.trim();
+    }
     if (apiKey && apiKey !== "***") {
       update.encryptedApiKey = encryptSecret(apiKey.trim());
     }
