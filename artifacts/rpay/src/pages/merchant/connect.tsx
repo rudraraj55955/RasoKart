@@ -41,7 +41,7 @@ import {
   Search, RefreshCw, Link2,
   ExternalLink, ShieldOff, CheckCircle2, Clock, AlertTriangle, XCircle, FileText,
   Key, Unlink, ArrowRight, Info, ChevronRight, UserPlus, ArrowLeft,
-  Lock, AlertCircle,
+  Lock, AlertCircle, History, UserCog, User,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -284,6 +284,17 @@ function useDisconnect() {
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ENROLLMENT_QUERY_KEY }); },
   });
+}
+
+interface HistoryEntry {
+  id: number;
+  action: string;
+  actorEmail: string;
+  createdAt: string;
+  newStatus: string | null;
+  previousStatus: string | null;
+  reason: string | null;
+  fieldsSubmitted: string[] | null;
 }
 
 // ── Step types ────────────────────────────────────────────────────────────────
@@ -868,6 +879,7 @@ function EnrollmentCard({
 }) {
   const [flowOpen, setFlowOpen] = useState(false);
   const [disconnectOpen, setDisconnectOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const cmeta = CATEGORY_META[provider.category] ?? { label: provider.category, color: "bg-muted text-muted-foreground border-border" };
   const status = enrollment?.enrollmentStatus ?? "not_enrolled";
   const ebadge = ENROLLMENT_BADGE[status] ?? ENROLLMENT_BADGE.not_enrolled;
@@ -879,6 +891,8 @@ function EnrollmentCard({
   const isSuspended = status === "suspended";
   const info = enrollment?.onboardingInfo;
   const existingSupported = info?.existingConnectionSupported ?? true;
+  // Show history button whenever the merchant has ever interacted with this provider
+  const hasHistory = enrollment !== null && status !== "not_enrolled";
 
   return (
     <>
@@ -951,7 +965,7 @@ function EnrollmentCard({
           )}
 
           {/* Action buttons */}
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             {(canConnect || isSuspended) && (
               <Button size="sm" className="flex-1" onClick={() => setFlowOpen(true)}>
                 Connect
@@ -978,6 +992,16 @@ function EnrollmentCard({
               </Button>
             )}
           </div>
+
+          {/* History link — only when merchant has enrollment history */}
+          {hasHistory && (
+            <button
+              onClick={() => setHistoryOpen(true)}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors w-fit"
+            >
+              <History className="w-3.5 h-3.5" /> View history
+            </button>
+          )}
         </CardContent>
       </Card>
 
@@ -992,6 +1016,12 @@ function EnrollmentCard({
         providerName={providerName}
         open={disconnectOpen}
         onClose={() => setDisconnectOpen(false)}
+      />
+      <EnrollmentHistoryDialog
+        providerSlug={provider.slug}
+        providerName={providerName}
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
       />
     </>
   );
@@ -1348,4 +1378,177 @@ export default function MerchantConnect() {
 // ── Missing icon import used in renderExistingInfo ────────────────────────────
 function Smartphone({ className }: { className?: string }) {
   return <span className={`inline-block ${className ?? ""}`}>📱</span>;
+}
+
+function useEnrollmentHistory(providerSlug: string | null) {
+  return useQuery<HistoryEntry[]>({
+    queryKey: ["merchant", "enrollment-history", providerSlug],
+    queryFn: async () => {
+      const res = await enrollFetch(`/api/merchant/enrollments/${providerSlug}/history`);
+      if (!res.ok) throw new Error(`Failed to fetch history: ${res.status}`);
+      return res.json();
+    },
+    enabled: !!providerSlug,
+    staleTime: 15_000,
+  });
+}
+
+function formatHistoryTs(iso: string): string {
+  return new Date(iso).toLocaleString("en-IN", {
+    day: "2-digit", month: "short", year: "numeric",
+    hour: "2-digit", minute: "2-digit", hour12: true,
+  });
+}
+
+const STATUS_DOT_COLOR: Record<string, string> = {
+  active:                "bg-emerald-400",
+  credentials_submitted: "bg-sky-400",
+  pending_kyc:           "bg-amber-400",
+  suspended:             "bg-rose-400",
+  disconnected:          "bg-muted-foreground",
+  not_enrolled:          "bg-muted-foreground",
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  not_enrolled:          "Not Connected",
+  pending_kyc:           "Pending KYC",
+  credentials_submitted: "Under Review",
+  active:                "Connected",
+  suspended:             "Suspended",
+  disconnected:          "Disconnected",
+};
+
+const ACTION_LABEL: Record<string, { label: string; isAdmin: boolean }> = {
+  admin_enrollment_status_change:           { label: "Status changed by admin",       isAdmin: true  },
+  merchant_enrollment_credentials_submitted:{ label: "Credentials submitted",          isAdmin: false },
+  merchant_enrollment_initiated:            { label: "Enrollment started",             isAdmin: false },
+  merchant_enrollment_disconnected:         { label: "Disconnected",                   isAdmin: false },
+};
+
+function EnrollmentHistoryDialog({
+  providerSlug,
+  providerName,
+  open,
+  onClose,
+}: {
+  providerSlug: string | null;
+  providerName: string;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const { data: history, isLoading, isError } = useEnrollmentHistory(open ? providerSlug : null);
+
+  return (
+    <Dialog open={open} onOpenChange={o => !o && onClose()}>
+      <DialogContent className="sm:max-w-md max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <History className="w-4 h-4 text-muted-foreground" />
+            Enrollment History — {providerName}
+          </DialogTitle>
+          <DialogDescription>
+            Timeline of all status changes and actions for this provider enrollment
+          </DialogDescription>
+        </DialogHeader>
+
+        {isLoading && (
+          <div className="space-y-3 py-4">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="flex gap-3 animate-pulse">
+                <div className="w-2 h-2 rounded-full bg-muted mt-1.5 shrink-0" />
+                <div className="flex-1 space-y-1.5">
+                  <div className="h-3 bg-muted rounded w-3/4" />
+                  <div className="h-2.5 bg-muted rounded w-1/2" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {isError && (
+          <div className="py-6 text-center">
+            <p className="text-sm text-muted-foreground">Failed to load history. Please try again.</p>
+          </div>
+        )}
+
+        {!isLoading && !isError && history && history.length === 0 && (
+          <div className="py-8 text-center">
+            <History className="w-8 h-8 text-muted-foreground/40 mx-auto mb-3" />
+            <p className="text-sm text-muted-foreground">No enrollment activity recorded yet.</p>
+          </div>
+        )}
+
+        {!isLoading && !isError && history && history.length > 0 && (
+          <div className="relative py-2">
+            {/* Vertical line */}
+            <div className="absolute left-[5px] top-3 bottom-3 w-px bg-border/60" />
+
+            <div className="space-y-5">
+              {history.map((entry, idx) => {
+                const meta = ACTION_LABEL[entry.action] ?? { label: entry.action, isAdmin: false };
+                const dotColor = STATUS_DOT_COLOR[entry.newStatus ?? ""] ?? "bg-muted-foreground";
+                return (
+                  <div key={entry.id} className="flex gap-4 pl-1">
+                    {/* Timeline dot */}
+                    <div className={`w-2.5 h-2.5 rounded-full ${idx === 0 ? dotColor : "bg-muted-foreground/40"} mt-1 shrink-0 relative z-10`} />
+
+                    <div className="flex-1 min-w-0 space-y-1">
+                      {/* Event label */}
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-sm font-medium text-foreground">{meta.label}</span>
+                        {entry.newStatus && (
+                          <Badge
+                            variant="outline"
+                            className={`text-xs ${ENROLLMENT_BADGE[entry.newStatus]?.color ?? "bg-muted text-muted-foreground border-border"}`}
+                          >
+                            {STATUS_LABEL[entry.newStatus] ?? entry.newStatus}
+                          </Badge>
+                        )}
+                      </div>
+
+                      {/* Status transition */}
+                      {entry.previousStatus && entry.newStatus && (
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <span>{STATUS_LABEL[entry.previousStatus] ?? entry.previousStatus}</span>
+                          <ArrowRight className="w-3 h-3 shrink-0" />
+                          <span>{STATUS_LABEL[entry.newStatus] ?? entry.newStatus}</span>
+                        </div>
+                      )}
+
+                      {/* Reason */}
+                      {entry.reason && (
+                        <p className="text-xs text-muted-foreground italic">"{entry.reason}"</p>
+                      )}
+
+                      {/* Fields submitted (for credential updates) */}
+                      {entry.fieldsSubmitted && entry.fieldsSubmitted.length > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          Updated: {entry.fieldsSubmitted.join(", ")}
+                        </p>
+                      )}
+
+                      {/* Actor & timestamp */}
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground/70">
+                        {meta.isAdmin
+                          ? <UserCog className="w-3 h-3 shrink-0" />
+                          : <User className="w-3 h-3 shrink-0" />
+                        }
+                        <span className="truncate">{entry.actorEmail}</span>
+                        <span>·</span>
+                        <span className="shrink-0">{formatHistoryTs(entry.createdAt)}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={onClose}>Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }

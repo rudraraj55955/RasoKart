@@ -20,7 +20,7 @@ import {
   merchantProviderEnrollmentsTable,
   auditLogsTable,
 } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc, inArray, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { encryptSecret } from "../helpers/cryptoUtils";
 import { logger } from "../lib/logger";
@@ -126,8 +126,36 @@ router.get("/", async (req, res) => {
   try {
     const rows = await db
       .select()
-      .from(merchantProviderEnrollmentsTable)
-      .where(eq(merchantProviderEnrollmentsTable.merchantId, merchantId));
+      .from(auditLogsTable)
+      .where(
+        and(
+          inArray(auditLogsTable.action, relevantActions),
+          sql`${auditLogsTable.details}::jsonb->>'merchantId' = ${String(merchantId)}`,
+          sql`${auditLogsTable.details}::jsonb->>'providerSlug' = ${providerSlug}`
+        )
+      )
+      .orderBy(desc(auditLogsTable.createdAt))
+      .limit(50);
+
+    const history = rows.map(row => {
+      let details: Record<string, unknown> = {};
+      try {
+        if (row.details) details = JSON.parse(row.details);
+      } catch {
+        // ignore malformed JSON
+      }
+      return {
+        id: row.id,
+        action: row.action,
+        actorEmail: row.adminEmail,
+        createdAt: row.createdAt,
+        // Surface only non-secret fields from details
+        newStatus: details.newStatus ?? details.enrollmentStatus ?? null,
+        previousStatus: details.previousStatus ?? null,
+        reason: details.reason ?? null,
+        fieldsSubmitted: details.fieldsSubmitted ?? null,
+      };
+    });
 
     // Augment with EKQR status (admin-managed; always show as "active" if present)
     const formatted = rows.map(formatEnrollment);
@@ -177,7 +205,7 @@ router.post("/", enrollRateLimiter, async (req, res) => {
     return;
   }
 
-  const meta = PROVIDER_ONBOARDING_METADATA[providerSlug];
+      const meta = PROVIDER_ONBOARDING_METADATA[providerSlug];
   if (!meta) {
     res.status(400).json({ error: `Unknown provider: ${providerSlug}` });
     return;
@@ -216,24 +244,25 @@ router.post("/", enrollRateLimiter, async (req, res) => {
     let row: typeof merchantProviderEnrollmentsTable.$inferSelect;
 
     if (existing.length > 0) {
-      const [updated] = await db
-        .update(merchantProviderEnrollmentsTable)
-        .set({
-          enrollmentStatus: "pending_kyc",
-          maskedIdentifier: maskedIdentifier ? maskedIdentifier.slice(-4) : undefined,
-          onboardingUrl: meta.signupUrl ?? null,
-          failureReason: null,
-          disconnectedAt: null,
-          disconnectedBy: null,
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(merchantProviderEnrollmentsTable.merchantId, merchantId),
-            eq(merchantProviderEnrollmentsTable.providerSlug, providerSlug)
-          )
+    const [updated] = await db
+      .update(merchantProviderEnrollmentsTable)
+      .set({
+        enrollmentStatus: "disconnected",
+        // Securely clear all credential fields
+        encryptedApiKey:        null,
+        encryptedApiSecret:     null,
+        encryptedWebhookSecret: null,
+        disconnectedAt: new Date(),
+        disconnectedBy: "merchant",
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(merchantProviderEnrollmentsTable.merchantId, merchantId),
+          eq(merchantProviderEnrollmentsTable.providerSlug, providerSlug)
         )
-        .returning();
+      )
+      .returning();
       row = updated;
     } else {
       const [inserted] = await db
@@ -278,6 +307,15 @@ router.put("/:providerSlug/credentials", enrollRateLimiter, async (req, res) => 
   if (!merchantId) return;
 
   const providerSlug = req.params["providerSlug"] as string;
+
+  const { apiKey, apiSecret, webhookSecret, merchantId: identifierField } = req.body as Record<string, string>;
+
+    const relevantActions = [
+      "admin_enrollment_status_change",
+      "merchant_enrollment_credentials_submitted",
+      "merchant_enrollment_initiated",
+      "merchant_enrollment_disconnected",
+    ];
   // merchantId here is the non-secret public identifier (MID / Seller ID / etc.)
   const { apiKey, apiSecret, webhookSecret, merchantId: identifierField } = req.body as Record<string, string>;
   const user = (req as any).user;
@@ -287,7 +325,7 @@ router.put("/:providerSlug/credentials", enrollRateLimiter, async (req, res) => 
     return;
   }
 
-  const meta = PROVIDER_ONBOARDING_METADATA[providerSlug];
+      const meta = PROVIDER_ONBOARDING_METADATA[providerSlug];
   if (!meta || meta.category !== "D") {
     res.status(422).json({
       error: `Credential submission is not supported for provider: ${providerSlug}`,
@@ -312,7 +350,7 @@ router.put("/:providerSlug/credentials", enrollRateLimiter, async (req, res) => 
   try {
     // Must have an existing enrollment record
     const [existing] = await db
-      .select()
+      .select({ id: merchantProviderEnrollmentsTable.id })
       .from(merchantProviderEnrollmentsTable)
       .where(
         and(
@@ -343,7 +381,16 @@ router.put("/:providerSlug/credentials", enrollRateLimiter, async (req, res) => 
 
     const [updated] = await db
       .update(merchantProviderEnrollmentsTable)
-      .set(updateSet)
+      .set({
+        enrollmentStatus: "disconnected",
+        // Securely clear all credential fields
+        encryptedApiKey:        null,
+        encryptedApiSecret:     null,
+        encryptedWebhookSecret: null,
+        disconnectedAt: new Date(),
+        disconnectedBy: "merchant",
+        updatedAt: new Date(),
+      })
       .where(
         and(
           eq(merchantProviderEnrollmentsTable.merchantId, merchantId),
@@ -385,6 +432,15 @@ router.get("/:providerSlug/status", async (req, res) => {
 
   const providerSlug = req.params["providerSlug"] as string;
 
+  const { apiKey, apiSecret, webhookSecret, merchantId: identifierField } = req.body as Record<string, string>;
+
+    const relevantActions = [
+      "admin_enrollment_status_change",
+      "merchant_enrollment_credentials_submitted",
+      "merchant_enrollment_initiated",
+      "merchant_enrollment_disconnected",
+    ];
+
   try {
     const [row] = await db
       .select()
@@ -424,14 +480,23 @@ router.get("/:providerSlug/status", async (req, res) => {
   }
 });
 
-// ── DELETE /api/merchant/enrollments/:providerSlug ────────────────────────────
-// Revoke / disconnect. Clears encrypted credential fields and sets status to
-// "disconnected". Non-secret audit log written.
-router.delete("/:providerSlug", async (req, res) => {
+// ── GET /api/merchant/enrollments/:providerSlug/history ───────────────────────
+// Returns the audit log timeline for a specific provider enrollment.
+// Only surfaces non-secret events: status changes, credential submissions, disconnects.
+router.get("/:providerSlug/history", async (req, res) => {
   const merchantId = requireMerchant(req, res);
   if (!merchantId) return;
 
   const providerSlug = req.params["providerSlug"] as string;
+
+  const { apiKey, apiSecret, webhookSecret, merchantId: identifierField } = req.body as Record<string, string>;
+
+    const relevantActions = [
+      "admin_enrollment_status_change",
+      "merchant_enrollment_credentials_submitted",
+      "merchant_enrollment_initiated",
+      "merchant_enrollment_disconnected",
+    ];
   const user = (req as any).user;
 
   try {
