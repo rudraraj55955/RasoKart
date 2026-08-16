@@ -389,6 +389,65 @@ export const razorpayAdapter: ProviderAdapter = {
       : { healthy: false, status: "EXPIRED",   reason: test.reason };
   },
 
+  // ── reconnect ───────────────────────────────────────────────────────────────
+  // Re-validates the stored API credentials and issues a fresh session token
+  // with an updated 90-day expiry — without asking the merchant for credentials
+  // again. Returns CONNECTED on success, or FAILED + REQUIRES_FULL_REAUTH if
+  // the stored credentials are no longer valid (key deleted/rotated on Razorpay).
+
+  async reconnect(encryptedSessionToken: string): Promise<InitiateResult> {
+    const dec = decryptAdapterData(encryptedSessionToken);
+    if (!dec.ok) {
+      return {
+        status: "FAILED",
+        failReason: "REQUIRES_FULL_REAUTH",
+        failDetail:
+          "Session could not be decrypted — it may have been invalidated. " +
+          "Please re-enter your Razorpay API credentials to reconnect.",
+        helpUrl: HELP_URL,
+      };
+    }
+
+    const test = await testCredentials(dec.data.keyId, dec.data.keySecret);
+    if (!test.ok) {
+      return {
+        status: "FAILED",
+        failReason: "REQUIRES_FULL_REAUTH",
+        failDetail:
+          (test.reason ?? "Stored API credentials are no longer valid.") +
+          " Please re-enter your Razorpay API credentials to reconnect.",
+        helpUrl: HELP_URL,
+      };
+    }
+
+    // Credentials still valid — re-issue a fresh session token with updated expiry.
+    const expiresAt = new Date(Date.now() + SESSION_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+    const payload = makeSessionPayload(
+      "razorpay",
+      0,
+      {
+        ...dec.data,
+        validatedAt: new Date().toISOString(),
+      } satisfies RazorpayAdapterData,
+      { expiresAt },
+    );
+
+    const encResult = encryptSessionPayload(payload);
+    if (!encResult.ok) {
+      return {
+        status: "FAILED",
+        failReason: "SESSION_CREATE_FAILED",
+        failDetail: "Failed to refresh session token. Please try again.",
+      };
+    }
+
+    return {
+      status: "CONNECTED",
+      encryptedSessionToken: encResult.token,
+      nextStep: "COMPLETE",
+    };
+  },
+
   // ── logout ──────────────────────────────────────────────────────────────────
   // API keys have no server-side session to invalidate. The encrypted session
   // token is cleared from the DB by the disconnect route. If the merchant wants

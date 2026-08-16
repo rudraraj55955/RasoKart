@@ -247,6 +247,25 @@ export interface ProviderAdapter {
   healthCheck(encryptedSessionToken?: string): Promise<HealthCheckResult>;
 
   /**
+   * Reconnect an expired or disconnected session WITHOUT asking the merchant
+   * for credentials again, when the adapter can silently re-authenticate from
+   * the stored encrypted session data (e.g. API-key-based adapters).
+   *
+   * Return behaviour:
+   *   CONNECTED           — session refreshed; encryptedSessionToken is the new token
+   *   AWAITING_OTP        — provider requires a fresh OTP (e.g. mobile-OTP login)
+   *   AWAITING_CAPTCHA    — CAPTCHA appeared; pause for manual completion
+   *   FAILED + REQUIRES_FULL_REAUTH — stored credentials are no longer valid;
+   *                         the UI must show the credential form again
+   *   PARTNER_API_REQUIRED — adapter is fail-closed; no automation path
+   *
+   * Must NEVER fabricate CONNECTED.
+   * Must NEVER re-use an OTP or re-submit a password without the merchant's
+   * explicit action.
+   */
+  reconnect(encryptedSessionToken: string): Promise<InitiateResult>;
+
+  /**
    * Safely log out of the provider portal session and invalidate the token.
    * Must not throw — swallow errors and return cleanly.
    */

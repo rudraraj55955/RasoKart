@@ -567,6 +567,94 @@ router.get("/:provider/health", async (req: any, res) => {
   }
 });
 
+// ── POST /api/merchant/portal-sessions/:provider/reconnect ────────────────────
+// Silently refreshes an expired session without re-prompting the merchant for
+// credentials. For API-key adapters: re-validates stored credentials and
+// re-issues a fresh encrypted session token.
+// For OTP-based adapters: returns AWAITING_OTP so the UI can prompt.
+// Returns FAILED + failReason=REQUIRES_FULL_REAUTH when stored credentials are
+// revoked — the frontend should show the credential form again.
+
+router.post("/:provider/reconnect", async (req: any, res) => {
+  const providerSlug = req.params["provider"] as string;
+  const merchantId   = getMerchantId(req);
+
+  try {
+    if (!isPortalProvider(providerSlug)) {
+      res.status(404).json({ error: `Provider '${providerSlug}' is not a portal provider` });
+      return;
+    }
+
+    const [session] = await db
+      .select()
+      .from(merchantPortalSessionsTable)
+      .where(
+        and(
+          eq(merchantPortalSessionsTable.merchantId, merchantId),
+          eq(merchantPortalSessionsTable.providerSlug, providerSlug),
+        ),
+      )
+      .limit(1);
+
+    if (!session) {
+      res.status(404).json({
+        error: "No session found for this provider. Use /initiate to create one.",
+      });
+      return;
+    }
+
+    if (!session.encryptedSession) {
+      res.status(400).json({
+        status: "FAILED",
+        errorCode: "REQUIRES_FULL_REAUTH",
+        message: "No session data to reconnect from. Please re-enter your credentials.",
+      });
+      return;
+    }
+
+    const adapter = getAdapter(providerSlug);
+    if (!adapter) {
+      res.status(503).json({ error: "No adapter registered for this provider." });
+      return;
+    }
+
+    const result = await adapter.reconnect(session.encryptedSession);
+    const isConnected = result.status === "CONNECTED";
+
+    await db
+      .update(merchantPortalSessionsTable)
+      .set({
+        status:           result.status,
+        encryptedSession: result.encryptedSessionToken ?? session.encryptedSession,
+        lastStatusMessage: result.failReason ?? result.nextStepPrompt ?? null,
+        connectedAt:      isConnected ? new Date() : session.connectedAt,
+        updatedAt:        new Date(),
+      })
+      .where(
+        and(
+          eq(merchantPortalSessionsTable.merchantId, merchantId),
+          eq(merchantPortalSessionsTable.providerSlug, providerSlug),
+        ),
+      );
+
+    logger.info(
+      { merchantId, providerSlug, status: result.status },
+      "merchant_portal_session_reconnect",
+    );
+
+    res.json({
+      status:    result.status,
+      errorCode: result.failReason ?? null,
+      message:   result.nextStepPrompt ?? result.failDetail ?? null,
+      nextStep:  result.nextStep ?? null,
+      helpUrl:   result.helpUrl ?? null,
+    });
+  } catch (err: any) {
+    logger.error({ err: err.message, merchantId, providerSlug }, "merchant_portal_reconnect_failed");
+    res.status(500).json({ error: "Reconnect failed. Please try again." });
+  }
+});
+
 // ── POST /api/merchant/portal-sessions/:provider/disconnect ───────────────────
 
 router.post("/:provider/disconnect", async (req: any, res) => {

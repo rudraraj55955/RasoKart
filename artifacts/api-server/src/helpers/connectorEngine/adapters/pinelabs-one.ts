@@ -43,6 +43,9 @@ import type {
   HealthCheckResult,
 } from "../types";
 
+// Note: reconnect is also PARTNER_API_REQUIRED because no session can be
+// created without a partner API — there is nothing to reconnect to.
+
 const PARTNER_API_MESSAGE =
   "Official Pine Labs ONE partner/enterprise API access required";
 
@@ -105,6 +108,15 @@ export const pineLabsOneAdapter: ProviderAdapter = {
       status: "PARTNER_API_REQUIRED",
       reason: "PARTNER_API_REQUIRED",
       detail: PARTNER_API_MESSAGE + ". Apply at " + HELP_URL,
+    };
+  },
+
+  async reconnect(_token): Promise<InitiateResult> {
+    return {
+      status: "PARTNER_API_REQUIRED",
+      failReason: "PARTNER_API_REQUIRED",
+      failDetail: PARTNER_API_DETAIL,
+      helpUrl: HELP_URL,
     };
   },
 
