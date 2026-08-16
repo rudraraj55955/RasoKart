@@ -295,6 +295,14 @@ router.put("/:providerSlug/credentials", enrollRateLimiter, async (req, res) => 
     return;
   }
 
+  // Block providers that require enterprise partnership (no public gateway API)
+  if (meta.existingConnectionSupported === false) {
+    res.status(422).json({
+      error: `${providerSlug} does not support direct credential submission. Enterprise partnership required — contact RasoKart support.`,
+    });
+    return;
+  }
+
   // At least one field must be provided
   if (!apiKey && !apiSecret && !webhookSecret && !identifierField) {
     res.status(400).json({ error: "At least one credential field (merchantId, apiKey, apiSecret, webhookSecret) is required" });
@@ -321,28 +329,21 @@ router.put("/:providerSlug/credentials", enrollRateLimiter, async (req, res) => 
 
     // Encrypt secrets — never store plaintext. merchantId is not a secret
     // and is stored unencrypted in maskedIdentifier for display/audit use.
-    const update: Record<string, unknown> = {
-      enrollmentStatus: "credentials_submitted",
+    // Use a typed spread so Drizzle correctly maps every field to its column.
+    const updateSet = {
+      enrollmentStatus: "credentials_submitted" as const,
       updatedAt: new Date(),
+      // Non-secret public identifier (MID / Seller ID / etc.) stored as-is
+      ...(identifierField?.trim() ? { maskedIdentifier: identifierField.trim() } : {}),
+      // Secrets are AES-256-GCM encrypted; "***" sentinel means "leave unchanged"
+      ...(apiKey && apiKey !== "***" ? { encryptedApiKey: encryptSecret(apiKey.trim()) } : {}),
+      ...(apiSecret && apiSecret !== "***" ? { encryptedApiSecret: encryptSecret(apiSecret.trim()) } : {}),
+      ...(webhookSecret && webhookSecret !== "***" ? { encryptedWebhookSecret: encryptSecret(webhookSecret.trim()) } : {}),
     };
-
-    if (identifierField && identifierField.trim()) {
-      // Store the identifier as-is (not encrypted); it is a public MID/Seller-ID
-      update.maskedIdentifier = identifierField.trim();
-    }
-    if (apiKey && apiKey !== "***") {
-      update.encryptedApiKey = encryptSecret(apiKey.trim());
-    }
-    if (apiSecret && apiSecret !== "***") {
-      update.encryptedApiSecret = encryptSecret(apiSecret.trim());
-    }
-    if (webhookSecret && webhookSecret !== "***") {
-      update.encryptedWebhookSecret = encryptSecret(webhookSecret.trim());
-    }
 
     const [updated] = await db
       .update(merchantProviderEnrollmentsTable)
-      .set(update)
+      .set(updateSet)
       .where(
         and(
           eq(merchantProviderEnrollmentsTable.merchantId, merchantId),
