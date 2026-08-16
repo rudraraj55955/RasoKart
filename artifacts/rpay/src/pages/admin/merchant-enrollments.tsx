@@ -49,6 +49,7 @@ interface AdminEnrollment {
   hasApiSecret: boolean;
   hasWebhookSecret: boolean;
   connectedAt: string | null;
+  lastVerifiedAt: string | null;
   disconnectedAt: string | null;
   failureReason: string | null;
   createdAt: string | null;
@@ -161,6 +162,24 @@ function useUpdateEnrollmentStatus() {
       qc.invalidateQueries({ queryKey: ["admin", "merchant-enrollments"] });
     },
   });
+}
+
+// ── Relative time helper ──────────────────────────────────────────────────────
+
+function relativeTime(iso: string | null | undefined): string {
+  if (!iso) return "Never tested";
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days === 1) return "Yesterday";
+  if (days < 30) return `${days} days ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo ago`;
+  return `${Math.floor(months / 12)}y ago`;
 }
 
 // ── Status Badge ──────────────────────────────────────────────────────────────
@@ -290,6 +309,7 @@ export default function AdminMerchantEnrollments() {
   const [testResults, setTestResults] = useState<Record<number, TestCredentialsResult>>({});
   const [testingId, setTestingId] = useState<number | null>(null);
 
+  const qc = useQueryClient();
   const { data, isLoading, isFetching, refetch } = useEnrollments(statusFilter, page);
   const { data: pendingCountData } = usePendingCount();
   const updateStatus = useUpdateEnrollmentStatus();
@@ -303,8 +323,15 @@ export default function AdminMerchantEnrollments() {
         providerSlug: enrollment.providerSlug,
       });
       setTestResults((prev) => ({ ...prev, [enrollment.id]: result }));
-      if (result.pass) toast.success("Credential test passed");
-      else toast.error(`Credential test failed: ${result.message}`);
+      if (result.pass) {
+        toast.success("Credential test passed");
+        // Refetch enrollments so lastVerifiedAt is up-to-date on the row.
+        // This ensures a subsequent failed test falls back to the correct
+        // persisted timestamp rather than the stale pre-test value.
+        qc.invalidateQueries({ queryKey: ["admin", "merchant-enrollments"] });
+      } else {
+        toast.error(`Credential test failed: ${result.message}`);
+      }
     } catch (err: any) {
       toast.error(err.message ?? "Failed to test credentials");
     } finally {
@@ -433,6 +460,7 @@ export default function AdminMerchantEnrollments() {
                     <TableHead className="text-zinc-400 text-xs">Status</TableHead>
                     <TableHead className="text-zinc-400 text-xs">Credentials</TableHead>
                     <TableHead className="text-zinc-400 text-xs">Submitted</TableHead>
+                    <TableHead className="text-zinc-400 text-xs">Last Verified</TableHead>
                     <TableHead className="text-zinc-400 text-xs text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -482,6 +510,25 @@ export default function AdminMerchantEnrollments() {
                         {enrollment.updatedAt
                           ? new Date(enrollment.updatedAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
                           : "—"}
+                      </TableCell>
+
+                      {/* Last Verified */}
+                      <TableCell className="py-3 text-xs">
+                        {(() => {
+                          // Only use the live testedAt when the test passed — the server
+                          // only writes lastVerifiedAt on a passing test, so a failed
+                          // result must not advance the displayed timestamp.
+                          const liveResult = testResults[enrollment.id];
+                          const liveTestedAt = liveResult?.pass ? liveResult.testedAt : null;
+                          const verifiedAt = liveTestedAt ?? enrollment.lastVerifiedAt;
+                          const label = relativeTime(verifiedAt);
+                          const isNever = !verifiedAt;
+                          return (
+                            <span className={isNever ? "text-zinc-600" : "text-zinc-400"}>
+                              {label}
+                            </span>
+                          );
+                        })()}
                       </TableCell>
 
                       {/* Actions */}
