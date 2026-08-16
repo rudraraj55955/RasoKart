@@ -23,6 +23,24 @@ const router = Router();
 router.use(requireAuth, requireAdmin);
 
 /**
+ * Translate the raw `environment` string stored in provider_integrations into
+ * the strict "uat" | "live" discriminant that verifyPineLabsUatCredentials
+ * expects.
+ *
+ * Exported so that unit tests can confirm the mapping without going through the
+ * full HTTP/DB layer.
+ *
+ * Contract:
+ *   - "live"             → "live"   (Pine Labs production endpoint)
+ *   - anything else      → "uat"    (Pine Labs UAT endpoint, safe default)
+ */
+export function selectPineLabsEnv(
+  rowEnvironment: string | null | undefined,
+): "uat" | "live" {
+  return rowEnvironment === "live" ? "live" : "uat";
+}
+
+/**
  * POST /api/admin/pinelabs/test-credentials
  *
  * Reads the saved Pine Labs credentials from the DB, decrypts them, and
@@ -72,7 +90,7 @@ router.post("/test-credentials", async (req, res, next) => {
       return;
     }
 
-    const env = row.environment === "live" ? "live" : "uat";
+    const env = selectPineLabsEnv(row.environment);
     const result = await verifyPineLabsUatCredentials(mid, accessCode, secretKey, env);
     res.json(result);
   } catch (err) {
