@@ -59,6 +59,29 @@ export interface ProviderOnboardingInfo {
    * what the merchant needs to do and what happens.
    */
   existingConnectionNote?: string;
+
+  // ── Mobile Number + OTP connection ───────────────────────────────────────
+  /**
+   * Whether this provider exposes an official, publicly documented API that
+   * allows a third-party platform to authenticate a merchant via mobile
+   * number + OTP and receive back an authorized, reusable session/token.
+   *
+   * Currently false for every listed provider — none of PhonePe, Paytm,
+   * BharatPe, Amazon Pay, or MobiKwik publish such an API endpoint. Their
+   * mobile+OTP portals are internal merchant-facing UIs, not third-party APIs.
+   *
+   * Rule: set to true ONLY when a provider's official developer documentation
+   * explicitly describes a merchant authentication API (initiate-OTP endpoint
+   * + verify-OTP endpoint + session token response) approved for use by
+   * third-party payment platforms. Anything less is not sufficient.
+   */
+  mobileOtpSupported?: boolean;
+  /**
+   * Shown to merchants when they select "Connect with Mobile Number + OTP".
+   * Must explain exactly why the method is unavailable and what to use instead.
+   * Kept null/absent when mobileOtpSupported is true (future use).
+   */
+  mobileOtpNote?: string;
   /** The login methods a merchant uses when signing in to the provider portal */
   loginMethods?: string[];
   /** URL of the existing-merchant business dashboard / API-keys page */
@@ -126,6 +149,19 @@ export const PROVIDER_ONBOARDING_METADATA: Record<string, ProviderOnboardingInfo
       },
     ],
 
+    // Mobile + OTP — audit result: NOT SUPPORTED
+    // PhonePe Business portal uses mobile+OTP internally for portal login, but
+    // PhonePe does NOT publish an API that lets a third-party platform initiate
+    // that OTP flow or receive an authorized merchant session/token. Only
+    // provider-issued API keys (Salt Key + Salt Index) can be used for third-party
+    // payment integrations — those are retrieved from the portal after manual login.
+    mobileOtpSupported: false,
+    mobileOtpNote:
+      "PhonePe Business does not provide a public API for third-party mobile+OTP merchant authentication. " +
+      "Their merchant portal login (mobile number + OTP) is an internal security mechanism and is not " +
+      "accessible to external platforms. To connect PhonePe, log into the PhonePe for Business portal " +
+      "manually and retrieve your Salt Key and Salt Index from the Integration Settings section.",
+
     signupUrl: "https://business.phonepe.com/signup",
     kycDocuments: [
       "GST Registration Certificate",
@@ -183,6 +219,18 @@ export const PROVIDER_ONBOARDING_METADATA: Record<string, ProviderOnboardingInfo
       },
     ],
 
+    // Mobile + OTP — audit result: NOT SUPPORTED
+    // Paytm Business portal uses mobile+OTP+CAPTCHA for its own merchant portal
+    // login, but Paytm does not publish a public API for third-party platforms to
+    // initiate that OTP flow or receive a merchant session token. Only
+    // provider-issued API keys retrieved manually from the portal are usable.
+    mobileOtpSupported: false,
+    mobileOtpNote:
+      "Paytm Business does not provide a public API for third-party mobile+OTP merchant authentication. " +
+      "The Paytm Business portal login (mobile number + OTP + CAPTCHA) is an internal security flow and " +
+      "cannot be initiated by external platforms. To connect Paytm, log into the Paytm Business portal " +
+      "manually and retrieve your MID, Client ID, and Client Secret from the API Keys section.",
+
     signupUrl: "https://business.paytm.com/payment-gateway",
     kycDocuments: [
       "GST Registration Certificate",
@@ -222,6 +270,17 @@ export const PROVIDER_ONBOARDING_METADATA: Record<string, ProviderOnboardingInfo
       "Aadhaar of Proprietor/Director",
       "Bank account details",
     ],
+    // Mobile + OTP — audit result: NOT SUPPORTED
+    // BharatPe's merchant portal (mobile+OTP+CAPTCHA+device fingerprinting) is
+    // internal to BharatPe and does not expose an API for third-party platforms.
+    // Enterprise API access requires a direct BharatPe partnership — even with a
+    // partnership, authentication is API-key based, not mobile+OTP.
+    mobileOtpSupported: false,
+    mobileOtpNote:
+      "BharatPe does not provide a public mobile+OTP authentication API for third-party platforms. " +
+      "BharatPe's merchant app login is internal and device-bound. Integration with BharatPe requires " +
+      "an enterprise partnership agreement — contact RasoKart support to initiate a partnership inquiry.",
+
     onboardingTimeline: "1–3 business days for basic QR; 7–14 days for API access",
     supportsSelfSubmit: false,
     finalStatus: "ENTERPRISE PARTNERSHIP REQUIRED — CONTACT RASOKART SUPPORT",
@@ -275,6 +334,19 @@ export const PROVIDER_ONBOARDING_METADATA: Record<string, ProviderOnboardingInfo
       },
     ],
 
+    // Mobile + OTP — audit result: NOT SUPPORTED
+    // Amazon Pay uses Amazon account authentication (email+password+2FA) — not a
+    // mobile+OTP flow. Amazon does not publish any API that lets a third-party
+    // platform initiate Amazon authentication on a merchant's behalf or receive
+    // back an Amazon session token. Only provider-issued OAuth credentials
+    // retrieved manually from Amazon Seller Central are usable for integration.
+    mobileOtpSupported: false,
+    mobileOtpNote:
+      "Amazon Pay uses Amazon account authentication (email + password + 2FA), not a mobile+OTP flow. " +
+      "Amazon does not provide a public API for third-party platforms to initiate merchant authentication " +
+      "or receive Amazon session tokens. To connect Amazon Pay, log into Amazon Seller Central manually " +
+      "and retrieve your Seller ID, Client ID, and Client Secret from the Amazon Pay integration section.",
+
     signupUrl: "https://pay.amazon.in/merchant",
     kycDocuments: [
       "GST Registration Certificate",
@@ -319,6 +391,18 @@ export const PROVIDER_ONBOARDING_METADATA: Record<string, ProviderOnboardingInfo
         required: true,
       },
     ],
+
+    // Mobile + OTP — audit result: NOT SUPPORTED
+    // MobiKwik for Business uses mobile+OTP for its own merchant portal login
+    // but does not publish a third-party API for initiating that OTP flow or
+    // receiving merchant session tokens. Only API keys retrieved manually from
+    // the MobiKwik Business portal are usable for payment integration.
+    mobileOtpSupported: false,
+    mobileOtpNote:
+      "MobiKwik for Business does not provide a public API for third-party mobile+OTP merchant authentication. " +
+      "The MobiKwik Business portal login (mobile number + OTP) is internal and not accessible to external " +
+      "platforms. To connect MobiKwik, log into the MobiKwik for Business portal manually and retrieve " +
+      "your Merchant ID and Secret Key from the Integration → API Keys section.",
 
     signupUrl: "https://business.mobikwik.com",
     kycDocuments: [
@@ -414,5 +498,8 @@ export function toPublicOnboardingInfo(info: ProviderOnboardingInfo) {
     onboardingTimeline: info.onboardingTimeline ?? null,
     supportsSelfSubmit: info.supportsSelfSubmit,
     finalStatus: info.finalStatus,
+    // Mobile OTP support status — false for all current providers
+    mobileOtpSupported: info.mobileOtpSupported ?? false,
+    mobileOtpNote: info.mobileOtpNote ?? null,
   };
 }

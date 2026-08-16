@@ -69,6 +69,9 @@ interface OnboardingInfo {
   onboardingTimeline: string | null;
   supportsSelfSubmit: boolean;
   finalStatus: string;
+  // Mobile OTP support — false for all current providers
+  mobileOtpSupported: boolean;
+  mobileOtpNote: string | null;
 }
 
 interface Enrollment {
@@ -300,7 +303,8 @@ interface HistoryEntry {
 // ── Step types ────────────────────────────────────────────────────────────────
 
 type FlowStep =
-  | "choice"           // initial: choose Existing or New
+  | "choice"           // initial: choose Mobile OTP, Existing Creds, or New Account
+  | "mobile_otp"       // mobile+OTP — show support status (unsupported for all current providers)
   | "existing_info"    // explain how to get credentials + login methods
   | "credentials"      // form with provider-specific field labels
   | "new_account";     // KYC docs + signup link
@@ -418,13 +422,40 @@ function EnrollFlowDialog({
 
   // ── Step: choice ─────────────────────────────────────────────────────────
   function renderChoice() {
+    const mobileOtpSupported = info?.mobileOtpSupported ?? false;
     return (
       <div className="space-y-4 py-2">
         <p className="text-sm text-muted-foreground">
           Choose how you want to connect <span className="font-medium text-foreground">{providerName}</span>:
         </p>
 
-        {/* Option A: Provider-issued credentials */}
+        {/* Option 1: Mobile Number + OTP */}
+        <button
+          className="w-full text-left p-4 rounded-lg border border-border/60 hover:border-sky-500/40 hover:bg-sky-500/5 transition-colors group"
+          onClick={() => setStep("mobile_otp")}
+        >
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-lg bg-sky-500/10 flex items-center justify-center shrink-0 group-hover:bg-sky-500/20 transition-colors">
+              <Smartphone className="w-4 h-4 text-sky-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-semibold text-foreground">Connect with Mobile Number + OTP</p>
+                {!mobileOtpSupported && (
+                  <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border/60">
+                    Check status
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Authenticate using your registered mobile number via the provider's OTP system
+              </p>
+            </div>
+            <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-sky-400 mt-0.5 shrink-0 transition-colors" />
+          </div>
+        </button>
+
+        {/* Option 2: Provider-issued credentials */}
         <button
           className="w-full text-left p-4 rounded-lg border border-border/60 hover:border-primary/40 hover:bg-primary/5 transition-colors group"
           onClick={() => setStep("existing_info")}
@@ -445,7 +476,7 @@ function EnrollFlowDialog({
           </div>
         </button>
 
-        {/* Option B: New account */}
+        {/* Option 3: New account */}
         {info?.signupUrl && (
           <button
             className="w-full text-left p-4 rounded-lg border border-border/60 hover:border-emerald-500/40 hover:bg-emerald-500/5 transition-colors group"
@@ -469,6 +500,76 @@ function EnrollFlowDialog({
               <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-emerald-400 mt-0.5 shrink-0 transition-colors" />
             </div>
           </button>
+        )}
+      </div>
+    );
+  }
+
+  // ── Step: mobile_otp ──────────────────────────────────────────────────────
+  function renderMobileOtp() {
+    const mobileOtpSupported = info?.mobileOtpSupported ?? false;
+    const mobileOtpNote = info?.mobileOtpNote ?? null;
+
+    return (
+      <div className="space-y-4 py-2">
+        {/* Breadcrumb */}
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <span className="text-muted-foreground/60">Connection options</span>
+          <ChevronRight className="w-3 h-3" />
+          <span className="text-foreground font-medium">Connect with Mobile Number + OTP</span>
+        </div>
+
+        {mobileOtpSupported ? (
+          /* Future: live mobile OTP flow goes here */
+          <div className="p-4 rounded-lg bg-emerald-500/5 border border-emerald-500/20 flex items-start gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
+            <p className="text-sm text-emerald-400">
+              Mobile + OTP authentication is supported for this provider. Follow the steps below.
+            </p>
+          </div>
+        ) : (
+          <>
+            {/* Unsupported notice */}
+            <div className="p-4 rounded-lg bg-amber-500/5 border border-amber-500/20 space-y-2">
+              <p className="text-sm font-semibold text-amber-400 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                Mobile + OTP direct connection is not supported
+              </p>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                {mobileOtpNote ??
+                  "Mobile + OTP direct connection is not supported by this provider. " +
+                  "Use provider-issued credentials or complete merchant onboarding."}
+              </p>
+            </div>
+
+            {/* Why not available */}
+            <div className="p-3.5 rounded-lg bg-muted/30 border border-border/50 space-y-1.5">
+              <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                <Info className="w-3.5 h-3.5 text-muted-foreground" />
+                Why Mobile + OTP isn't available for third-party platforms
+              </p>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Mobile + OTP authentication on payment provider portals is a security mechanism
+                that protects merchant accounts. These providers do not expose public APIs that
+                allow a third-party platform like RasoKart to initiate OTP flows, receive
+                authentication tokens, or manage merchant sessions on the merchant's behalf.
+              </p>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                To connect, use the <span className="font-medium text-foreground">provider-issued API credentials</span> path
+                instead — API keys are specifically designed for third-party payment platform integrations.
+              </p>
+            </div>
+
+            {/* Safety statement */}
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-muted/20 border border-border/40">
+              <Lock className="w-3.5 h-3.5 text-muted-foreground mt-0.5 shrink-0" />
+              <p className="text-xs text-muted-foreground">
+                RasoKart never intercepts OTPs, bypasses CAPTCHA or 2FA, reads SMS, or automates
+                provider portal login on your behalf. All provider portal authentication happens
+                entirely on the provider's own website or app.
+              </p>
+            </div>
+          </>
         )}
       </div>
     );
@@ -713,6 +814,23 @@ function EnrollFlowDialog({
       );
     }
 
+    if (step === "mobile_otp") {
+      return (
+        <>
+          <Button variant="outline" onClick={() => setStep("choice")} className="gap-1.5">
+            <ArrowLeft className="w-3.5 h-3.5" /> Back
+          </Button>
+          {/* If unsupported, suggest the credentials path as the primary action */}
+          {!(info?.mobileOtpSupported) && (
+            <Button onClick={() => setStep("existing_info")} className="gap-2">
+              Use Provider Credentials
+              <ArrowRight className="w-4 h-4" />
+            </Button>
+          )}
+        </>
+      );
+    }
+
     if (step === "existing_info") {
       return (
         <>
@@ -790,6 +908,7 @@ function EnrollFlowDialog({
           </DialogTitle>
           <DialogDescription>
             {step === "choice" && "How would you like to connect this provider?"}
+            {step === "mobile_otp" && "Connect using your registered mobile number + OTP"}
             {step === "existing_info" && "Submit provider-issued API credentials"}
             {step === "credentials" && "Enter the API credentials you obtained from the provider portal"}
             {step === "new_account" && "Apply for a new merchant account"}
@@ -806,6 +925,7 @@ function EnrollFlowDialog({
         )}
 
         {step === "choice" && renderChoice()}
+        {step === "mobile_otp" && renderMobileOtp()}
         {step === "existing_info" && renderExistingInfo()}
         {step === "credentials" && renderCredentials()}
         {step === "new_account" && renderNewAccount()}
