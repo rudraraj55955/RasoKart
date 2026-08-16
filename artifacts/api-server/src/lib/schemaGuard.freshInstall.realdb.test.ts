@@ -1,3 +1,19 @@
+// ── Pino / process-exit fix ───────────────────────────────────────────────────
+//
+// Must be set BEFORE any import that instantiates pino (including the app and
+// seed modules that import `./lib/logger`).  Pino creates a worker_thread for
+// the pino-pretty transport in non-production environments, and that worker
+// thread keeps the Node.js event loop alive indefinitely — causing the test
+// runner to hang after all tests complete instead of exiting.  Setting
+// NODE_ENV=production before any import makes pino use its built-in JSON sink
+// (no worker thread) so the process exits cleanly once pool.end() drains the
+// pg connections.  The tested routes and schemaGuard behaviour are identical
+// in production mode; the only functional difference is log formatting.
+//
+// ⚠ This must remain the very first executable statement in the file — any
+//   import appearing above it is evaluated before the assignment runs.
+process.env["NODE_ENV"] = "production";
+
 /**
  * schemaGuard.freshInstall.realdb.test.ts
  *
@@ -65,7 +81,7 @@ import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import { SQL } from "drizzle-orm";
-import { pool } from "@workspace/db";
+import { pool, db, up } from "@workspace/db";
 import { DEMO_CREDENTIALS } from "@workspace/demo-credentials";
 import app from "../app";
 import { seed } from "../seed";
@@ -373,6 +389,24 @@ describe(
 
     before(async () => {
       // ───────────────────────────────────────────────────────────────────────
+      // PRE-STEP: Run the IAM migration on the real pool BEFORE the transaction.
+      //
+      // runSchemaGuardWith() (Part A below) calls up(db) internally.  up(db)
+      // uses the drizzle global pool — a SEPARATE pg connection from the
+      // transaction client.  up(db) creates FK constraints that reference the
+      // `users` table, which requires a SHARE lock.  But the transaction client
+      // holds an ACCESS EXCLUSIVE lock on `users` (from ALTER TABLE ADD COLUMN).
+      // SHARE conflicts with ACCESS EXCLUSIVE → up(db) waits forever while the
+      // transaction client (also in Node.js) waits for up(db) to finish.
+      //
+      // Fix: run up(db) once here, BEFORE any transaction is open.  When
+      // runSchemaGuardWith() calls up(db) inside the transaction, all DO $$
+      // IF NOT EXISTS guards short-circuit (FK constraints already exist,
+      // columns already renamed, tables already present) — no SHARE lock on
+      // `users` is ever taken, and the deadlock does not occur.
+      await up(db);
+
+      // ───────────────────────────────────────────────────────────────────────
       // PART A: Isolated table-creation proof
       //
       // A dedicated pg.PoolClient runs inside a BEGIN/ROLLBACK transaction so
@@ -504,7 +538,16 @@ describe(
     });
 
     after(async () => {
+      // Destroy all open keep-alive connections before closing the server.
+      // Without this, server.close() waits indefinitely for HTTP/1.1 keep-alive
+      // connections to time out (default: never), which prevents the callback
+      // from firing. closeAllConnections() is available in Node.js 18.2+.
+      server.closeAllConnections();
       await new Promise<void>((resolve) => server.close(() => resolve()));
+      // End the pg pool so the Node.js process exits cleanly after all tests
+      // complete.  Without this, the pool's idle connections are open handles
+      // that prevent the test runner from terminating, causing an indefinite hang.
+      await pool.end();
     });
 
     // ── Part A: dropped tables were absent before the guard ran ───────────────

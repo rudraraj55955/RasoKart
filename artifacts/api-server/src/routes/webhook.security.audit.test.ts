@@ -215,7 +215,22 @@ const WH_CONFIG_A = {
 
 // ── Stub state ────────────────────────────────────────────────────────────────
 
-let savedInserts: unknown[] = [];
+/**
+ * Typed shape of every row captured by the insert stub.
+ * `vals` carries the exact object passed to Drizzle's `.values()` call; the
+ * index signature lets us access additional fields without widening to `any`.
+ */
+interface CapturedDbInsert {
+  tbl: unknown;
+  vals: {
+    signatureVerified?: boolean | null;
+    processingResult?: string;
+    details?: string;
+    [key: string]: unknown;
+  };
+}
+
+let savedInserts: CapturedDbInsert[] = [];
 let savedUpdates: unknown[] = [];
 
 // ── Test server ───────────────────────────────────────────────────────────────
@@ -265,7 +280,7 @@ describe("W — Payout webhook signature verification", () => {
     // insert should record without error
     (db as any).insert = (tbl: unknown) => ({
       values: (vals: unknown) => {
-        savedInserts.push({ tbl, vals });
+        savedInserts.push({ tbl, vals: vals as CapturedDbInsert["vals"] });
         return Promise.resolve();
       },
     });
@@ -377,7 +392,7 @@ describe("W — Payout webhook signature verification", () => {
     // Verify the DB log entry records the event as NOT authenticated
     const logInsert = savedInserts[savedInserts.length - 1];
     assert.ok(logInsert, "A log row must be written");
-    const logVals = logInsert?.vals as any;
+    const logVals = logInsert?.vals;
     assert.strictEqual(
       logVals?.signatureVerified,
       false,
@@ -411,7 +426,7 @@ describe("W — Payout webhook signature verification", () => {
     // Allow event loop to drain
     await new Promise(resolve => setImmediate(resolve));
     const logInsert = savedInserts[savedInserts.length - 1];
-    const logVals = logInsert?.vals as any;
+    const logVals = logInsert?.vals;
     // The forged event MUST be recorded as unverified
     assert.strictEqual(
       logVals?.signatureVerified,
@@ -519,7 +534,7 @@ describe("C — Admin callback retry isolation", () => {
     });
     (db as any).insert = (tbl: unknown) => ({
       values: (vals: unknown) => {
-        savedInserts.push({ tbl, vals });
+        savedInserts.push({ tbl, vals: vals as CapturedDbInsert["vals"] });
         return Promise.resolve([{ id: 1 }]);
       },
     });
