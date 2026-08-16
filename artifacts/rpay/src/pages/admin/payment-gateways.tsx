@@ -16,6 +16,10 @@ import {
 import type { ProviderIntegration } from "@workspace/api-client-react";
 import { getToken } from "@/lib/auth";
 import { computeWillDisable } from "@/lib/disable-gateway-guard";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -33,7 +37,7 @@ import {
   CreditCard, Landmark, Zap, PlusCircle, CheckCircle2, XCircle, AlertCircle,
   Eye, EyeOff, Save, FlaskConical, Copy, ExternalLink, GitMerge,
   Users, ArrowRight, Shield, Activity, Settings2, Layers, Plug, Trash2,
-  Percent, Loader2, ReceiptText, Info,
+  Percent, Loader2, ReceiptText, Info, AlertTriangle,
 } from "lucide-react";
 
 const authHeader = () => ({ Authorization: `Bearer ${getToken()}` });
@@ -1024,6 +1028,7 @@ function PineLabsPanel() {
   const [initialized, setInitialized] = useState(false);
   const [liveCredError, setLiveCredError] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
+  const [showLiveConfirm, setShowLiveConfirm] = useState(false);
   const [testResult, setTestResult] = useState<{ pass: boolean; message: string; detail: string; environment?: "uat" | "live" } | null>(null);
 
   useEffect(() => {
@@ -1047,6 +1052,14 @@ function PineLabsPanel() {
     },
   } as any);
 
+  function doSave() {
+    const body: Record<string, unknown> = { isEnabled: enabled, environment };
+    if (merchantId.trim()) body["clientId"] = merchantId.trim();
+    if (accessCode.trim()) body["apiKey"] = accessCode.trim();
+    if (secretKey.trim()) body["apiSecret"] = secretKey.trim();
+    saveConfig({ key: "pinelabs", data: body as any });
+  }
+
   function handleSave() {
     setLiveCredError(null);
     // Guard: live + enabled requires all three credentials to be present
@@ -1060,12 +1073,11 @@ function PineLabsPanel() {
         );
         return;
       }
+      // Show confirmation dialog before enabling in live mode
+      setShowLiveConfirm(true);
+      return;
     }
-    const body: Record<string, unknown> = { isEnabled: enabled, environment };
-    if (merchantId.trim()) body["clientId"] = merchantId.trim();
-    if (accessCode.trim()) body["apiKey"] = accessCode.trim();
-    if (secretKey.trim()) body["apiSecret"] = secretKey.trim();
-    saveConfig({ key: "pinelabs", data: body as any });
+    doSave();
   }
 
   const testCredentials = async () => {
@@ -1327,6 +1339,42 @@ function PineLabsPanel() {
           ? <><Loader2 className="w-3 h-3 mr-1.5 animate-spin" />Saving…</>
           : <><Save className="w-3 h-3 mr-1.5" />Save Pine Labs Settings</>}
       </Button>
+
+      {/* Live-mode enable confirmation dialog */}
+      <AlertDialog open={showLiveConfirm} onOpenChange={(v) => { if (!v) setShowLiveConfirm(false); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-400" />
+              Enable Pine Labs in Live Mode?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-left">
+                <p>
+                  You are about to enable the <strong className="text-foreground">Pine Labs Plural Gateway</strong> in{" "}
+                  <strong className="text-violet-400">Live mode</strong>. This will immediately start processing real payments.
+                </p>
+                <p>Make sure your credentials have been tested and your integration is ready for production traffic.</p>
+                <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+                  <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  <span>
+                    Live mode charges real money. Ensure your Merchant ID, Access Code, and Secret Key are correct before confirming.
+                  </span>
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowLiveConfirm(false)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => { setShowLiveConfirm(false); doSave(); }}
+              className="bg-violet-600 text-white hover:bg-violet-700"
+            >
+              Enable Live Mode
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
