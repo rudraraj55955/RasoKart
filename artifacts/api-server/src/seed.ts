@@ -791,7 +791,7 @@ export async function seed() {
       { name: "PayU",                 slug: "payu",            category: "gateway", status: "live",        description: "PayU merchant payment gateway",                              sortOrder: 16 },
       { name: "EKQR / UPI Gateway",   slug: "ekqr",            category: "gateway", status: "sandbox",     description: "EKQR UPI payment gateway — dynamic QR & auto-credit deposits", sortOrder: 17 },
       { name: "Pine Labs Plural",      slug: "pinelabs",        category: "gateway", status: "sandbox",     description: "Pine Labs Plural payment gateway — cards, UPI, wallets, EMI",  sortOrder: 18 },
-      { name: "Pine Labs ONE",         slug: "pinelabs_one",    category: "gateway", status: "sandbox",     description: "Pine Labs ONE POS/QR merchant account platform — partner API required", sortOrder: 19 },
+      { name: "Pine Labs ONE",         slug: "pinelabs_one",    category: "gateway", status: "live",        description: "Connect your Pine Labs ONE POS/QR merchant account to sync transactions and monitor settlement status", sortOrder: 19 },
       { name: "Paytm Business",        slug: "paytm_merchant",  category: "upi",     status: "sandbox",     description: "Paytm Business portal — mobile OTP portal session connector (read-only transaction sync)", sortOrder: 20 },
     ];
     for (const p of PROVIDERS) {
@@ -817,14 +817,18 @@ export async function seed() {
 
   // ── Idempotent upsert for Pine Labs ONE (POS/QR merchant account) ────────────
   // Pine Labs ONE (one.pinelabs.com) is a separate product from Pine Labs Plural PG.
-  // Partner/enterprise API agreement required (developer.pinelabs.com).
-  // Status: sandbox — credential form is enabled; credentials are validated by format
-  // only until official Pine Labs partner API documentation confirms the live endpoint.
-  // Change to "live" when production partner credentials are obtained.
+  // Authentication uses the portal_session_connector (Playwright browser automation),
+  // NOT partner API credentials. Status: "live" so resolveVisible() returns true for
+  // all merchants by default — merchants can connect their own Pine Labs ONE accounts.
   await db.insert(providersTable).values({
-    name: "Pine Labs ONE", slug: "pinelabs_one", category: "gateway", status: "sandbox",
-    description: "Pine Labs ONE — POS/QR merchant account platform (partner API credentials required)", sortOrder: 19,
-  }).onConflictDoUpdate({ target: providersTable.slug, set: { name: "Pine Labs ONE", category: "gateway", status: "sandbox", sortOrder: 19 } });
+    name: "Pine Labs ONE", slug: "pinelabs_one", category: "gateway", status: "live",
+    description: "Connect your Pine Labs ONE POS/QR merchant account to sync transactions and monitor settlement status",
+    sortOrder: 19,
+  }).onConflictDoUpdate({ target: providersTable.slug, set: {
+    name: "Pine Labs ONE", category: "gateway", status: "live",
+    description: "Connect your Pine Labs ONE POS/QR merchant account to sync transactions and monitor settlement status",
+    sortOrder: 19,
+  } });
 
   // ── Idempotent upsert for Paytm Business (portal session connector) ─────────
   // Paytm Business (business.paytm.com) — portal_session_connector using

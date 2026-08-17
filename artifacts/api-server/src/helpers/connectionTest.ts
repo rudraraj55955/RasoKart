@@ -157,7 +157,7 @@ export async function runProviderTest(
         detail:
           "Pine Labs ONE is a portal_session_connector (Playwright) routed through " +
           "/api/merchant/portal-sessions/pinelabs_one/*. " +
-          "It does not use API keys or partner credentials. " +
+          "It does not use API keys or partner credentials — see developer.pinelabs.com for partner docs. " +
           "If this platform_connections row exists, it is a legacy entry and can be deleted. " +
           "Merchants connect via mobile/user-ID + password on the merchant Connect page.",
       };

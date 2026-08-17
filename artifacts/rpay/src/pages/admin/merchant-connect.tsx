@@ -150,13 +150,9 @@ const CREDENTIAL_HINTS: Record<string, { fields: { name: string; hint: string }[
                          { name: "access_code", hint: "Access Code from Pine Labs Plural Console → Settings → API Keys" },
                          { name: "working_key", hint: "Working Key from Pine Labs Plural Console → Settings → API Keys" }],
                note: "Pine Labs Plural PG credentials — all three required. Managed via Payment Gateways, not Merchant Connect." },
-  // Pine Labs ONE — POS/QR merchant account platform. Partner API credentials required.
-  pinelabs_one: { fields: [
-                   { name: "partner_api_key",    hint: "Partner API Key issued by Pine Labs upon partner program approval — see developer.pinelabs.com or your partner onboarding email" },
-                   { name: "partner_api_secret", hint: "Partner API Secret from your Pine Labs partner program agreement (keep this secret)" },
-                   { name: "merchant_id",        hint: "Pine Labs ONE Merchant ID (optional) — scopes API calls to your account on one.pinelabs.com" },
-                 ],
-                 note: "Requires an official Pine Labs partner API agreement. Apply at developer.pinelabs.com or contact Pine Labs enterprise support. Partner API Key and Secret are distinct from portal OTP login credentials." },
+  // pinelabs_one is a portal_session_connector — no API credentials are stored here.
+  // Authentication is handled via Connector Engine (Playwright browser automation).
+  // The credentials dialog is suppressed for portal providers; see dialog render below.
   ekqr:      { fields: [{ name: "api_key",    hint: "API Key / Merchant ID from EKQR dashboard" }] },
   phonepe:   { fields: [{ name: "merchant_id", hint: "PhonePe Business MID" },
                          { name: "api_key",    hint: "PhonePe API Key" }] },
@@ -835,37 +831,49 @@ function RasoKartConnections() {
               />
             </div>
 
-            {/* Credentials */}
-            <div>
-              <Label className="text-zinc-300 text-sm mb-1.5 block">
-                Credentials <span className="text-zinc-500 font-normal">(JSON — AES-256-GCM encrypted)</span>
-              </Label>
-              {dialog.mode === "edit" && (
-                <p className="text-xs text-zinc-500 mb-1.5 flex items-center gap-1">
-                  <Lock className="w-3 h-3" /> Credentials are write-only. Leave blank to keep existing.
-                </p>
-              )}
-              {CREDENTIAL_HINTS[formProvider] && (
-                <div className="mb-2 p-2.5 bg-zinc-800/60 rounded-md text-xs space-y-1">
-                  <div className="text-zinc-400 font-medium mb-1">Required fields:</div>
-                  {CREDENTIAL_HINTS[formProvider].fields.map((f) => (
-                    <div key={f.name} className="flex gap-2">
-                      <span className="text-zinc-300 font-mono shrink-0">{f.name}</span>
-                      <span className="text-zinc-500">{f.hint}</span>
-                    </div>
-                  ))}
-                  {CREDENTIAL_HINTS[formProvider].note && (
-                    <div className="text-amber-400 mt-1.5">{CREDENTIAL_HINTS[formProvider].note}</div>
-                  )}
+            {/* Credentials — suppressed for portal-session connectors */}
+            {PORTAL_PROVIDER_SLUGS.has(formProvider) ? (
+              <div className="p-3 bg-violet-500/10 border border-violet-500/20 rounded-md text-xs text-violet-300 space-y-1.5">
+                <div className="font-medium flex items-center gap-1.5">
+                  <Plug className="w-3.5 h-3.5" /> Portal Session Connector
                 </div>
-              )}
-              <Textarea
-                className="bg-zinc-800 border-zinc-700 font-mono text-xs h-28"
-                placeholder={`{"api_key": "...", "api_secret": "..."}`}
-                value={formCreds}
-                onChange={(e) => setFormCreds(e.target.value)}
-              />
-            </div>
+                <p className="leading-relaxed text-violet-300/80">
+                  This provider authenticates via the Connector Engine (browser automation) — no API credentials are stored here.
+                  Save this connection record, then use <strong className="text-violet-200">Start Session</strong> to authenticate.
+                </p>
+              </div>
+            ) : (
+              <div>
+                <Label className="text-zinc-300 text-sm mb-1.5 block">
+                  Credentials <span className="text-zinc-500 font-normal">(JSON — AES-256-GCM encrypted)</span>
+                </Label>
+                {dialog.mode === "edit" && (
+                  <p className="text-xs text-zinc-500 mb-1.5 flex items-center gap-1">
+                    <Lock className="w-3 h-3" /> Credentials are write-only. Leave blank to keep existing.
+                  </p>
+                )}
+                {CREDENTIAL_HINTS[formProvider] && (
+                  <div className="mb-2 p-2.5 bg-zinc-800/60 rounded-md text-xs space-y-1">
+                    <div className="text-zinc-400 font-medium mb-1">Required fields:</div>
+                    {CREDENTIAL_HINTS[formProvider].fields.map((f) => (
+                      <div key={f.name} className="flex gap-2">
+                        <span className="text-zinc-300 font-mono shrink-0">{f.name}</span>
+                        <span className="text-zinc-500">{f.hint}</span>
+                      </div>
+                    ))}
+                    {CREDENTIAL_HINTS[formProvider].note && (
+                      <div className="text-amber-400 mt-1.5">{CREDENTIAL_HINTS[formProvider].note}</div>
+                    )}
+                  </div>
+                )}
+                <Textarea
+                  className="bg-zinc-800 border-zinc-700 font-mono text-xs h-28"
+                  placeholder={`{"api_key": "...", "api_secret": "..."}`}
+                  value={formCreds}
+                  onChange={(e) => setFormCreds(e.target.value)}
+                />
+              </div>
+            )}
 
             {/* Notes */}
             <div>
