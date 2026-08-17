@@ -96,3 +96,4 @@
 - [Drizzle .set typed-spread rule](drizzle-set-typed-spread.md) — Record<string,unknown> passed to .set() silently drops columns; always use typed spread objects so Drizzle maps every field correctly.
 - [realdb test CI exclusion pattern](realdb-ci-exclusion.md) — *.realdb.test.ts files need seeded demo users; unit test CI step runs before server startup/seed; exclude with find ! -name '*.realdb.test.ts' | xargs.
 - [Paytm digit-box vs OTP disambiguation](paytm-digitbox-disambiguation.md) — maxlength="1" boxes are phone entry (10 boxes) OR OTP (4–8 boxes); count-based check MUST precede OTP_INPUT_DIGITS selectors or navigateToLoginPage mis-classifies phone as otp_form.
+- [Paytm portal migration Aug 2026](paytm-portal-migration-aug2026.md) — login moved to dashboard.paytm.com; form in cross-origin accounts.paytm.com iframe; password-only (no OTP); old URLs return HTTP 200 + 404 content.
