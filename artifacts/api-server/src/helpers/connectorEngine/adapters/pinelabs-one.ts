@@ -94,9 +94,18 @@ function getLoginUserUrl(): string {
 /** URL patterns that indicate the session is on a login / pre-auth page. */
 const LOGIN_PAGE_PATTERNS = [
   "/login",
-  "/authV2/sign-in",
+  "/authv2/sign-in",   // lower-case comparison used in isLoginUrl()
+  "/authv2/",          // catch all authV2 sub-paths
   "/sign-in",
   "/auth",
+];
+
+/** URL patterns that indicate the session is on an OTP-entry page. */
+const OTP_URL_PATTERNS = [
+  "/verify-otp",
+  "/authv2/sign-in/otp",
+  "/sign-in/otp",
+  "/otp-verification",
 ];
 
 /** URL patterns indicating we are on the authenticated dashboard. */
@@ -140,18 +149,29 @@ const SEL = {
     'input[placeholder*="pass" i]',
   ],
 
-  // OTP input — single field
+  // OTP input — single field.
+  // NOTE: input[inputmode="numeric"] is specifically needed for the
+  // Pine Labs ONE /authV2/sign-in/verify-otp page which uses a numeric
+  // keyboard trigger rather than type="text" or name="otp".
   OTP_INPUT_SINGLE: [
     'input[name="otp"]',
     'input[placeholder*="otp" i]',
     'input[placeholder*="enter otp" i]',
     'input[placeholder*="verification" i]',
     'input[autocomplete="one-time-code"]',
+    'input[inputmode="numeric"]',           // authV2 OTP field
+    'input[type="number"]',                 // numeric OTP field
+    '[class*="otp"] input:visible',         // container-scoped OTP
+    '[class*="pin"] input:visible',         // PIN-style OTP container
+    '[class*="Otp"] input:visible',         // PascalCase class variants
+    '[class*="verification"] input:visible',
   ],
 
   // OTP digit boxes (maxlength="1")
   OTP_DIGIT_BOX: [
     'input[maxlength="1"]',
+    'input[maxlength="1"][inputmode="numeric"]',
+    'input[maxlength="1"][type="number"]',
   ],
 
   // "Next" / "Continue" button after identifier entry
@@ -338,6 +358,18 @@ function isLoginUrl(url: string): boolean {
 /** Returns true if the current URL looks like the authenticated dashboard. */
 function isDashboardUrl(url: string): boolean {
   return DASHBOARD_URL_PATTERNS.some(p => url.includes(p));
+}
+
+/**
+ * Returns true if the URL indicates an OTP-entry page.
+ * Pine Labs ONE /authV2 flow navigates to /authV2/sign-in/verify-otp immediately
+ * after identifier entry (OTP-first, skipping the password step).
+ * URL-based detection is more reliable than DOM selector scanning on SPAs
+ * because the HTML arrives before React renders the input elements.
+ */
+function isOtpUrl(url: string): boolean {
+  const lc = url.toLowerCase();
+  return OTP_URL_PATTERNS.some(p => lc.includes(p));
 }
 
 /** Try each selector in an array; return the first visible locator found. */
@@ -695,6 +727,11 @@ async function navigateToLogin(page: Page): Promise<LoginPageState | null> {
 
   const url = page.url();
 
+  // ── OTP URL (Pine Labs ONE authV2 OTP-first flow) ─────────────────────────
+  // The portal may navigate directly to the OTP page if a session was cached,
+  // or because the /authV2 flow skips the password step entirely.
+  if (isOtpUrl(url)) return "otp_form";
+
   // Already on dashboard
   if (!isLoginUrl(url) || isDashboardUrl(url)) {
     const check = await verifyDashboardAuthenticated(page);
@@ -707,7 +744,7 @@ async function navigateToLogin(page: Page): Promise<LoginPageState | null> {
   // QR / manual action
   if (await hasManualActionRequired(page)) return "manual_action";
 
-  // OTP form already visible (2FA from cached session)
+  // OTP form visible — check URL first (most reliable), then DOM
   const otpField = await tryLocator(page, SEL.OTP_INPUT_SINGLE);
   if (otpField) return "otp_form";
   const digitBoxCount = await page.locator('input[maxlength="1"]').count().catch(() => 0);
@@ -728,6 +765,8 @@ async function navigateToLogin(page: Page): Promise<LoginPageState | null> {
       timeout: NAV_TIMEOUT_MS,
     });
     await page.waitForTimeout(1_500);
+    const urlAlt = page.url();
+    if (isOtpUrl(urlAlt)) return "otp_form";
     const idField2 = await tryLocator(page, SEL.IDENTIFIER_INPUT);
     if (idField2) return "identifier_form";
   } catch { /* continue */ }
@@ -746,11 +785,16 @@ export const pineLabsOneAdapter: ProviderAdapter = {
   supportedLoginMethods: [
     {
       key:              "mobile_password",
-      label:            "Registered Mobile / User ID + Password",
+      label:            "Registered Mobile / User ID",
       identifierLabel:  "Registered Mobile Number or User ID",
       identifierType:   "mobile",
-      requiresOtp:      false,   // OTP may appear as 2FA after password
-      requiresPassword: true,
+      // Pine Labs ONE /authV2 sends OTP immediately after identifier entry
+      // (OTP-first flow). Password step may or may not appear depending on
+      // the login path (mobile → OTP; user ID → may get password or OTP).
+      // requiresPassword: false so the route does not reject no-password
+      // initiate calls from the merchant connect UI.
+      requiresOtp:      true,
+      requiresPassword: false,
       mayRequireCaptcha: true,
     },
   ],
@@ -886,7 +930,7 @@ export const pineLabsOneAdapter: ProviderAdapter = {
         await page.waitForTimeout(300);
         await clickSubmit(page, SEL.NEXT_BTN);
 
-        // Wait for password field, OTP, error, or CAPTCHA
+        // Wait for navigation / DOM outcome
         const outcomes = [
           ...SEL.PASSWORD_INPUT,
           ...SEL.OTP_INPUT_SINGLE,
@@ -896,6 +940,43 @@ export const pineLabsOneAdapter: ProviderAdapter = {
           ...SEL.MANUAL_ACTION,
         ];
         await waitForAny(page, outcomes, NAV_TIMEOUT_MS);
+
+        // ── URL-first OTP detection ─────────────────────────────────────────
+        // Pine Labs ONE authV2 flow: after identifier submission the portal
+        // navigates to /authV2/sign-in/verify-otp (OTP-first, no password step).
+        // URL detection is always checked before DOM scanning because SPA
+        // route changes complete before input elements are rendered.
+        const urlAfterSubmit = page.url();
+        if (isOtpUrl(urlAfterSubmit)) {
+          const storageState = await extractStorageState(ctx.context);
+          const adData: PineLabsOneAdapterData = {
+            storageState,
+            maskedIdentifier: maskIdentifier(identifier),
+            step: "AWAITING_OTP",
+            loginMode: "password",
+            storedIdentifier: identifier,
+          };
+          const payload = makeSessionPayload(
+            "pinelabs_one", 0, adData as unknown as Record<string, unknown>,
+          );
+          const enc = encryptSessionPayload(payload);
+          if (!enc.ok) {
+            return { status: "FAILED", failReason: "SESSION_ENCRYPT_FAILED", failDetail: "Internal error." };
+          }
+          logger.info(
+            { slug: "pinelabs_one", maskedIdentifier: maskIdentifier(identifier), urlPath: new URL(urlAfterSubmit).pathname },
+            "pinelabs_one_initiate_otp_url_detected",
+          );
+          return {
+            status: "AWAITING_OTP",
+            encryptedSessionToken: enc.token,
+            nextStep: "ENTER_OTP",
+            nextStepPrompt:
+              `An OTP has been sent to your registered mobile (${maskIdentifier(identifier)}). ` +
+              "Enter it below to connect your Pine Labs ONE account. " +
+              "The OTP is used once and discarded immediately.",
+          };
+        }
 
         // CAPTCHA after submit
         if (await hasCaptcha(page)) {
@@ -1760,13 +1841,16 @@ export const pineLabsOneAdapter: ProviderAdapter = {
       }
 
       logger.info({ slug: "pinelabs_one" }, "pinelabs_one_reconnect_session_expired");
+      // Pine Labs ONE uses OTP-first (/authV2) flow — re-authentication
+      // requires the merchant to re-enter their mobile / user ID and receive
+      // a new OTP. Returning FAILED triggers the frontend identifier step.
       return {
-        status: "AWAITING_PASSWORD" as any,
+        status: "FAILED",
         failReason: "SESSION_EXPIRED",
         failDetail:
           `Your Pine Labs ONE session has expired. ` +
-          `Please re-enter your password for ${adData.maskedIdentifier ?? "your account"} to reconnect.`,
-        nextStep: "ENTER_PASSWORD",
+          `Please enter your mobile number or user ID again to receive a new OTP.`,
+        nextStep: null,
       };
     } catch (err: any) {
       logger.error({ slug: "pinelabs_one", err: err?.message }, "pinelabs_one_reconnect_error");

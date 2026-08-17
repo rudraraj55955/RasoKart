@@ -765,6 +765,139 @@ describe("PineLabsOne E2E — disconnect / logout", () => {
   });
 });
 
+// ── OTP-first flow (Pine Labs ONE /authV2 production behaviour) ───────────────
+//
+// In the authV2 flow the portal sends an OTP immediately after identifier
+// entry and skips the password step entirely. The adapter must:
+//   1. Detect the /authV2/sign-in/verify-otp URL after identifier submit.
+//   2. Return AWAITING_OTP (not PORTAL_UI_CHANGED).
+//   3. Accept the OTP via submitStep and reach CONNECTED.
+
+describe("PineLabsOne E2E — OTP-first flow (/authV2) → CONNECTED", () => {
+  let srv: MockServer;
+  const VALID_MOBILE    = "9876543210";
+  const VALID_OTP       = "987654";
+  const MERCHANT_ID     = "PL_OTP_FIRST_001";
+  const BUSINESS_NAME   = "OTP-First Test Business";
+
+  before(async () => {
+    const ready = await checkBrowser();
+    if (!ready) return;
+    srv = await startMockPineLabsOneServer({
+      otpFirst:         true,   // simulate Pine Labs ONE authV2 production flow
+      validOtp:         VALID_OTP,
+      maskedIdentifier: "**XXXXX210",
+      merchantId:       MERCHANT_ID,
+      businessName:     BUSINESS_NAME,
+    });
+    process.env["PINELABS_ONE_PORTAL_OVERRIDE"] = srv.url;
+  });
+
+  after(async () => {
+    delete process.env["PINELABS_ONE_PORTAL_OVERRIDE"];
+    await srv?.close();
+  });
+
+  it("initiateSession returns AWAITING_OTP (not PORTAL_UI_CHANGED) for OTP-first portal", async () => {
+    const browserReady = await checkBrowser();
+    if (!browserReady) return;
+
+    const result = await pineLabsOneAdapter.initiateSession({
+      loginMethod:         "mobile_password",
+      encryptedIdentifier: enc(VALID_MOBILE),
+    });
+
+    assert.equal(
+      result.status, "AWAITING_OTP",
+      `Expected AWAITING_OTP for OTP-first portal. Got: ${result.status} — ${result.failDetail ?? result.failReason}`,
+    );
+    assert.ok(result.encryptedSessionToken, "must return encrypted session token");
+    assert.equal(result.nextStep, "ENTER_OTP");
+    assert.ok(
+      result.nextStepPrompt?.toLowerCase().includes("otp"),
+      `nextStepPrompt must mention OTP; got: ${result.nextStepPrompt}`,
+    );
+  });
+
+  it("PORTAL_UI_CHANGED must NOT be returned when portal goes to OTP URL", async () => {
+    const browserReady = await checkBrowser();
+    if (!browserReady) return;
+
+    const result = await pineLabsOneAdapter.initiateSession({
+      loginMethod:         "mobile_password",
+      encryptedIdentifier: enc(VALID_MOBILE),
+    });
+
+    assert.notEqual(
+      result.failReason, "PORTAL_UI_CHANGED",
+      "PORTAL_UI_CHANGED must never be returned when portal navigates to OTP URL",
+    );
+  });
+
+  it("submitStep with correct OTP after OTP-first initiate returns CONNECTED", async () => {
+    const browserReady = await checkBrowser();
+    if (!browserReady) return;
+
+    // Step 1: initiate → AWAITING_OTP
+    const initResult = await pineLabsOneAdapter.initiateSession({
+      loginMethod:         "mobile_password",
+      encryptedIdentifier: enc(VALID_MOBILE),
+    });
+    if (initResult.status !== "AWAITING_OTP" || !initResult.encryptedSessionToken) {
+      console.log("Skipping: initiate did not return AWAITING_OTP");
+      return;
+    }
+
+    // Step 2: submit OTP → CONNECTED
+    const submitResult = await pineLabsOneAdapter.submitStep({
+      encryptedSessionToken: initResult.encryptedSessionToken,
+      encryptedOtp:          enc(VALID_OTP),
+    });
+
+    assert.equal(
+      submitResult.status, "CONNECTED",
+      `Expected CONNECTED after OTP submission. Got: ${submitResult.status} — ${submitResult.failDetail}`,
+    );
+    assert.ok(submitResult.encryptedSessionToken, "CONNECTED result must include a refreshed session token");
+    assert.equal(submitResult.nextStep, "COMPLETE");
+  });
+
+  it("submitStep with wrong OTP returns FAILED not CONNECTED", async () => {
+    const browserReady = await checkBrowser();
+    if (!browserReady) return;
+
+    const initResult = await pineLabsOneAdapter.initiateSession({
+      loginMethod:         "mobile_password",
+      encryptedIdentifier: enc(VALID_MOBILE),
+    });
+    if (initResult.status !== "AWAITING_OTP" || !initResult.encryptedSessionToken) return;
+
+    const submitResult = await pineLabsOneAdapter.submitStep({
+      encryptedSessionToken: initResult.encryptedSessionToken,
+      encryptedOtp:          enc("000000"),
+    });
+
+    assert.notEqual(submitResult.status, "CONNECTED", "wrong OTP must not produce CONNECTED");
+    assert.ok(submitResult.failReason, "must return a failReason for wrong OTP");
+    // Credentials must never echo in error messages
+    assert.ok(!submitResult.failDetail?.includes("000000"), "failDetail must not echo OTP value");
+  });
+
+  it("maskedIdentifier in session token never contains the raw mobile", async () => {
+    const browserReady = await checkBrowser();
+    if (!browserReady) return;
+
+    const result = await pineLabsOneAdapter.initiateSession({
+      loginMethod:         "mobile_password",
+      encryptedIdentifier: enc(VALID_MOBILE),
+    });
+
+    // The nextStepPrompt uses maskedIdentifier — verify no raw mobile
+    const prompt = result.nextStepPrompt ?? "";
+    assert.ok(!prompt.includes(VALID_MOBILE), "nextStepPrompt must not contain raw mobile number");
+  });
+});
+
 // ── Portal unreachable ────────────────────────────────────────────────────────
 
 describe("PineLabsOne E2E — portal unreachable", () => {

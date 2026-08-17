@@ -48,6 +48,13 @@ export interface MockServerConfig {
   showManualAction?:    boolean;
   invalidPasswordMsg?:  string;
   requireOtp?:          boolean;
+  /**
+   * Simulate the Pine Labs ONE /authV2 OTP-first flow.
+   * When true: POST /login/user → redirect to /authV2/sign-in/verify-otp
+   *            (no password step; OTP is the primary factor).
+   * When false (default): POST /login/user → redirect to /login/password.
+   */
+  otpFirst?:            boolean;
 }
 
 export interface MockServer {
@@ -345,6 +352,19 @@ export async function startMockPineLabsOneServer(
 ${identifierFormHtml(false, false)}</body></html>`);
         return;
       }
+
+      if (config.otpFirst) {
+        // ── OTP-first flow (Pine Labs ONE /authV2 production behaviour) ──
+        // Skip the password step: redirect straight to the OTP page.
+        res.writeHead(302, {
+          Location: "/authV2/sign-in/verify-otp",
+          "Set-Cookie": "otp_session=1; Path=/; HttpOnly; SameSite=Lax",
+        });
+        res.end();
+        return;
+      }
+
+      // ── Legacy password-first flow ───────────────────────────────────────
       // Valid identifier → set user_session, redirect to password
       res.writeHead(302, {
         Location: "/login/password",
