@@ -1105,9 +1105,18 @@ export const pineLabsOneAdapter: ProviderAdapter = {
           };
         }
 
-        // OTP field appeared (portal sent OTP as first factor — rare but handled)
-        const otpVisible = await tryLocator(page, SEL.OTP_INPUT_SINGLE);
-        const digitBoxes = await page.locator('input[maxlength="1"]').count().catch(() => 0);
+        // OTP field appeared via DOM scan — only checked when the URL has moved
+        // away from the identifier form. This guards against input[inputmode="numeric"]
+        // on the identifier form itself causing a false-positive AWAITING_OTP.
+        const urlForDomCheck = page.url();
+        const urlIsOnOtpOrPost = !urlForDomCheck.toLowerCase().includes("/login/user") &&
+                                 !urlForDomCheck.toLowerCase().includes("/user-details");
+        const otpVisible = urlIsOnOtpOrPost
+          ? await tryLocator(page, SEL.OTP_INPUT_SINGLE)
+          : null;
+        const digitBoxes = urlIsOnOtpOrPost
+          ? await page.locator('input[maxlength="1"]').count().catch(() => 0)
+          : 0;
         if (otpVisible || digitBoxes >= 4) {
           const storageState = await extractStorageState(ctx.context);
           const adData: PineLabsOneAdapterData = {
