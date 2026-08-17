@@ -128,7 +128,7 @@ const PROVIDER_WHITE_LABEL: Record<string, string> = {
 const PROVIDER_DESC: Record<string, string> = {
   phonepe:        "QR-based UPI merchant payments via PhonePe Business",
   paytm:          "UPI, wallet, and net banking collections via Paytm Business",
-  paytm_merchant: "Paytm Business portal — connect with your registered mobile number + OTP to sync transaction history (read-only)",
+  paytm_merchant: "Paytm Business portal — connect with your registered mobile or email address and password to sync transaction history (read-only)",
   bharatpe:      "Zero MDR UPI collections via BharatPe QR",
   amazon_pay:    "UPI merchant checkout via Amazon Pay for Business",
   mobikwik:      "Mobile wallet payment gateway via MobiKwik Business",
@@ -349,9 +349,13 @@ async function initiatePortalSession(
   providerSlug: string,
   credentials?: { loginMethod: string; identifier: string; password?: string },
 ): Promise<{ status: string; message: string | null; nextStep: string | null; helpUrl: string | null }> {
+  // 90-second timeout — Playwright browser navigation can take up to ~60s;
+  // without a signal the button stays stuck forever if the server never responds.
+  const signal = AbortSignal.timeout(90_000);
   const res = await portalFetch(`/api/merchant/portal-sessions/${providerSlug}/initiate`, {
     method: "POST",
     body: credentials ? JSON.stringify(credentials) : undefined,
+    signal,
   });
   const body = await res.json().catch(() => ({ status: "FAILED", message: null, nextStep: null, helpUrl: null }));
   return {
@@ -1765,7 +1769,7 @@ function RazorpayPortalCard({
 // and stores only the encrypted browser session state. No passwords are stored.
 // OTPs are discarded after submission and never stored, logged, or replayed.
 
-type PaytmUiStep = "mobile" | "otp" | "connected" | "blocked" | "reconnect_needed";
+type PaytmUiStep = "mobile" | "otp" | "password" | "connected" | "blocked" | "reconnect_needed";
 
 function PaytmPortalCard({
   provider,
@@ -1781,15 +1785,17 @@ function PaytmPortalCard({
     if (!s) return "mobile";
     if (s.status === "CONNECTED") return "connected";
     if (s.status === "AWAITING_OTP") return "otp";
+    if (s.status === "AWAITING_PASSWORD") return "password";
     if (s.status === "BLOCKED") return "blocked";
     if (s.status === "RECONNECT_REQUIRED" || s.status === "SESSION_EXPIRED") return "reconnect_needed";
-    // FAILED, DISCONNECTED, PENDING → show mobile input
+    // FAILED, DISCONNECTED, PENDING, PORTAL_UNREACHABLE → show mobile input
     return "mobile";
   }
 
   const [uiStep, setUiStep] = useState<PaytmUiStep>(() => deriveStep(session));
-  const [mobile, setMobile]   = useState("");
-  const [otp, setOtp]         = useState("");
+  const [mobile, setMobile]     = useState("");
+  const [otp, setOtp]           = useState("");
+  const [password, setPassword] = useState("");
   const [initiating, setInitiating] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [syncing, setSyncing]       = useState(false);
@@ -1820,11 +1826,13 @@ function PaytmPortalCard({
     staleTime: 60_000,
   });
 
-  // ── Step 1: initiate (mobile entry) ──────────────────────────────────────────
+  // ── Step 1: initiate (mobile / email entry) ──────────────────────────────────
   async function handleInitiate() {
-    const mob = mobile.trim().replace(/\s/g, "");
-    if (!mob || mob.length < 10) {
-      setErrorMsg("Enter a valid 10-digit mobile number registered with Paytm Business.");
+    const identifier = mobile.trim();
+    const isMobile = /^\d{10}$/.test(identifier);
+    const isEmail  = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
+    if (!isMobile && !isEmail) {
+      setErrorMsg("Enter your 10-digit Paytm-registered mobile number or email address.");
       return;
     }
     setInitiating(true);
@@ -1832,11 +1840,15 @@ function PaytmPortalCard({
     try {
       const result = await initiatePortalSession("paytm_merchant", {
         loginMethod: "mobile_otp",
-        identifier:  mob,
+        identifier,
       });
       qc.invalidateQueries({ queryKey: PORTAL_SESSIONS_QUERY_KEY });
 
-      if (result.status === "AWAITING_OTP") {
+      if (result.status === "AWAITING_PASSWORD") {
+        setUiStep("password");
+        setMobile(""); // wipe identifier from state immediately
+        toast.info(result.message ?? "Enter your Paytm Business account password below.");
+      } else if (result.status === "AWAITING_OTP") {
         setUiStep("otp");
         setMobile(""); // wipe from component state immediately
         toast.success("OTP sent to your Paytm-registered mobile. Enter it below.");
@@ -1847,7 +1859,7 @@ function PaytmPortalCard({
         );
       } else {
         const msg =
-          result.message ?? "Could not initiate Paytm session. Check your mobile number.";
+          result.message ?? "Could not connect to Paytm Business portal. Please try again.";
         setErrorMsg(msg);
         toast.error(msg);
       }
@@ -1897,6 +1909,50 @@ function PaytmPortalCard({
     } catch {
       setOtp(""); // still wipe on error
       setErrorMsg("Could not submit OTP. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  // ── Step 2b: submit Password (password-mode login) ───────────────────────────
+  async function handleSubmitPassword() {
+    const pw = password.trim();
+    if (!pw) {
+      setErrorMsg("Enter your Paytm Business account password.");
+      return;
+    }
+    setSubmitting(true);
+    setErrorMsg(null);
+    try {
+      // POST plaintext password — server encrypts immediately before passing to adapter
+      const res = await portalFetch(
+        "/api/merchant/portal-sessions/paytm_merchant/submit-step",
+        { method: "POST", body: JSON.stringify({ otp: pw }) },
+      );
+      // Wipe password from component state immediately regardless of outcome
+      setPassword("");
+
+      const body = await res.json().catch(() => ({}));
+      qc.invalidateQueries({ queryKey: PORTAL_SESSIONS_QUERY_KEY });
+
+      if (body.status === "CONNECTED") {
+        setUiStep("connected");
+        toast.success("Paytm Business account connected. Syncing transactions…");
+        setTimeout(() => handleSync(), 1500);
+      } else if (body.status === "AWAITING_OTP") {
+        // Portal sent OTP for 2FA after password
+        setUiStep("otp");
+        toast.info("Paytm sent an OTP for 2-step verification. Enter it below.");
+      } else {
+        const msg =
+          body.message ??
+          "Password verification failed. Please check your credentials and try again.";
+        setErrorMsg(msg);
+        toast.error(msg);
+      }
+    } catch {
+      setPassword(""); // still wipe on error
+      setErrorMsg("Could not submit password. Please try again.");
     } finally {
       setSubmitting(false);
     }
@@ -1966,16 +2022,19 @@ function PaytmPortalCard({
       } else if (body.status === "AWAITING_OTP") {
         setUiStep("otp");
         toast.info("A new OTP is required. Enter it below.");
+      } else if (body.status === "AWAITING_PASSWORD") {
+        setUiStep("password");
+        toast.info(body.message ?? "Re-enter your Paytm Business account password.");
       } else {
         // Full re-auth needed
         setUiStep("mobile");
         setErrorMsg(
-          body.message ?? "Session expired. Please enter your mobile number to reconnect.",
+          body.message ?? "Session expired. Please enter your credentials again.",
         );
       }
     } catch {
       setUiStep("mobile");
-      setErrorMsg("Could not reconnect. Please enter your mobile number again.");
+      setErrorMsg("Could not reconnect. Please enter your credentials again.");
     } finally {
       setInitiating(false);
     }
@@ -2004,6 +2063,11 @@ function PaytmPortalCard({
                   <Clock className="w-3 h-3" /> Enter OTP
                 </Badge>
               )}
+              {uiStep === "password" && (
+                <Badge variant="outline" className="text-xs border-sky-500/40 text-sky-400 flex items-center gap-1">
+                  <Lock className="w-3 h-3" /> Enter Password
+                </Badge>
+              )}
               {uiStep === "blocked" && (
                 <Badge variant="outline" className="text-xs border-red-500/40 text-red-400 flex items-center gap-1">
                   <XCircle className="w-3 h-3" /> Blocked
@@ -2023,8 +2087,9 @@ function PaytmPortalCard({
         <div className="flex items-start gap-1.5 p-2.5 rounded-lg bg-muted/20 border border-border/40">
           <Lock className="w-3.5 h-3.5 text-muted-foreground mt-0.5 shrink-0" />
           <p className="text-xs text-muted-foreground leading-relaxed">
-            Your mobile number is encrypted with AES-256 on the server before use.
-            OTPs are used once and immediately discarded — never stored, logged, or replayed.
+            Your credentials are AES-256 encrypted on the server before use.
+            Passwords are never stored, logged, or replayed — they are used once to authenticate
+            your browser session, then discarded.
           </p>
         </div>
 
@@ -2169,6 +2234,74 @@ function PaytmPortalCard({
           </div>
         )}
 
+        {/* ── AWAITING_PASSWORD state: password entry ───────────────────── */}
+        {uiStep === "password" && (
+          <div className="space-y-3">
+            <div className="p-3 rounded-lg bg-sky-500/5 border border-sky-500/20">
+              <p className="text-xs font-semibold text-sky-400 flex items-center gap-1.5 mb-1">
+                <Lock className="w-3.5 h-3.5" /> Password Required
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Paytm Business uses password login. Enter your account password below
+                to complete the connection. It is AES-256 encrypted in transit and
+                never stored or logged.
+              </p>
+            </div>
+
+            {errorMsg && (
+              <div className="p-2.5 rounded-lg bg-red-500/5 border border-red-500/20">
+                <p className="text-xs text-red-400 flex items-start gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  {errorMsg}
+                </p>
+              </div>
+            )}
+
+            <div>
+              <label className="text-xs text-muted-foreground block mb-1">
+                Paytm Business Account Password
+              </label>
+              <Input
+                className="h-8 text-sm"
+                placeholder="Your Paytm Business password"
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleSubmitPassword()}
+                autoFocus
+              />
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              Your password is used once to authenticate your browser session, then immediately discarded.
+            </p>
+
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                className="flex-1 gap-1.5"
+                onClick={handleSubmitPassword}
+                disabled={submitting || !password.trim()}
+              >
+                {submitting ? (
+                  <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Connecting…</>
+                ) : (
+                  <><CheckCircle2 className="w-3.5 h-3.5" /> Connect</>
+                )}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-muted-foreground"
+                onClick={() => { setUiStep("mobile"); setPassword(""); setErrorMsg(null); }}
+              >
+                Start Over
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* ── RECONNECT_REQUIRED state ──────────────────────────────────── */}
         {uiStep === "reconnect_needed" && (
           <div className="space-y-3">
@@ -2244,44 +2377,42 @@ function PaytmPortalCard({
 
             <div>
               <label className="text-xs text-muted-foreground block mb-1">
-                Registered Mobile Number
+                Mobile Number or Email Address
               </label>
               <Input
                 className="h-8 text-sm"
-                placeholder="10-digit Paytm-registered mobile"
-                type="tel"
-                inputMode="numeric"
-                maxLength={10}
-                autoComplete="tel"
+                placeholder="Mobile or email registered with Paytm Business"
+                type="text"
+                autoComplete="username"
                 value={mobile}
-                onChange={e => setMobile(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                onChange={e => setMobile(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && handleInitiate()}
               />
             </div>
 
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Enter the mobile number registered with your Paytm Business account.
-              RasoKart will trigger the OTP on Paytm's portal — you enter it here manually.
+              Enter the mobile number or email address registered with your Paytm Business account.
+              You will be prompted for your password on the next step.
               Go to{" "}
               <a
-                href="https://business.paytm.com"
+                href="https://dashboard.paytm.com"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-primary underline-offset-2 hover:underline"
               >
-                business.paytm.com
+                dashboard.paytm.com
               </a>{" "}
-              if you need to check your registered number.
+              if you need to verify your registered details.
             </p>
 
             <Button
               size="sm"
               className="w-full gap-1.5"
               onClick={handleInitiate}
-              disabled={initiating || mobile.trim().length < 10}
+              disabled={initiating || !mobile.trim()}
             >
               {initiating ? (
-                <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Sending OTP…</>
+                <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Connecting…</>
               ) : (
                 <><Link2 className="w-3.5 h-3.5" /> Connect Paytm Business</>
               )}
