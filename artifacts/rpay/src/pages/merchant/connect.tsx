@@ -133,7 +133,7 @@ const PROVIDER_DESC: Record<string, string> = {
   amazon_pay:    "UPI merchant checkout via Amazon Pay for Business",
   mobikwik:      "Mobile wallet payment gateway via MobiKwik Business",
   pinelabs:      "Cards, UPI, wallets, and EMI via Pine Labs Plural gateway",
-  pinelabs_one:  "Pine Labs ONE POS/QR merchant account monitoring (official partner access required)",
+  pinelabs_one:  "Connect your Pine Labs ONE POS/QR merchant account to sync transactions and monitor settlement status.",
   ekqr:          "Dynamic QR and auto-credit deposits — managed by RasoKart",
   freecharge:    "Not available — deprecated provider",
   sbi_yono:      "Not available — regulated banking product",
@@ -2424,6 +2424,632 @@ function PaytmPortalCard({
   );
 }
 
+// ── Pine Labs ONE portal card ─────────────────────────────────────────────────
+
+type PineLabsOneUiStep =
+  | "identifier"
+  | "password"
+  | "otp"
+  | "connected"
+  | "blocked"
+  | "reconnect_needed";
+
+function PineLabsOnePortalCard({
+  provider,
+  session,
+}: {
+  provider: any;
+  session: MerchantPortalSession | null;
+}) {
+  const qc = useQueryClient();
+
+  function deriveStep(s: MerchantPortalSession | null): PineLabsOneUiStep {
+    if (!s) return "identifier";
+    if (s.status === "CONNECTED") return "connected";
+    if (s.status === "AWAITING_OTP") return "otp";
+    if (s.status === "AWAITING_PASSWORD") return "password";
+    if (s.status === "BLOCKED") return "blocked";
+    if (s.status === "RECONNECT_REQUIRED" || s.status === "SESSION_EXPIRED") return "reconnect_needed";
+    return "identifier";
+  }
+
+  const [uiStep, setUiStep] = useState<PineLabsOneUiStep>(() => deriveStep(session));
+  const [identifier, setIdentifier] = useState("");
+  const [password, setPassword]     = useState("");
+  const [otp, setOtp]               = useState("");
+  const [initiating, setInitiating] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [syncing, setSyncing]       = useState(false);
+  const [errorMsg, setErrorMsg]     = useState<string | null>(null);
+
+  useEffect(() => {
+    setUiStep(deriveStep(session));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.status]);
+
+  const providerName = "Pine Labs ONE";
+  const cmeta = CATEGORY_META["pos"] ?? { label: "POS", color: "bg-orange-500/10 text-orange-400 border-orange-500/20" };
+  const isConnected = uiStep === "connected";
+
+  const { data: txData } = useQuery<PortalTransaction[]>({
+    queryKey: ["merchant", "portal-transactions", "pinelabs_one"],
+    queryFn: async () => {
+      const res = await portalFetch("/api/merchant/portal-sessions/pinelabs_one/transactions?limit=5");
+      if (!res.ok) return [];
+      const body = await res.json();
+      return (body.transactions ?? []) as PortalTransaction[];
+    },
+    enabled: isConnected,
+    staleTime: 60_000,
+  });
+
+  // ── Step 1: initiate (identifier entry) ────────────────────────────────────
+  async function handleInitiate() {
+    const id = identifier.trim();
+    const isMobile   = /^\d{10}$/.test(id);
+    const isUserId   = id.length >= 4 && id.length <= 50;
+    if (!isMobile && !isUserId) {
+      setErrorMsg("Enter your 10-digit Pine Labs ONE registered mobile number or user ID.");
+      return;
+    }
+    setInitiating(true);
+    setErrorMsg(null);
+    try {
+      const result = await initiatePortalSession("pinelabs_one", {
+        loginMethod: "mobile_password",
+        identifier: id,
+      });
+      qc.invalidateQueries({ queryKey: PORTAL_SESSIONS_QUERY_KEY });
+      setIdentifier(""); // wipe from state after submitting
+
+      if (result.status === "AWAITING_PASSWORD") {
+        setUiStep("password");
+        toast.info(result.message ?? "Enter your Pine Labs ONE account password below.");
+      } else if (result.status === "AWAITING_OTP") {
+        setUiStep("otp");
+        toast.success("OTP sent to your registered mobile. Enter it below.");
+      } else if (result.status === "AWAITING_USER_ACTION") {
+        setErrorMsg(
+          result.message ??
+            "Pine Labs ONE is showing a CAPTCHA or device approval screen. Please wait a few minutes and try again.",
+        );
+      } else {
+        const msg = result.message ?? "Could not connect to Pine Labs ONE portal. Please try again.";
+        setErrorMsg(msg);
+        toast.error(msg);
+      }
+    } catch {
+      setErrorMsg("Could not reach the server. Please try again.");
+    } finally {
+      setInitiating(false);
+    }
+  }
+
+  // ── Step 2: submit password ─────────────────────────────────────────────────
+  async function handleSubmitPassword() {
+    const pw = password.trim();
+    if (!pw) {
+      setErrorMsg("Enter your Pine Labs ONE account password.");
+      return;
+    }
+    setSubmitting(true);
+    setErrorMsg(null);
+    try {
+      const res = await portalFetch(
+        "/api/merchant/portal-sessions/pinelabs_one/submit-step",
+        { method: "POST", body: JSON.stringify({ otp: pw }) },
+      );
+      setPassword(""); // wipe immediately regardless of outcome
+
+      const body = await res.json().catch(() => ({}));
+      qc.invalidateQueries({ queryKey: PORTAL_SESSIONS_QUERY_KEY });
+
+      if (body.status === "CONNECTED") {
+        setUiStep("connected");
+        toast.success("Pine Labs ONE account connected. Syncing transactions…");
+        setTimeout(() => handleSync(), 1500);
+      } else if (body.status === "AWAITING_OTP") {
+        setUiStep("otp");
+        toast.info("Pine Labs ONE sent an OTP for 2-step verification. Enter it below.");
+      } else {
+        const msg = body.message ?? "Password verification failed. Please check your credentials and try again.";
+        setErrorMsg(msg);
+        toast.error(msg);
+      }
+    } catch {
+      setPassword("");
+      setErrorMsg("Could not submit password. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  // ── Step 3: submit OTP (2FA) ────────────────────────────────────────────────
+  async function handleSubmitOtp() {
+    const otpVal = otp.trim().replace(/\s/g, "");
+    if (!otpVal || otpVal.length < 4) {
+      setErrorMsg("Enter the OTP you received on your registered mobile.");
+      return;
+    }
+    setSubmitting(true);
+    setErrorMsg(null);
+    try {
+      const res = await portalFetch(
+        "/api/merchant/portal-sessions/pinelabs_one/submit-step",
+        { method: "POST", body: JSON.stringify({ otp: otpVal }) },
+      );
+      setOtp(""); // wipe immediately
+
+      const body = await res.json().catch(() => ({}));
+      qc.invalidateQueries({ queryKey: PORTAL_SESSIONS_QUERY_KEY });
+
+      if (body.status === "CONNECTED") {
+        setUiStep("connected");
+        toast.success("Pine Labs ONE account connected. Syncing transactions…");
+        setTimeout(() => handleSync(), 1500);
+      } else if (body.status === "FAILED" && body.errorCode === "OTP_EXPIRED") {
+        setUiStep("identifier");
+        setErrorMsg("OTP expired. Please enter your mobile number or user ID again to start over.");
+      } else {
+        const msg = body.message ?? "OTP verification failed. Please check the OTP and try again.";
+        setErrorMsg(msg);
+        toast.error(msg);
+      }
+    } catch {
+      setOtp("");
+      setErrorMsg("Could not submit OTP. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  // ── Sync ────────────────────────────────────────────────────────────────────
+  async function handleSync() {
+    setSyncing(true);
+    try {
+      const res = await portalFetch("/api/merchant/portal-sessions/pinelabs_one/sync", { method: "POST" });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(body.error ?? "Sync failed.");
+      } else {
+        const n = body.synced ?? 0;
+        toast.success(`Sync complete — ${n} new transaction${n === 1 ? "" : "s"} fetched.`);
+        qc.invalidateQueries({ queryKey: ["merchant", "portal-transactions", "pinelabs_one"] });
+        qc.invalidateQueries({ queryKey: PORTAL_SESSIONS_QUERY_KEY });
+      }
+    } catch {
+      toast.error("Sync failed. Please try again.");
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  // ── Disconnect ──────────────────────────────────────────────────────────────
+  async function handleDisconnect() {
+    try {
+      const res = await portalFetch("/api/merchant/portal-sessions/pinelabs_one/disconnect", { method: "POST" });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        toast.error(body.error ?? "Disconnect failed.");
+      } else {
+        toast.success("Pine Labs ONE account disconnected.");
+        setUiStep("identifier");
+        setErrorMsg(null);
+        qc.invalidateQueries({ queryKey: PORTAL_SESSIONS_QUERY_KEY });
+        qc.invalidateQueries({ queryKey: ["merchant", "portal-transactions", "pinelabs_one"] });
+      }
+    } catch {
+      toast.error("Disconnect failed. Please try again.");
+    }
+  }
+
+  // ── Reconnect ───────────────────────────────────────────────────────────────
+  async function handleReconnect() {
+    setInitiating(true);
+    setErrorMsg(null);
+    try {
+      const res = await portalFetch("/api/merchant/portal-sessions/pinelabs_one/reconnect", { method: "POST" });
+      const body = await res.json().catch(() => ({}));
+      qc.invalidateQueries({ queryKey: PORTAL_SESSIONS_QUERY_KEY });
+
+      if (body.status === "CONNECTED") {
+        setUiStep("connected");
+        toast.success("Session reconnected successfully.");
+      } else if (body.status === "AWAITING_OTP") {
+        setUiStep("otp");
+        toast.info("A new OTP is required. Enter it below.");
+      } else if (body.status === "AWAITING_PASSWORD") {
+        setUiStep("password");
+        toast.info(body.message ?? "Re-enter your Pine Labs ONE account password.");
+      } else {
+        setUiStep("identifier");
+        setErrorMsg(body.message ?? "Session expired. Please enter your credentials again.");
+      }
+    } catch {
+      setUiStep("identifier");
+      setErrorMsg("Could not reconnect. Please enter your credentials again.");
+    } finally {
+      setInitiating(false);
+    }
+  }
+
+  return (
+    <Card className="border-border/60 bg-card">
+      <CardHeader className="pb-2">
+        <div className="flex items-start gap-3">
+          <div className="w-14 h-14 rounded-xl bg-background border border-border/60 flex items-center justify-center shrink-0">
+            <ProviderIcon slug="pinelabs_one" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <CardTitle className="text-base truncate">{providerName}</CardTitle>
+            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+              <Badge variant="outline" className={`text-xs ${cmeta.color}`}>
+                {cmeta.label}
+              </Badge>
+              {isConnected && (
+                <Badge variant="outline" className="text-xs border-emerald-500/40 text-emerald-400 flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3" /> Connected
+                </Badge>
+              )}
+              {uiStep === "password" && (
+                <Badge variant="outline" className="text-xs border-sky-500/40 text-sky-400 flex items-center gap-1">
+                  <Lock className="w-3 h-3" /> Enter Password
+                </Badge>
+              )}
+              {uiStep === "otp" && (
+                <Badge variant="outline" className="text-xs border-amber-500/40 text-amber-400 flex items-center gap-1">
+                  <Clock className="w-3 h-3" /> Enter OTP
+                </Badge>
+              )}
+              {uiStep === "blocked" && (
+                <Badge variant="outline" className="text-xs border-red-500/40 text-red-400 flex items-center gap-1">
+                  <XCircle className="w-3 h-3" /> Blocked
+                </Badge>
+              )}
+            </div>
+          </div>
+        </div>
+      </CardHeader>
+
+      <CardContent className="space-y-3">
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          {PROVIDER_DESC["pinelabs_one"]}
+        </p>
+
+        {/* ── Security note ─────────────────────────────────────────────── */}
+        <div className="flex items-start gap-1.5 p-2.5 rounded-lg bg-muted/20 border border-border/40">
+          <Lock className="w-3.5 h-3.5 text-muted-foreground mt-0.5 shrink-0" />
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Your credentials are AES-256 encrypted on the server before use.
+            Passwords are never stored, logged, or replayed — they are used once to authenticate
+            your browser session, then discarded.
+          </p>
+        </div>
+
+        {/* ── CONNECTED state ───────────────────────────────────────────── */}
+        {isConnected && (
+          <div className="space-y-3">
+            <div className="p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20 space-y-1">
+              <p className="text-xs font-semibold text-emerald-400 flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Account Connected
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {session?.connectedAt
+                  ? `Connected on ${new Date(session.connectedAt).toLocaleDateString("en-IN")}`
+                  : "Your Pine Labs ONE account is connected."}
+              </p>
+            </div>
+
+            {txData && txData.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground">Recent transactions</p>
+                {txData.map(tx => (
+                  <div
+                    key={tx.id}
+                    className="flex items-center justify-between text-xs py-1 border-b border-border/30 last:border-0"
+                  >
+                    <span className="text-muted-foreground font-mono truncate max-w-[120px]">
+                      {tx.externalId}
+                    </span>
+                    <span className="font-medium tabular-nums">
+                      ₹{((tx.amount ?? 0) / 100).toLocaleString("en-IN", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </span>
+                    <span className={`capitalize font-medium ${
+                      tx.normalizedStatus === "SUCCESS" ? "text-emerald-400"
+                      : tx.normalizedStatus === "FAILED" ? "text-red-400"
+                      : "text-amber-400"
+                    }`}>
+                      {tx.normalizedStatus?.toLowerCase() ?? "unknown"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {txData && txData.length === 0 && (
+              <p className="text-xs text-muted-foreground text-center py-2">
+                No transactions yet. Click "Sync Now" to fetch the last 30 days.
+              </p>
+            )}
+
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="flex-1 gap-1.5"
+                onClick={handleSync}
+                disabled={syncing}
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${syncing ? "animate-spin" : ""}`} />
+                {syncing ? "Syncing…" : "Sync Now"}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="gap-1.5 text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                onClick={handleDisconnect}
+              >
+                <Unlink className="w-3.5 h-3.5" />
+                Disconnect
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* ── AWAITING_PASSWORD state ───────────────────────────────────── */}
+        {uiStep === "password" && (
+          <div className="space-y-3">
+            <div className="p-3 rounded-lg bg-sky-500/5 border border-sky-500/20">
+              <p className="text-xs font-semibold text-sky-400 flex items-center gap-1.5 mb-1">
+                <Lock className="w-3.5 h-3.5" /> Password Required
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Enter your Pine Labs ONE account password to complete the connection.
+                It is AES-256 encrypted in transit and never stored or logged.
+              </p>
+            </div>
+
+            {errorMsg && (
+              <div className="p-2.5 rounded-lg bg-red-500/5 border border-red-500/20">
+                <p className="text-xs text-red-400 flex items-start gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  {errorMsg}
+                </p>
+              </div>
+            )}
+
+            <div>
+              <label className="text-xs text-muted-foreground block mb-1">
+                Pine Labs ONE Account Password
+              </label>
+              <Input
+                className="h-8 text-sm"
+                placeholder="Your Pine Labs ONE password"
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleSubmitPassword()}
+                autoFocus
+              />
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              Your password is used once to authenticate your browser session, then immediately discarded.
+            </p>
+
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                className="flex-1 gap-1.5"
+                onClick={handleSubmitPassword}
+                disabled={submitting || !password.trim()}
+              >
+                {submitting ? (
+                  <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Connecting…</>
+                ) : (
+                  <><CheckCircle2 className="w-3.5 h-3.5" /> Connect</>
+                )}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-muted-foreground"
+                onClick={() => { setUiStep("identifier"); setPassword(""); setErrorMsg(null); }}
+              >
+                Start Over
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* ── AWAITING_OTP state: 2FA OTP entry ────────────────────────── */}
+        {uiStep === "otp" && (
+          <div className="space-y-3">
+            <div className="p-3 rounded-lg bg-amber-500/5 border border-amber-500/20">
+              <p className="text-xs font-semibold text-amber-400 flex items-center gap-1.5 mb-1">
+                <Clock className="w-3.5 h-3.5" /> OTP Sent
+              </p>
+              <p className="text-xs text-muted-foreground">
+                An OTP has been sent to your Pine Labs ONE registered mobile.
+                Enter it below to complete 2-step verification.
+              </p>
+            </div>
+
+            {errorMsg && (
+              <div className="p-2.5 rounded-lg bg-red-500/5 border border-red-500/20">
+                <p className="text-xs text-red-400 flex items-start gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  {errorMsg}
+                </p>
+              </div>
+            )}
+
+            <div>
+              <label className="text-xs text-muted-foreground block mb-1">OTP</label>
+              <Input
+                className="h-8 text-sm font-mono tracking-widest"
+                placeholder="••••••"
+                type="password"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={8}
+                value={otp}
+                onChange={e => setOtp(e.target.value.replace(/\D/g, ""))}
+                onKeyDown={e => e.key === "Enter" && handleSubmitOtp()}
+                autoFocus
+              />
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              OTP is used once and discarded immediately — never stored.
+            </p>
+
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                className="flex-1 gap-1.5"
+                onClick={handleSubmitOtp}
+                disabled={submitting || !otp.trim()}
+              >
+                {submitting ? (
+                  <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Verifying…</>
+                ) : (
+                  <><CheckCircle2 className="w-3.5 h-3.5" /> Verify OTP</>
+                )}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-muted-foreground"
+                onClick={() => { setUiStep("identifier"); setOtp(""); setErrorMsg(null); }}
+              >
+                Start Over
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* ── RECONNECT_REQUIRED state ──────────────────────────────────── */}
+        {uiStep === "reconnect_needed" && (
+          <div className="space-y-3">
+            <div className="p-2.5 rounded-lg bg-amber-500/5 border border-amber-500/20 flex items-start gap-2">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-400 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-xs font-medium text-amber-400">Session Expired</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Your Pine Labs ONE session has expired. Click Reconnect to try restoring it,
+                  or enter your mobile number to re-authenticate.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button size="sm" className="flex-1" onClick={handleReconnect} disabled={initiating}>
+                {initiating ? (
+                  <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Reconnecting…</>
+                ) : "Reconnect"}
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => { setUiStep("identifier"); setErrorMsg(null); }}>
+                New Login
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* ── BLOCKED state ─────────────────────────────────────────────── */}
+        {uiStep === "blocked" && (
+          <div className="space-y-3">
+            <div className="p-2.5 rounded-lg bg-red-500/5 border border-red-500/20 flex items-start gap-2">
+              <AlertTriangle className="w-3.5 h-3.5 text-red-400 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-xs font-medium text-red-400">Account Blocked</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {session?.lastStatusMessage ??
+                    "Your Pine Labs ONE account appears to be blocked. Please contact Pine Labs support."}
+                </p>
+              </div>
+            </div>
+            <Button size="sm" variant="outline" className="w-full" asChild>
+              <a href="https://one.pinelabs.com" target="_blank" rel="noopener noreferrer">
+                Contact Pine Labs Support <ExternalLink className="w-3 h-3 ml-1" />
+              </a>
+            </Button>
+          </div>
+        )}
+
+        {/* ── IDENTIFIER entry state (initial / disconnected / failed) ──── */}
+        {uiStep === "identifier" && (
+          <div className="space-y-3">
+            {errorMsg && (
+              <div className="p-2.5 rounded-lg bg-red-500/5 border border-red-500/20">
+                <p className="text-xs text-red-400 flex items-start gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  {errorMsg}
+                </p>
+              </div>
+            )}
+
+            {session?.status === "FAILED" && session.lastStatusMessage && !errorMsg && (
+              <div className="p-2.5 rounded-lg bg-red-500/5 border border-red-500/20">
+                <p className="text-xs text-red-400 flex items-start gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  {session.lastStatusMessage}
+                </p>
+              </div>
+            )}
+
+            <div>
+              <label className="text-xs text-muted-foreground block mb-1">
+                Mobile Number or User ID
+              </label>
+              <Input
+                className="h-8 text-sm"
+                placeholder="10-digit mobile or Pine Labs ONE user ID"
+                type="text"
+                autoComplete="username"
+                value={identifier}
+                onChange={e => setIdentifier(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleInitiate()}
+              />
+            </div>
+
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Enter the mobile number or user ID registered with your Pine Labs ONE merchant account.
+              You will be prompted for your password on the next step.
+              Visit{" "}
+              <a
+                href="https://one.pinelabs.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary underline-offset-2 hover:underline"
+              >
+                one.pinelabs.com
+              </a>{" "}
+              if you need to verify your registered details.
+            </p>
+
+            <Button
+              size="sm"
+              className="w-full gap-1.5"
+              onClick={handleInitiate}
+              disabled={initiating || !identifier.trim()}
+            >
+              {initiating ? (
+                <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Connecting…</>
+              ) : (
+                <><Link2 className="w-3.5 h-3.5" /> Connect Pine Labs ONE</>
+              )}
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── Category E (Unsupported) card ─────────────────────────────────────────────
 
 function UnsupportedCard({ provider }: { provider: any }) {
@@ -2775,6 +3401,12 @@ export default function MerchantConnect() {
                     />
                   ) : p.slug === "paytm_merchant" ? (
                     <PaytmPortalCard
+                      key={p.slug}
+                      provider={p}
+                      session={portalSessionMap.get(p.slug) ?? null}
+                    />
+                  ) : p.slug === "pinelabs_one" ? (
+                    <PineLabsOnePortalCard
                       key={p.slug}
                       provider={p}
                       session={portalSessionMap.get(p.slug) ?? null}
