@@ -91,6 +91,13 @@ import { logger } from "../../../lib/logger";
 const HELP_URL = "https://business.paytm.com";
 
 /**
+ * Paytm Business dashboard domain (post-Aug 2026 migration).
+ * The marketing site (business.paytm.com) still exists, but the actual login
+ * and authenticated dashboard moved to dashboard.paytm.com.
+ */
+const PORTAL_DASHBOARD_BASE = "https://dashboard.paytm.com";
+
+/**
  * Portal root URL. Set PAYTM_PORTAL_ROOT_OVERRIDE in tests to redirect all
  * adapter navigation to a local mock HTTP server — this allows full E2E testing
  * without any real Paytm network calls or OTP sending.
@@ -101,10 +108,45 @@ function getPortalRoot(): string {
   return process.env["PAYTM_PORTAL_ROOT_OVERRIDE"] ?? "https://business.paytm.com";
 }
 
-/** Login URL candidates, derived from the portal root at call time. */
+/**
+ * Returns the base URL used for all post-authentication navigation (dashboard,
+ * profile, transactions, logout). Separate from getPortalRoot() which is the
+ * public marketing / login entry host.
+ *
+ * Production: https://dashboard.paytm.com (migrated ~Aug 2026)
+ * Tests (PAYTM_PORTAL_ROOT_OVERRIDE set): uses the same override as getPortalRoot()
+ */
+function getPortalDashboardBase(): string {
+  const override = process.env["PAYTM_PORTAL_ROOT_OVERRIDE"];
+  return override ?? PORTAL_DASHBOARD_BASE;
+}
+
+/**
+ * Login URL candidates in priority order.
+ *
+ * In production (no override):
+ *   1. dashboard.paytm.com/login/ — current live URL (Aug 2026+)
+ *   2. dashboard.paytm.com/login/ without referrer param
+ *   3–5. Legacy business.paytm.com paths — now return HTTP 200 with 404 content;
+ *        isActual404Page() skips them so they never match.
+ *
+ * In tests (PAYTM_PORTAL_ROOT_OVERRIDE set):
+ *   Uses the mock server override origin for all three legacy path patterns.
+ */
 function getLoginUrlCandidates(): string[] {
-  const root = getPortalRoot();
-  return [`${root}/user/login`, `${root}/login`, root];
+  const override = process.env["PAYTM_PORTAL_ROOT_OVERRIDE"];
+  if (override) {
+    // Test mode: mock server serves all routes from a single origin
+    return [`${override}/user/login`, `${override}/login`, override];
+  }
+  // Production: new dashboard.paytm.com URLs first; legacy as 404 fallbacks
+  return [
+    `${PORTAL_DASHBOARD_BASE}/login/?referrer=Business`,  // current live URL (Aug 2026+)
+    `${PORTAL_DASHBOARD_BASE}/login/`,                    // without referrer param
+    "https://business.paytm.com/user/login",              // legacy (HTTP 200 + 404 page)
+    "https://business.paytm.com/login",                   // legacy
+    "https://business.paytm.com",                         // last resort
+  ];
 }
 
 /** Profile paths to try for ownership verification, in preference order. */
@@ -310,6 +352,45 @@ const SEL = {
     'input[type="radio"][value="phone"]',
   ],
 
+  // accounts.paytm.com OAuth SDK iframe — the actual login form host on the
+  // new Paytm Business portal (dashboard.paytm.com/login, Aug 2026+).
+  // Cross-origin but fully accessible via Playwright's CDP protocol.
+  ACCOUNTS_IFRAME: [
+    'iframe[src*="accounts.paytm.com"]',
+    'iframe[src*="oauth-js-sdk"]',
+  ],
+
+  // OTP login link inside the accounts.paytm.com iframe.
+  // May be absent if the portal removed OTP login (triggers password-mode fallback).
+  OTP_LOGIN_LINK: [
+    'a:has-text("Login with OTP")',
+    'a:has-text("Send OTP to mobile")',
+    'a:has-text("Use OTP")',
+    'a:has-text("OTP")',
+    'button:has-text("Login with OTP")',
+    'button:has-text("Get OTP")',
+    'button:has-text("Send OTP")',
+    '[data-testid*="otp-login"]',
+    '[data-testid*="send-otp"]',
+  ],
+
+  // Password input in accounts.paytm.com iframe
+  PASSWORD_INPUT: [
+    'input[name="password"]',
+    'input[id="password_login"]',
+    'input[type="password"]',
+    'input[placeholder*="password" i]',
+    'input[placeholder*="Password"]',
+  ],
+
+  // Submit / Sign-in button inside the accounts.paytm.com iframe
+  ACCOUNTS_SUBMIT_BTN: [
+    'button:has-text("Sign in Securely")',
+    'button:has-text("Sign In")',
+    'button[type="submit"]',
+    '[role="button"]:has-text("Sign in")',
+  ],
+
   // Account block / suspicious activity
   BLOCKED: [
     'text=account has been blocked',
@@ -379,6 +460,20 @@ interface PaytmAdapterData {
   connectedAt?: string;
   /** MID extracted during discoverEntities (may be empty if not yet discovered). */
   merchantId?: string;
+  /**
+   * Login mode used to complete authentication.
+   * "otp"      — standard mobile OTP flow (traditional portal)
+   * "password" — Paytm account password (new portal structure, Aug 2026+)
+   * undefined  — unknown / legacy session; treated as "otp"
+   */
+  loginMode?: "otp" | "password";
+  /**
+   * Full mobile number stored for password-mode re-entry in submitStep.
+   * SECURITY: Stored only within the encrypted session token (AES-256-GCM) —
+   * never logged, never returned in API responses.
+   * Only set when loginMode === "password".
+   */
+  storedMobile?: string;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -439,15 +534,28 @@ async function waitForAny(
 /**
  * Check if the current URL indicates we are on the authenticated dashboard
  * (not on any login / OTP / redirect page).
+ *
+ * Accepts both the new dashboard.paytm.com host (Aug 2026+) and the legacy
+ * business.paytm.com host, plus any test override origin.
  */
 function isDashboardUrl(url: string): boolean {
-  const root = getPortalRoot();
-  // Must be on the configured portal host (real or mock override)
-  if (!url.startsWith(root) && !url.startsWith("https://business.paytm.com")) return false;
+  const override = process.env["PAYTM_PORTAL_ROOT_OVERRIDE"];
+  if (override) {
+    // Test mode: must be on the mock server origin
+    if (!url.startsWith(override)) return false;
+  } else {
+    // Production: accept both the new dashboard host and the legacy marketing host
+    try {
+      const { hostname } = new URL(url);
+      if (hostname !== "dashboard.paytm.com" && hostname !== "business.paytm.com") return false;
+    } catch {
+      return false;
+    }
+  }
   // Reject login-page URLs (path-based check handles both real and mock)
   if (isLoginUrl(url)) return false;
   // Extract pathname
-  let pathname = url;
+  let pathname = "/";
   try { pathname = new URL(url).pathname; } catch {}
   // Root path after login is the dashboard
   if (pathname === "/" || pathname === "") return true;
@@ -495,6 +603,86 @@ async function isBlocked(page: Page): Promise<boolean> {
     } catch { /* continue */ }
   }
   return false;
+}
+
+/**
+ * Returns true if the page returned HTTP 200 but actually renders a 404 /
+ * "Page Not Found" experience — Paytm Business does this for deprecated login
+ * URLs (e.g. business.paytm.com/user/login returns HTTP 200 with "Uh-oh!
+ * Page Not Found" content since the portal migrated to dashboard.paytm.com
+ * in Aug 2026).
+ * Never throws.
+ */
+async function isActual404Page(page: Page): Promise<boolean> {
+  try {
+    const title = await page.title();
+    if (/404|not found|page not found/i.test(title)) return true;
+    // Paytm's specific marker
+    const bodySnippet = await page
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .evaluate(() => ((globalThis as any)["document"]?.body?.innerText ?? "").slice(0, 500))
+      .catch(() => "");
+    return /uh[.\s\-!]*oh|page not found|this page.*doesn.?t exist|404/i.test(bodySnippet);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Polls for the accounts.paytm.com OAuth SDK iframe to appear and have its
+ * form rendered (at least one input visible). This iframe hosts the actual
+ * login form on the new Paytm Business portal (dashboard.paytm.com/login).
+ *
+ * Cross-origin but fully accessible via Playwright's CDP protocol — no
+ * same-origin restriction applies for Playwright automation.
+ *
+ * Returns the Frame, or null if not found within the timeout. Never throws.
+ */
+async function waitForAccountsFrame(
+  page: Page,
+  timeoutMs = 12_000,
+): Promise<import("playwright").Frame | null> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const frame = page.frames().find(
+      (f) => f.url().includes("accounts.paytm.com") || f.url().includes("oauth-js-sdk"),
+    );
+    if (frame) {
+      // Confirm at least one input is present (form rendered)
+      try {
+        await frame.waitForSelector("input", { timeout: 3_000 });
+        return frame;
+      } catch {
+        // Frame found but form not ready yet — keep polling
+      }
+    }
+    await new Promise<void>((r) => setTimeout(r, 600));
+  }
+  return null;
+}
+
+/**
+ * Like tryLocator() but operates on a specific Playwright Frame (including
+ * cross-origin frames accessible via CDP). Returns the first visible matching
+ * locator, or null. Never throws.
+ */
+async function tryFrameLocator(
+  frame: import("playwright").Frame,
+  selectors: string[],
+  timeout = ACTION_TIMEOUT_MS / 2,
+): Promise<import("playwright").Locator | null> {
+  for (const sel of selectors) {
+    try {
+      const loc = frame.locator(sel).first();
+      if (
+        (await loc.count().catch(() => 0)) > 0 &&
+        (await loc.isVisible({ timeout }).catch(() => false))
+      ) {
+        return loc;
+      }
+    } catch { /* try next */ }
+  }
+  return null;
 }
 
 // ── New resilience helpers ─────────────────────────────────────────────────────
@@ -657,15 +845,31 @@ async function collectPageDiagnostics(page: Page): Promise<{
 
 /**
  * Fill the mobile number in the current page.
- * Handles three layouts:
- *   1. Single-field input (main page)
- *   2. Single-field input inside a same-origin iframe
- *   3. Digit-box layout (10 individual maxlength="1" inputs)
+ * Handles four layouts in priority order:
+ *   1. accounts.paytm.com OAuth SDK iframe (new portal, Aug 2026+)
+ *   2. Single-field input (main page)
+ *   3. Single-field input inside a same-origin iframe
+ *   4. Digit-box layout (10 individual maxlength="1" inputs)
  *
  * Returns true if filled successfully. NEVER logs the mobile number.
  */
 async function fillMobileInPage(page: Page, mobile: string): Promise<boolean> {
-  // Single-field input — main page + same-origin iframes
+  // (0) accounts.paytm.com OAuth SDK iframe — new Paytm Business portal.
+  //     This is a cross-origin iframe but Playwright CDP can access it directly.
+  //     Check it FIRST because the new portal has zero inputs in the main frame.
+  const accFrame = await waitForAccountsFrame(page, 5_000);
+  if (accFrame) {
+    const loc = await tryFrameLocator(accFrame, SEL.MOBILE_INPUT);
+    if (loc) {
+      try {
+        await loc.click({ timeout: ACTION_TIMEOUT_MS });
+        await loc.fill(mobile, { timeout: ACTION_TIMEOUT_MS });
+        return true;
+      } catch {}
+    }
+  }
+
+  // (1) Single-field input — main page + same-origin iframes
   const singleInput = await tryLocatorIncludingFrames(page, SEL.MOBILE_INPUT);
   if (singleInput) {
     try {
@@ -675,7 +879,7 @@ async function fillMobileInPage(page: Page, mobile: string): Promise<boolean> {
     } catch {}
   }
 
-  // Digit-box layout (main page only — cross-origin iframe digit boxes are inaccessible)
+  // (2) Digit-box layout (main page only — cross-origin iframe digit boxes are inaccessible)
   const digitCount = await countDigitBoxes(page);
   if (digitCount >= mobile.length) {
     for (const sel of SEL.MOBILE_DIGIT_BOXES) {
@@ -697,18 +901,48 @@ async function fillMobileInPage(page: Page, mobile: string): Promise<boolean> {
 }
 
 /**
- * Fill OTP — handles both single-field and individual-digit-box layouts.
+ * Fill OTP — handles three layouts in priority order:
+ *   1. accounts.paytm.com OAuth SDK iframe (new portal, Aug 2026+)
+ *   2. Single-field OTP input (main page)
+ *   3. Individual digit-box layout (Paytm's custom OTP input)
+ *
  * Returns true if OTP was successfully filled.
  */
 async function fillOtp(page: Page, otp: string): Promise<boolean> {
-  // Try single OTP field first
+  // (0) accounts.paytm.com iframe — new portal structure. OTP field may be
+  //     inside the cross-origin accounts.paytm.com frame after OTP link click.
+  const accFrame = await waitForAccountsFrame(page, 5_000);
+  if (accFrame) {
+    const singleInFrame = await tryFrameLocator(accFrame, SEL.OTP_INPUT_SINGLE);
+    if (singleInFrame) {
+      try {
+        await singleInFrame.fill(otp, { timeout: ACTION_TIMEOUT_MS });
+        return true;
+      } catch {}
+    }
+    // Digit boxes inside the frame
+    for (const digitSel of SEL.OTP_INPUT_DIGITS) {
+      const boxes = accFrame.locator(digitSel);
+      const count = await boxes.count().catch(() => 0);
+      if (count >= otp.length) {
+        for (let i = 0; i < otp.length; i++) {
+          try {
+            await boxes.nth(i).fill(otp[i]!, { timeout: ACTION_TIMEOUT_MS });
+          } catch {}
+        }
+        return true;
+      }
+    }
+  }
+
+  // (1) Try single OTP field on main page
   const single = await tryLocator(page, SEL.OTP_INPUT_SINGLE);
   if (single) {
     await single.fill(otp, { timeout: ACTION_TIMEOUT_MS });
     return true;
   }
 
-  // Try individual digit boxes (Paytm's custom OTP input)
+  // (2) Try individual digit boxes (Paytm's custom OTP input, main page)
   for (const digitSel of SEL.OTP_INPUT_DIGITS) {
     const boxes = page.locator(digitSel);
     const count = await boxes.count().catch(() => 0);
@@ -726,9 +960,10 @@ async function fillOtp(page: Page, otp: string): Promise<boolean> {
 /**
  * Describes the detected state of the login page after navigation.
  *
- *   "mobile_form"        — single-field mobile number input is visible
- *   "mobile_form_digits" — 10 individual digit-box inputs for mobile number
- *                          (Paytm portal's alternate phone entry UI)
+ *   "mobile_form"        — single-field mobile number input is visible (main page / same-origin iframe)
+ *   "mobile_form_digits" — 10 individual digit-box inputs for mobile number (old portal)
+ *   "mobile_form_iframe" — mobile field is inside a cross-origin accounts.paytm.com OAuth iframe
+ *                          (new Paytm Business portal, dashboard.paytm.com, Aug 2026+)
  *   "otp_form"           — 4–8 digit boxes or single OTP field visible
  *   "dashboard"          — already on the authenticated dashboard
  *   "waf"                — WAF / device-verification / rate-limit page
@@ -737,6 +972,7 @@ async function fillOtp(page: Page, otp: string): Promise<boolean> {
 type LoginPageState =
   | "mobile_form"
   | "mobile_form_digits"
+  | "mobile_form_iframe"
   | "otp_form"
   | "dashboard"
   | "waf"
@@ -746,15 +982,17 @@ type LoginPageState =
  * Navigate to the Paytm Business login page and detect the current auth state.
  *
  * Sequence of checks on each URL candidate:
+ *   0. HTTP 200 with 404 content ("Uh-oh! Page Not Found") → skip candidate
  *   1. Dashboard URL → "dashboard"
  *   2. WAF / device verification markers → "waf"
  *   3. Dismiss cookie/privacy consent banner (best-effort)
  *   4. Select mobile login mode if a toggle is present (best-effort)
- *   5. Count single-char digit boxes:
+ *   5. Wait for accounts.paytm.com iframe → "mobile_form_iframe" (new portal)
+ *   6. Count single-char digit boxes:
  *      ≥ 10 → "mobile_form_digits" (phone number, NOT OTP)
  *       4–8 → "otp_form"
- *   6. Single-field mobile input (main page + same-origin iframes) → "mobile_form"
- *   7. Single-field OTP input → "otp_form"
+ *   7. Single-field mobile input (main page + same-origin iframes) → "mobile_form"
+ *   8. Single-field OTP input → "otp_form"
  *   If no URL candidate yields a recognisable state → false
  */
 async function navigateToLoginPage(page: Page): Promise<LoginPageState> {
@@ -764,6 +1002,11 @@ async function navigateToLoginPage(page: Page): Promise<LoginPageState> {
       await page.waitForLoadState("networkidle", { timeout: 5_000 }).catch(() => {});
 
       const currentUrl = page.url();
+
+      // (0) Skip pages that return HTTP 200 but render 404 content.
+      //     Paytm's deprecated /user/login and /login URLs do this since the
+      //     portal migrated to dashboard.paytm.com in Aug 2026.
+      if (await isActual404Page(page)) continue;
 
       // (1) Redirected to dashboard — session was still valid
       if (isDashboardUrl(currentUrl)) return "dashboard";
@@ -781,7 +1024,21 @@ async function navigateToLoginPage(page: Page): Promise<LoginPageState> {
       // Brief wait for JS-driven DOM updates after the interactions above
       await page.waitForLoadState("domcontentloaded", { timeout: 2_000 }).catch(() => {});
 
-      // (5) Count single-char digit boxes — the critical disambiguator.
+      // (5) Wait for accounts.paytm.com OAuth SDK iframe.
+      //     This check runs BEFORE main-page selectors because the new portal
+      //     (dashboard.paytm.com) has zero inputs in the main frame — all
+      //     inputs are inside a cross-origin accounts.paytm.com iframe.
+      //     Allow up to 10 s for the iframe to load (it is fetched asynchronously).
+      const accFrame = await waitForAccountsFrame(page, 10_000);
+      if (accFrame) {
+        const mobileInFrame = await tryFrameLocator(accFrame, SEL.MOBILE_INPUT);
+        if (mobileInFrame) return "mobile_form_iframe";
+        // Frame appeared but has OTP form instead of mobile
+        const otpInFrame = await tryFrameLocator(accFrame, SEL.OTP_INPUT_SINGLE);
+        if (otpInFrame) return "otp_form";
+      }
+
+      // (6) Count single-char digit boxes — the critical disambiguator.
       //     Some Paytm portal versions use 10 individual maxlength="1" boxes for
       //     phone entry.  OTP_INPUT_DIGITS selectors match these boxes too, so
       //     the only reliable way to tell them apart is the count:
@@ -791,13 +1048,13 @@ async function navigateToLoginPage(page: Page): Promise<LoginPageState> {
       if (digitCount >= 10) return "mobile_form_digits";
       if (digitCount >= 4)  return "otp_form";
 
-      // (6) Single-field mobile input — main page + same-origin iframes
+      // (7) Single-field mobile input — main page + same-origin iframes
       const mobileInput = await tryLocatorIncludingFrames(
         page, SEL.MOBILE_INPUT, ACTION_TIMEOUT_MS,
       );
       if (mobileInput) return "mobile_form";
 
-      // (7) Single-field OTP input
+      // (8) Single-field OTP input
       const otpSingle = await tryLocatorIncludingFrames(
         page, SEL.OTP_INPUT_SINGLE, ACTION_TIMEOUT_MS,
       );
@@ -1115,6 +1372,118 @@ export const paytmMerchantAdapter: ProviderAdapter = {
         };
       }
 
+      // ── State: mobile_form_iframe (new Paytm Business portal, Aug 2026+) ──
+      // The login form lives inside a cross-origin accounts.paytm.com OAuth
+      // SDK iframe. Primary flow is mobile + password; OTP may be available
+      // as an alternative via a "Login with OTP" link.
+      if (loginState === "mobile_form_iframe") {
+        // CAPTCHA check
+        if (await hasCaptcha(page)) {
+          const storageState = await extractStorageState(ctx.context);
+          const adData: PaytmAdapterData = {
+            storageState, maskedMobile: maskMobile(mobile), step: "AWAITING_OTP",
+          };
+          const enc = encryptSessionPayload(
+            makeSessionPayload("paytm_merchant", 0, adData as unknown as Record<string, unknown>),
+          );
+          return {
+            status: "AWAITING_USER_ACTION" as any,
+            failReason: "CAPTCHA_REQUIRED",
+            failDetail: "Paytm is showing a CAPTCHA. CAPTCHAs are transient — " +
+              "please wait a few minutes and try again.",
+            encryptedSessionToken: enc.ok ? enc.token : undefined,
+          };
+        }
+
+        // Fill mobile in the accounts.paytm.com iframe
+        const filled = await fillMobileInPage(page, mobile);
+        if (!filled) {
+          const diag = await collectPageDiagnostics(page);
+          logger.warn({ slug: "paytm_merchant", diag }, "paytm_initiate_iframe_mobile_not_found");
+          return {
+            status: "FAILED",
+            failReason: "LOGIN_UI_CHANGED",
+            failDetail: `Could not locate the mobile number input in the Paytm login iframe ` +
+              `(path=${diag.urlPath}, title="${diag.title}", frames=${diag.frameCount}). ` +
+              "The portal UI may have changed — please contact RasoKart support.",
+            helpUrl: HELP_URL,
+          };
+        }
+
+        // Look for OTP link in the accounts.paytm.com iframe.
+        // If the portal offers OTP login, we use that flow.
+        // If not (password-only), we prompt for the Paytm password instead.
+        const accFrameForOtp = await waitForAccountsFrame(page, 5_000);
+        const otpLink = accFrameForOtp
+          ? await tryFrameLocator(accFrameForOtp, SEL.OTP_LOGIN_LINK)
+          : null;
+
+        if (otpLink) {
+          // OTP option found — click it and wait for OTP input field
+          try { await otpLink.click({ timeout: ACTION_TIMEOUT_MS }); } catch {}
+          await page.waitForTimeout(1_500);
+          const otpAppeared = accFrameForOtp
+            ? await tryFrameLocator(accFrameForOtp, SEL.OTP_INPUT_SINGLE)
+            : null;
+          if (otpAppeared) {
+            const storageState = await extractStorageState(ctx.context);
+            const adData: PaytmAdapterData = {
+              storageState,
+              maskedMobile: maskMobile(mobile),
+              step: "AWAITING_OTP",
+              loginMode: "otp",
+            };
+            const payload = makeSessionPayload(
+              "paytm_merchant", 0, adData as unknown as Record<string, unknown>,
+            );
+            const enc = encryptSessionPayload(payload);
+            if (!enc.ok) {
+              return { status: "FAILED", failReason: "SESSION_ENCRYPT_FAILED", failDetail: "Internal error." };
+            }
+            logger.info({ slug: "paytm_merchant", maskedMobile: maskMobile(mobile) }, "paytm_initiate_iframe_otp_awaiting");
+            return {
+              status: "AWAITING_OTP",
+              encryptedSessionToken: enc.token,
+              nextStep: "ENTER_OTP",
+              nextStepPrompt:
+                `An OTP has been sent to your Paytm-registered mobile (${maskMobile(mobile)}). ` +
+                "Enter the OTP below to complete the connection.",
+            };
+          }
+        }
+
+        // No OTP option found — portal uses password login.
+        // The "OTP" field on the merchant connect page is repurposed for the
+        // Paytm Business password in this mode. The password is received
+        // encrypted, decrypted once in submitStep, filled into the browser,
+        // and never stored. storedMobile is needed for submitStep to re-fill
+        // the mobile field (stored encrypted in the session token).
+        logger.info({ slug: "paytm_merchant", maskedMobile: maskMobile(mobile) }, "paytm_initiate_iframe_password_mode");
+        const storageState = await extractStorageState(ctx.context);
+        const adData: PaytmAdapterData = {
+          storageState,
+          maskedMobile: maskMobile(mobile),
+          step: "AWAITING_OTP",
+          loginMode: "password",
+          storedMobile: mobile,  // encrypted inside session token (AES-256-GCM), never logged
+        };
+        const payload = makeSessionPayload(
+          "paytm_merchant", 0, adData as unknown as Record<string, unknown>,
+        );
+        const enc = encryptSessionPayload(payload);
+        if (!enc.ok) {
+          return { status: "FAILED", failReason: "SESSION_ENCRYPT_FAILED", failDetail: "Internal error." };
+        }
+        return {
+          status: "AWAITING_OTP",
+          encryptedSessionToken: enc.token,
+          nextStep: "ENTER_OTP",
+          nextStepPrompt:
+            `Enter your Paytm Business account password for (${maskMobile(mobile)}). ` +
+            "Your password is transmitted encrypted and never stored.",
+        };
+      }
+
       // ── State: mobile_form or mobile_form_digits ──────────────────────────
       // (loginState is one of those two at this point)
 
@@ -1304,22 +1673,40 @@ export const paytmMerchantAdapter: ProviderAdapter = {
         failDetail: "Could not decrypt OTP.",
       };
     }
-    const otp = otpDecrypt.value.trim().replace(/\D/g, "");
-    if (!otp || otp.length < 4 || otp.length > 8) {
+
+    // In password mode the merchant submits their Paytm Business password as
+    // the "OTP". Passwords may contain non-digit characters and be >8 chars.
+    // In OTP mode we strip non-digits and enforce the 4–8 digit range.
+    const isPasswordMode = adData.loginMode === "password";
+    const credential = isPasswordMode
+      ? otpDecrypt.value.trim()                          // password: keep as-is
+      : otpDecrypt.value.trim().replace(/\D/g, "");      // OTP: digits only
+    if (!credential) {
+      return {
+        status: "FAILED",
+        failReason: "INVALID_OTP",
+        failDetail: isPasswordMode ? "Password is required." : "OTP is required.",
+      };
+    }
+    if (!isPasswordMode && (credential.length < 4 || credential.length > 8)) {
       return {
         status: "FAILED",
         failReason: "INVALID_OTP",
         failDetail: "OTP must be 4–8 digits.",
       };
     }
+    // Unify: "otp" is the credential value (OTP digits or password string)
+    const otp = credential;
 
     let ctx = null as Awaited<ReturnType<typeof newIsolatedContext>> | null;
     try {
       ctx = await newIsolatedContext(adData.storageState);
       const page = await ctx.context.newPage();
 
-      // Navigate to portal root — check current state of the restored session
-      await page.goto(getPortalRoot(), { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
+      // Navigate to portal dashboard base — check current state of the restored session.
+      // Uses dashboard.paytm.com (not marketing business.paytm.com) to match where
+      // the portal actually lands after authentication (Aug 2026+ migration).
+      await page.goto(getPortalDashboardBase(), { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
       const preCheckUrl = page.url();
 
       if (!isLoginUrl(preCheckUrl)) {
@@ -1328,7 +1715,7 @@ export const paytmMerchantAdapter: ProviderAdapter = {
         if (preCheck.verified) {
           // Session is still alive — verify ownership before returning CONNECTED.
           // CONNECTED is never returned without this check.
-          const ownership = await verifyOwnershipFromPortal(page, adData, getPortalRoot());
+          const ownership = await verifyOwnershipFromPortal(page, adData, getPortalDashboardBase());
           if (!ownership.verified) {
             logger.warn(
               { slug: "paytm_merchant", reason: ownership.reason },
@@ -1372,7 +1759,7 @@ export const paytmMerchantAdapter: ProviderAdapter = {
       const loginState = await navigateToLoginPage(page);
       if (loginState === "dashboard") {
         // Navigating to login ended up on dashboard — verify ownership
-        const ownership = await verifyOwnershipFromPortal(page, adData, getPortalRoot());
+        const ownership = await verifyOwnershipFromPortal(page, adData, getPortalDashboardBase());
         if (!ownership.verified) {
           return {
             status: "FAILED",
@@ -1399,15 +1786,110 @@ export const paytmMerchantAdapter: ProviderAdapter = {
           nextStep: "COMPLETE",
         };
       }
-      if (loginState === "mobile_form") {
-        // Session expired — need full re-initiate
+
+      // Session-expired states — OTP/password session was not preserved in cookies
+      if (loginState === "mobile_form" || loginState === "mobile_form_digits") {
         return {
           status: "FAILED",
           failReason: "SESSION_EXPIRED_REAUTH",
           failDetail: "OTP session has expired. Please restart the connection to receive a new OTP.",
         };
       }
-      if (!loginState) {
+
+      // ── Password mode (new Paytm Business portal, Aug 2026+) ─────────────
+      // loginState === "mobile_form_iframe" with loginMode === "password":
+      // The portal did not preserve OTP state in cookies (expected for password
+      // mode — there is no server-side OTP session). Re-fill mobile + password.
+      if (loginState === "mobile_form_iframe" && isPasswordMode) {
+        if (!adData.storedMobile) {
+          return {
+            status: "FAILED",
+            failReason: "SESSION_EXPIRED_REAUTH",
+            failDetail: "Session data is incomplete. Please restart the connection.",
+          };
+        }
+
+        const pwdFrame = await waitForAccountsFrame(page, 10_000);
+        if (!pwdFrame) {
+          return {
+            status: "FAILED",
+            failReason: "PORTAL_UNREACHABLE",
+            failDetail: "Could not find the Paytm login iframe. The portal may have changed. " +
+              "Please try again.",
+          };
+        }
+
+        // Fill mobile
+        const mobileInput = await tryFrameLocator(pwdFrame, SEL.MOBILE_INPUT);
+        if (!mobileInput) {
+          return {
+            status: "FAILED",
+            failReason: "LOGIN_UI_CHANGED",
+            failDetail: "Could not locate the mobile number input in the Paytm login iframe.",
+          };
+        }
+        await mobileInput.click({ timeout: ACTION_TIMEOUT_MS });
+        await mobileInput.fill(adData.storedMobile, { timeout: ACTION_TIMEOUT_MS });
+
+        // Fill password (`otp` holds the password value in password mode)
+        const pwdInput = await tryFrameLocator(pwdFrame, SEL.PASSWORD_INPUT);
+        if (!pwdInput) {
+          return {
+            status: "FAILED",
+            failReason: "LOGIN_UI_CHANGED",
+            failDetail: "Could not locate the password input in the Paytm login iframe. " +
+              "The portal UI may have changed — please contact RasoKart support.",
+          };
+        }
+        await pwdInput.click({ timeout: ACTION_TIMEOUT_MS });
+        await pwdInput.fill(otp, { timeout: ACTION_TIMEOUT_MS }); // otp = password
+
+        // Click "Sign in Securely" — button may be disabled until both fields filled;
+        // wait a moment for React to enable it before clicking.
+        await page.waitForTimeout(500);
+        const signInBtn = await tryFrameLocator(pwdFrame, SEL.ACCOUNTS_SUBMIT_BTN);
+        if (signInBtn) {
+          await signInBtn.click({ timeout: ACTION_TIMEOUT_MS * 2 });
+        } else {
+          await pwdInput.press("Enter");
+        }
+
+        // Wait for dashboard or error
+        const allOutcomes2 = [
+          ...SEL.DASHBOARD_LANDMARK,
+          ...SEL.ERROR_MSG,
+          ...SEL.CAPTCHA,
+          ...SEL.BLOCKED,
+        ];
+        await waitForAny(page, allOutcomes2, NAV_TIMEOUT_MS);
+
+        // Check for error in iframe (wrong password, etc.)
+        const pwdErrEl = await tryFrameLocator(pwdFrame, SEL.ERROR_MSG);
+        if (pwdErrEl) {
+          const errText = (await pwdErrEl.textContent().catch(() => ""))?.trim() ?? "";
+          if (errText) {
+            const isInvalid = /invalid|incorrect|wrong|not match/i.test(errText);
+            return {
+              status: "FAILED",
+              failReason: isInvalid ? "INVALID_OTP" : "OTP_ERROR",
+              failDetail: `Login error: "${errText}". ` +
+                (isInvalid ? "Check your Paytm Business password and try again." : "Please try again."),
+            };
+          }
+        }
+
+        // Fall through to CONNECTED gate below — the page navigation after sign-in
+        // is handled by the shared landmark check + ownership verification.
+        // No extra code needed here.
+      } else if (loginState === "mobile_form_iframe" && !isPasswordMode) {
+        // OTP mode but cookies didn't restore OTP step — session expired
+        return {
+          status: "FAILED",
+          failReason: "SESSION_EXPIRED_REAUTH",
+          failDetail: "OTP session has expired. Please restart the connection to receive a new OTP.",
+        };
+      } else if (loginState !== "otp_form") {
+        // Unexpected state
         return {
           status: "FAILED",
           failReason: "PORTAL_UNREACHABLE",
@@ -1415,39 +1897,53 @@ export const paytmMerchantAdapter: ProviderAdapter = {
             "Please restart the connection.",
         };
       }
+
+      // ── OTP mode submission ───────────────────────────────────────────────
       // loginState === "otp_form" — OTP inputs already visible on the login page
+      // (accounts.paytm.com iframe or main-page OTP field)
+      if (loginState === "otp_form") {
+        // Wait for OTP input (may already be visible since we're on "otp_form")
+        const allOtpSels = [...SEL.OTP_INPUT_SINGLE, ...SEL.OTP_INPUT_DIGITS];
+        const otpSel = await waitForAny(page, allOtpSels, NAV_TIMEOUT_MS);
+        if (!otpSel) {
+          return {
+            status: "FAILED",
+            failReason: "OTP_STEP_NOT_FOUND",
+            failDetail: "The OTP entry screen was not found. The session may have expired — " +
+              "please restart the connection.",
+          };
+        }
 
-      // Wait for OTP input (may already be visible since we're on "otp_form")
-      const allOtpSels = [...SEL.OTP_INPUT_SINGLE, ...SEL.OTP_INPUT_DIGITS];
-      const otpSel = await waitForAny(page, allOtpSels, NAV_TIMEOUT_MS);
-      if (!otpSel) {
-        return {
-          status: "FAILED",
-          failReason: "OTP_STEP_NOT_FOUND",
-          failDetail: "The OTP entry screen was not found. The session may have expired — " +
-            "please restart the connection.",
-        };
+        // Fill OTP — `otp` goes out of scope after this call
+        const filled = await fillOtp(page, otp);
+        if (!filled) {
+          return {
+            status: "FAILED",
+            failReason: "OTP_FILL_FAILED",
+            failDetail: "Could not locate the OTP input field. Please try again.",
+          };
+        }
+
+        // Submit OTP
+        const submitBtn = await tryLocator(page, SEL.SUBMIT_OTP_BTN);
+        if (submitBtn) {
+          await submitBtn.click({ timeout: ACTION_TIMEOUT_MS });
+        } else {
+          // Try accounts iframe submit button
+          const accFrame = await waitForAccountsFrame(page, 3_000);
+          const iframeSubmitBtn = accFrame
+            ? await tryFrameLocator(accFrame, SEL.ACCOUNTS_SUBMIT_BTN)
+            : null;
+          if (iframeSubmitBtn) {
+            await iframeSubmitBtn.click({ timeout: ACTION_TIMEOUT_MS });
+          } else {
+            await page.keyboard.press("Enter");
+          }
+        }
       }
 
-      // Fill OTP — `otp` goes out of scope after this call
-      const filled = await fillOtp(page, otp);
-      if (!filled) {
-        return {
-          status: "FAILED",
-          failReason: "OTP_FILL_FAILED",
-          failDetail: "Could not locate the OTP input field. Please try again.",
-        };
-      }
-
-      // Submit
-      const submitBtn = await tryLocator(page, SEL.SUBMIT_OTP_BTN);
-      if (submitBtn) {
-        await submitBtn.click({ timeout: ACTION_TIMEOUT_MS });
-      } else {
-        await page.keyboard.press("Enter");
-      }
-
-      // Wait for outcome
+      // ── Shared post-submit outcome checks ─────────────────────────────────
+      // Wait for dashboard landmark, error message, CAPTCHA, or block indicator.
       const allOutcomes = [
         ...SEL.DASHBOARD_LANDMARK,
         ...SEL.ERROR_MSG,
@@ -1472,12 +1968,12 @@ export const paytmMerchantAdapter: ProviderAdapter = {
         return {
           status: "AWAITING_USER_ACTION" as any,
           failReason: "CAPTCHA_REQUIRED",
-          failDetail: "Paytm is showing a CAPTCHA during OTP verification. " +
+          failDetail: "Paytm is showing a CAPTCHA during login verification. " +
             "Please wait a few minutes and try again.",
         };
       }
 
-      // Check for error messages (invalid/expired OTP)
+      // Check for error messages (invalid/expired OTP or incorrect password)
       for (const errSel of SEL.ERROR_MSG) {
         try {
           const errEl = page.locator(errSel).first();
@@ -1490,18 +1986,20 @@ export const paytmMerchantAdapter: ProviderAdapter = {
               return {
                 status: "FAILED",
                 failReason: isExpired ? "OTP_EXPIRED" : (isInvalid ? "INVALID_OTP" : "OTP_ERROR"),
-                failDetail: `OTP error: "${errText}". ` + (
-                  isExpired
-                    ? "Please restart the connection to receive a new OTP."
-                    : "Check the OTP and try again, or restart for a new OTP."
-                ),
+                failDetail: isPasswordMode
+                  ? `Login error: "${errText}". Check your Paytm Business password and try again.`
+                  : `OTP error: "${errText}". ` + (
+                    isExpired
+                      ? "Please restart the connection to receive a new OTP."
+                      : "Check the OTP and try again, or restart for a new OTP."
+                  ),
               };
             }
           }
         } catch { /* continue */ }
       }
 
-      // ── CONNECTED gate — all four checks must pass ─────────────────────────
+      // ── CONNECTED gate ─────────────────────────────────────────────────────
       await page.waitForLoadState("domcontentloaded", { timeout: NAV_TIMEOUT_MS }).catch(() => {});
 
       const connectedCheck = await verifyDashboardAuthenticated(page);
@@ -1513,20 +2011,18 @@ export const paytmMerchantAdapter: ProviderAdapter = {
         return {
           status: "FAILED",
           failReason: "LOGIN_NOT_CONFIRMED",
-          failDetail: `OTP was submitted but session could not be verified as authenticated. ` +
-            `The OTP may be incorrect or expired. Please try again or restart the connection.`,
+          failDetail: isPasswordMode
+            ? `Login was submitted but session could not be verified as authenticated. ` +
+              `Check your Paytm Business password and try again.`
+            : `OTP was submitted but session could not be verified as authenticated. ` +
+              `The OTP may be incorrect or expired. Please try again or restart the connection.`,
         };
       }
       // ── End CONNECTED gate ─────────────────────────────────────────────────
 
       // ── OWNERSHIP VERIFICATION GATE ───────────────────────────────────────
-      // After confirming the dashboard is visible and authenticated, navigate to
-      // the profile page and verify the merchant's registered mobile matches the
-      // last 3 digits of the mobile number provided at initiateSession time.
-      //
       // CONNECTED is NEVER returned without this check passing.
-      // "Dashboard visible" alone is NOT sufficient evidence of account ownership.
-      const ownership = await verifyOwnershipFromPortal(page, adData, getPortalRoot());
+      const ownership = await verifyOwnershipFromPortal(page, adData, getPortalDashboardBase());
       if (!ownership.verified) {
         logger.warn(
           { slug: "paytm_merchant", reason: ownership.reason },
@@ -1646,7 +2142,7 @@ export const paytmMerchantAdapter: ProviderAdapter = {
       const page = await ctx.context.newPage();
 
       // Navigate to the profile page to look for MID
-      await page.goto(`${getPortalRoot()}/profile`, {
+      await page.goto(`${getPortalDashboardBase()}/profile`, {
         waitUntil: "domcontentloaded",
         timeout: NAV_TIMEOUT_MS,
       });
@@ -1725,7 +2221,7 @@ export const paytmMerchantAdapter: ProviderAdapter = {
       const page = await ctx.context.newPage();
 
       // Navigate to transactions
-      await page.goto(`${getPortalRoot()}/transactions`, {
+      await page.goto(`${getPortalDashboardBase()}/transactions`, {
         waitUntil: "domcontentloaded",
         timeout: NAV_TIMEOUT_MS,
       });
@@ -1835,21 +2331,31 @@ export const paytmMerchantAdapter: ProviderAdapter = {
     try {
       ctx = await newIsolatedContext(); // no stored state — fresh context
       const page = await ctx.context.newPage();
-      const root = getPortalRoot();
-      await page.goto(root, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
+      const loginUrl = `${PORTAL_DASHBOARD_BASE}/login/?referrer=Business`;
+      await page.goto(loginUrl, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
       const url = page.url();
-      const reachable = url.startsWith("https://business.paytm.com") || url.startsWith(root);
+      // Reachable if we stayed on dashboard.paytm.com (not a 404 or marketing redirect)
+      let reachable = false;
+      try {
+        const { hostname } = new URL(url);
+        reachable = (hostname === "dashboard.paytm.com" || hostname === "business.paytm.com") &&
+          !(await isActual404Page(page));
+      } catch {}
+      const override = process.env["PAYTM_PORTAL_ROOT_OVERRIDE"];
+      if (override) reachable = url.startsWith(override); // test mode
       return {
         healthy: reachable,
         status:  "CONNECTED" as any,
-        reason:  reachable ? "Paytm Business portal is reachable." : `Unexpected redirect: ${url}`,
+        reason:  reachable
+          ? "Paytm Business portal is reachable."
+          : `Portal login page check failed (landed at ${url}).`,
       };
     } catch (err: any) {
       return {
         healthy: false,
         status:  "FAILED" as any,
         reason:  "PORTAL_UNREACHABLE",
-        detail:  `${getPortalRoot()}: ${err?.message ?? "unknown"}`,
+        detail:  `${PORTAL_DASHBOARD_BASE}: ${err?.message ?? "unknown"}`,
       };
     } finally {
       await ctx?.release();
@@ -1940,7 +2446,7 @@ export const paytmMerchantAdapter: ProviderAdapter = {
     try {
       ctx = await newIsolatedContext(adData.storageState);
       const page = await ctx.context.newPage();
-      await page.goto(`${getPortalRoot()}/user/logout`, {
+      await page.goto(`${getPortalDashboardBase()}/user/logout`, {
         waitUntil: "domcontentloaded",
         timeout: NAV_TIMEOUT_MS,
       });
