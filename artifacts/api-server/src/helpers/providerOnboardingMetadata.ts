@@ -22,7 +22,16 @@
  * For Category A (EKQR): admin-managed; no merchant self-service needed.
  */
 
-export type ProviderCategory = "A" | "D" | "E";
+/**
+ * Provider category:
+ *   A       — READY via official RasoKart API (admin-managed, e.g. EKQR)
+ *   D       — OFFICIAL API/PARTNER REQUIRED (merchant self-service after partnership)
+ *   E       — UNSUPPORTED/UNSAFE (banking regulation or deprecated)
+ *   portal  — portal_session_connector (Playwright); rendered ONLY via dedicated
+ *             PortalCard; NEVER via the generic EnrollmentCard / API-credential form.
+ *             These entries must be excluded from the /api/merchant/enrollments response.
+ */
+export type ProviderCategory = "A" | "D" | "E" | "portal";
 
 /** Credential field definition — maps to one of the 3 stored slots */
 export interface CredentialField {
@@ -555,64 +564,52 @@ export const PROVIDER_ONBOARDING_METADATA: Record<string, ProviderOnboardingInfo
   // ── Pine Labs ONE ────────────────────────────────────────────────────────────
   // Separate product from Pine Labs Plural PG.
   // Pine Labs ONE (one.pinelabs.com) is a POS/QR merchant account portal.
-  // OFFICIAL PARTNER/ENTERPRISE API ACCESS REQUIRED.
-  // Phase 4 audit result: no public third-party API exists for programmatic access.
+  //
+  // CONNECTOR TYPE: portal_session_connector (Playwright browser automation).
+  // LOGIN FLOW: registered mobile/user-ID → password → optional OTP 2FA.
+  //
+  // category "portal" is intentional: the enrollments endpoint returns this entry
+  // but the frontend MUST NOT render it as a Category D/E/A enrollment card.
+  // It is rendered exclusively via PineLabsOnePortalCard in the Provider Account
+  // Connect section, routed through /api/merchant/portal-sessions/pinelabs_one/*.
+  //
+  // DO NOT add API credential fields here. Pine Labs ONE uses Playwright session
+  // auth, not a partner API key. Passwords and OTPs are never stored; they are
+  // encrypted server-side, used once, then discarded.
   pinelabs_one: {
     slug: "pinelabs_one",
-    category: "D",
+    category: "portal",
     categoryReason:
-      "Pine Labs ONE (one.pinelabs.com) is a POS/QR merchant account platform entirely " +
-      "separate from the Pine Labs Plural payment gateway (pinepg.in). Official Pine Labs " +
-      "partner/enterprise API agreement is required (developer.pinelabs.com). Credentials " +
-      "are partner_api_key + partner_api_secret issued by Pine Labs upon partner approval.",
+      "Pine Labs ONE (one.pinelabs.com) is accessed via Playwright browser automation " +
+      "(portal_session_connector). Login: registered mobile/user-ID → password → optional " +
+      "OTP 2FA. No partner API agreement or API credentials required. Rendered exclusively " +
+      "via PineLabsOnePortalCard; must never appear in the generic enrollment card flow.",
 
     existingConnectionSupported: true,
     existingConnectionNote:
-      "Pine Labs ONE integration requires an official Pine Labs partner API agreement. " +
-      "Once granted, enter your Partner API Key and Partner API Secret (issued by Pine Labs " +
-      "enterprise support or via the partner portal at developer.pinelabs.com). " +
-      "Do not attempt to use portal OTP login credentials — only partner-program API keys are accepted.",
+      "Connect using the mobile number or user ID registered with your Pine Labs ONE " +
+      "merchant account, followed by your account password. An OTP 2FA step may follow " +
+      "for accounts with two-factor authentication enabled. Do not enter API keys or " +
+      "partner credentials — those are not used here.",
     loginMethods: [
-      "Partner API Key + Secret (Pine Labs partner program — issued by Pine Labs enterprise support)",
+      "Registered mobile number or user ID + password (+ optional OTP 2FA)",
     ],
-    merchantPortalUrl: "https://developer.pinelabs.com",
-    portalDisplayName: "Pine Labs Partner Developer Portal",
-    credentialFields: [
-      {
-        slot: "apiKey",
-        label: "Partner API Key",
-        hint: "Issued by Pine Labs upon partner program approval — see developer.pinelabs.com or your partner onboarding email",
-        required: true,
-      },
-      {
-        slot: "apiSecret",
-        label: "Partner API Secret",
-        hint: "Partner API Secret from your Pine Labs partner program agreement (keep this secret)",
-        required: true,
-      },
-      {
-        slot: "merchantId",
-        label: "Pine Labs ONE Merchant ID (optional)",
-        hint: "Your Merchant ID on Pine Labs ONE (one.pinelabs.com) — used to scope API calls to your account",
-        required: false,
-        isIdentifier: true,
-      },
-    ],
+    merchantPortalUrl: "https://one.pinelabs.com",
+    portalDisplayName: "Pine Labs ONE Merchant Portal",
+    credentialFields: [],  // No API credential fields — portal_session_connector uses mobile+password
 
-    // Mobile/email OTP — portal login only; not a valid third-party API credential path.
-    mobileOtpSupported: false,
+    mobileOtpSupported: true,
     mobileOtpNote:
-      "Pine Labs ONE portal uses mobile/email OTP for merchant portal login, but these " +
-      "are not valid credentials for the partner API. Use your Pine Labs partner API key " +
-      "and secret (issued via developer.pinelabs.com) to configure this connector.",
+      "Pine Labs ONE uses mobile/user-ID + password login via Playwright browser automation. " +
+      "An OTP 2FA step may be triggered by the portal for accounts with 2FA enabled.",
 
     emailOtpLoginAvailable: false,
 
-    signupUrl: "https://developer.pinelabs.com",
-    kycDocuments: [],  // N/A — existing merchant account product; partner agreement handles KYC
-    onboardingTimeline: "Partner program enrollment at developer.pinelabs.com; timeline per Pine Labs",
-    supportsSelfSubmit: true,
-    finalStatus: "PARTNER API CREDENTIALS REQUIRED — APPLY AT developer.pinelabs.com",
+    signupUrl: "https://one.pinelabs.com",
+    kycDocuments: [],
+    onboardingTimeline: "Immediate — use your existing Pine Labs ONE merchant account credentials",
+    supportsSelfSubmit: false,
+    finalStatus: "LIVE — portal_session_connector active via Playwright",
   },
 
   ekqr: {

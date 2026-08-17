@@ -133,10 +133,13 @@ router.get("/", async (req, res) => {
 
     const formatted = rows.map(formatEnrollment);
 
-    // Inject onboarding metadata for all known providers not yet enrolled
+    // Inject onboarding metadata for all known providers not yet enrolled.
+    // Exclude "portal" category entries — those are portal_session_connectors
+    // rendered exclusively via dedicated PortalCard components (e.g. PineLabsOnePortalCard).
+    // They must never appear in the generic enrollment/API-credential card flow.
     const enrolled = new Set(rows.map(r => r.providerSlug));
     const notEnrolled = Object.values(PROVIDER_ONBOARDING_METADATA)
-      .filter(m => !enrolled.has(m.slug))
+      .filter(m => !enrolled.has(m.slug) && m.category !== "portal")
       .map(m => ({
         id: null,
         providerSlug: m.slug,

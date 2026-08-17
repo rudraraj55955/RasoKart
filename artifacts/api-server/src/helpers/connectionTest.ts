@@ -144,45 +144,22 @@ export async function runProviderTest(
     }
 
     case "pinelabs_one": {
-      // Pine Labs ONE (one.pinelabs.com) — POS/QR merchant account platform.
-      // Official partner/enterprise API agreement required (developer.pinelabs.com).
+      // Pine Labs ONE is now a portal_session_connector (Playwright browser automation).
+      // It does NOT use API credentials; it uses mobile/user-ID + password login routed
+      // through /api/merchant/portal-sessions/pinelabs_one/*.
       //
-      // ALWAYS returns pass:false — by design.
-      //
-      // Rationale: the partner API endpoint URL, auth scheme, and response contract
-      // are documented in the Pine Labs partner onboarding agreement, which has not
-      // yet been received. Until that endpoint is confirmed and wired in, this test
-      // performs credential-presence validation only and deliberately returns
-      // pass:false so the calling route never auto-promotes the connection to "active".
-      //
-      // When the Pine Labs partner onboarding docs arrive:
-      //   1. Add the exact endpoint URL + auth headers here.
-      //   2. Accept only documented successful responses as pass:true.
-      //   3. Remove this comment block.
-      // (See follow-up task: "Flip Pine Labs ONE live once partner credentials are in production")
-      const hasKey    = !!(creds["partner_api_key"]    || creds["api_key"]);
-      const hasSecret = !!(creds["partner_api_secret"] || creds["api_secret"] || creds["client_secret"]);
-      if (!hasKey || !hasSecret) {
-        return {
-          pass: false,
-          message: "Pine Labs ONE credentials must include Partner API Key and Partner API Secret",
-          detail: `Keys present: ${Object.keys(creds).join(", ") || "none"}. ` +
-            "Obtain credentials from the Pine Labs partner program at developer.pinelabs.com.",
-        };
-      }
-      // Credentials are present and well-formed, but live verification is impossible
-      // without the official partner API endpoint. Return pass:false so the connection
-      // stays in "pending" status — it can only become "active" once a real network
-      // test succeeds against the documented endpoint (Task #2726).
+      // If this connectionTest case is reached it means a legacy platform_connection row
+      // exists for pinelabs_one — those rows should not exist. Return a clear explanation
+      // so any admin who finds a stale row knows to delete it.
       return {
         pass: false,
-        message: "Pine Labs ONE credentials saved but not yet live-verified",
+        message: "Pine Labs ONE does not use platform connection credentials",
         detail:
-          "Credentials present: " + Object.keys(creds).join(", ") + ". " +
-          "A live connectivity test requires the official partner API endpoint URL from your " +
-          "Pine Labs partner onboarding agreement (developer.pinelabs.com). " +
-          "The connection remains pending until that endpoint is confirmed and a real network " +
-          "test can be run. No financial operations are affected.",
+          "Pine Labs ONE is a portal_session_connector (Playwright) routed through " +
+          "/api/merchant/portal-sessions/pinelabs_one/*. " +
+          "It does not use API keys or partner credentials. " +
+          "If this platform_connections row exists, it is a legacy entry and can be deleted. " +
+          "Merchants connect via mobile/user-ID + password on the merchant Connect page.",
       };
     }
 

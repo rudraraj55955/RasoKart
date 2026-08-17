@@ -71,21 +71,28 @@ describe("Mobile+OTP and Email+OTP coverage — PROVIDER_ONBOARDING_METADATA int
     }
   });
 
-  describe("All providers: no mobileOtpSupported: true allowed anywhere (current state)", () => {
-    it("no provider has mobileOtpSupported set to true", () => {
+  describe("Non-portal providers: no mobileOtpSupported: true allowed (current state)", () => {
+    it("no non-portal provider has mobileOtpSupported set to true", () => {
+      // "portal" category providers (portal_session_connector, e.g. pinelabs_one) use
+      // mobile+password login via Playwright browser automation — mobileOtpSupported:true
+      // is correct for them because the portal itself handles the mobile+OTP flow.
+      // Only non-portal providers are restricted here: they have no backend OTP route.
       const offenders = allProviders().filter(
-        (p) => (p as { mobileOtpSupported?: boolean }).mobileOtpSupported === true,
+        (p) =>
+          p.category !== "portal" &&
+          (p as { mobileOtpSupported?: boolean }).mobileOtpSupported === true,
       );
 
       assert.deepStrictEqual(
         offenders.map((p) => p.slug),
         [],
-        `The following providers have mobileOtpSupported: true but no backend OTP route exists:\n` +
+        `The following non-portal providers have mobileOtpSupported: true but no backend OTP route exists:\n` +
           offenders.map((p) => `  • ${p.slug} (Category ${p.category})`).join("\n") +
           `\n\nThis causes merchants to see a broken "Enter Mobile Number" form.\n` +
           `Either:\n` +
           `  A) Implement the real initiate-OTP and verify-OTP backend routes, or\n` +
-          `  B) Set mobileOtpSupported: false until the API contract is confirmed.`,
+          `  B) Set mobileOtpSupported: false until the API contract is confirmed.\n` +
+          `  C) If this is a portal_session_connector, change its category to "portal".`,
       );
     });
   });
@@ -123,10 +130,15 @@ describe("Mobile+OTP and Email+OTP coverage — PROVIDER_ONBOARDING_METADATA int
           typeof provider.slug === "string" && provider.slug.length > 0,
           `A provider entry is missing the slug field. Check providerOnboardingMetadata.ts.`,
         );
+        // "portal" is the category for portal_session_connector providers (e.g. pinelabs_one)
+        // that are rendered via dedicated PortalCard components, never via EnrollmentCard.
         assert.ok(
-          provider.category === "A" || provider.category === "D" || provider.category === "E",
+          provider.category === "A" ||
+          provider.category === "D" ||
+          provider.category === "E" ||
+          provider.category === "portal",
           `Provider "${provider.slug}" has an unexpected category value: "${provider.category}".\n` +
-            `Valid values are: "A", "D", "E".`,
+            `Valid values are: "A", "D", "E", "portal".`,
         );
       });
     }

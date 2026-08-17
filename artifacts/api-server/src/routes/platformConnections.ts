@@ -294,7 +294,11 @@ router.post("/:id/test", async (req, res) => {
  *   2. PUT update  — activation fields stripped/overridden before write
  *   3. POST enable — blocked until lastTestResult === "pass" from a real live test
  */
-export const REQUIRES_LIVE_TEST_PROVIDERS = new Set(["pinelabs_one"]);
+// pinelabs_one was removed from this set: it is now a portal_session_connector
+// (Playwright browser automation via /api/merchant/portal-sessions/pinelabs_one/*),
+// not an API-credential platform connection. It no longer goes through the
+// platformConnections create/update/enable flow.
+export const REQUIRES_LIVE_TEST_PROVIDERS = new Set<string>([]);
 
 /**
  * For providers in REQUIRES_LIVE_TEST_PROVIDERS: strip caller-controlled activation

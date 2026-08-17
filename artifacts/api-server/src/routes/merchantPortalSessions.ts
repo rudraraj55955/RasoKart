@@ -35,7 +35,8 @@
  * ADAPTERS:
  *   - paytm_merchant: Registered Mobile + OTP (portal_session_connector, Playwright)
  *   - razorpay:       API Key + Secret (api_key_connector, no browser)
- *   - pinelabs_one:   fail-closed (PARTNER_API_REQUIRED — no partner agreement yet)
+ *   - pinelabs_one:   portal_session_connector (mobile_password, Playwright — registered
+ *                    mobile/user-ID → password → optional OTP 2FA → CONNECTED)
  */
 
 import { Router } from "express";

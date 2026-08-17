@@ -235,9 +235,9 @@ async function portalFetch(path: string, init?: RequestInit): Promise<Response> 
 }
 
 // ── Portal provider slugs — providers that use the Connector Engine ────────────
-// razorpay:       API Key + Secret — optional api_key_connector (operational).
-// pinelabs_one:   fail-closed (PARTNER_API_REQUIRED — awaiting partner API agreement).
-// paytm_merchant: Registered Mobile + OTP — portal_session_connector (browser automation).
+// razorpay:       API Key + Secret — api_key_connector (operational).
+// pinelabs_one:   Registered mobile/user-ID + password + optional OTP 2FA — portal_session_connector (Playwright).
+// paytm_merchant: Registered Mobile + OTP — portal_session_connector (Playwright).
 const PORTAL_PROVIDER_SLUGS = new Set(["pinelabs_one", "razorpay", "paytm_merchant"]);
 
 // ── API hooks ─────────────────────────────────────────────────────────────────
@@ -3210,6 +3210,11 @@ export default function MerchantConnect() {
     "phonepe", "paytm", "bharatpe", "freecharge", "amazon_pay", "mobikwik",
     "sbi_yono", "hdfc_smarthub", "icici_eazypay", "axis_pay", "kotak_smart", "ekqr",
     "pinelabs",
+    // pinelabs_one uses PineLabsOnePortalCard (portal_session_connector).
+    // Kept here as a defence-in-depth guard so it can NEVER fall through to the
+    // generic EnrollmentCard / API-credential form, regardless of what the
+    // enrollments API returns for this slug.
+    "pinelabs_one",
   ]);
   // Exclude portal providers — they render in a dedicated section below
   const platformProviders = filtered.filter(
