@@ -95,3 +95,4 @@
 - [Auth stable baseline](auth-stable-baseline.md) — full auth system locked at SHA 40807c21; 15-point regression checklist (all PASS); do not modify auth files without explicit approval + regression run.
 - [Drizzle .set typed-spread rule](drizzle-set-typed-spread.md) — Record<string,unknown> passed to .set() silently drops columns; always use typed spread objects so Drizzle maps every field correctly.
 - [realdb test CI exclusion pattern](realdb-ci-exclusion.md) — *.realdb.test.ts files need seeded demo users; unit test CI step runs before server startup/seed; exclude with find ! -name '*.realdb.test.ts' | xargs.
+- [Paytm digit-box vs OTP disambiguation](paytm-digitbox-disambiguation.md) — maxlength="1" boxes are phone entry (10 boxes) OR OTP (4–8 boxes); count-based check MUST precede OTP_INPUT_DIGITS selectors or navigateToLoginPage mis-classifies phone as otp_form.
