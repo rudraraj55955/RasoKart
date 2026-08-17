@@ -63,7 +63,7 @@ export interface LoginMethod {
   label: string;
   /** Primary identifier field (what the operator types first) */
   identifierLabel: string;
-  identifierType: "mobile" | "email" | "username" | "mid" | "store_id";
+  identifierType: "mobile" | "email" | "email_or_mobile" | "username" | "mid" | "store_id";
   /** Whether this method uses an OTP step after the identifier */
   requiresOtp: boolean;
   /** Whether this method uses a password step */

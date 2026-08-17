@@ -3,11 +3,11 @@
  *
  * Provider:   Pine Labs ONE (one.pinelabs.com)
  * Kind:       portal_session_connector
- * Auth path:  Registered mobile / user ID → password; optional OTP 2FA
+ * Auth path:  Registered email ID or mobile number → OTP (OTP-first via /authV2)
  *
  * HOW IT WORKS:
  *   1. initiateSession() — opens an isolated Chromium context, navigates to
- *      one.pinelabs.com/login/user, enters the merchant's mobile/user ID,
+ *      one.pinelabs.com/login/user, enters the merchant's email ID or mobile,
  *      submits the form, confirms the portal moved to the password step, and
  *      returns AWAITING_PASSWORD with encrypted session state.
  *   2. submitStep() (password) — restores the browser context, locates the
@@ -28,7 +28,7 @@
  * SECURITY INVARIANTS:
  *   - Passwords received from the route as encryptedOtp, decrypted once, filled, discarded.
  *   - OTPs decrypted once, filled, immediately discarded.
- *   - storedIdentifier (mobile/user ID) stored encrypted inside the AES-256-GCM session token.
+ *   - storedIdentifier (email/mobile) stored encrypted inside the AES-256-GCM session token.
  *     maskedIdentifier is the only plaintext identifier ever persisted.
  *   - Screenshots, video, and network tracing are DISABLED in the browser pool.
  *
@@ -127,18 +127,26 @@ const DASHBOARD_URL_PATTERNS = [
 // or well-known attributes. No internal implementation IDs.
 
 const SEL = {
-  // Identifier input (mobile number or user ID)
+  // Identifier input — accepts mobile number or email address.
+  // User ID / username are intentionally excluded: Pine Labs ONE now routes
+  // OTPs to the registered mobile or email, so a bare username is not a
+  // valid OTP destination and must not be submitted.
   IDENTIFIER_INPUT: [
     'input[name="mobile"]',
     'input[name="mobileNumber"]',
     'input[name="phone"]',
-    'input[name="userId"]',
-    'input[name="username"]',
+    'input[name="email"]',
+    'input[name="emailId"]',
+    'input[name="identifier"]',
     'input[type="tel"]',
+    'input[type="email"]',
     'input[placeholder*="mobile" i]',
     'input[placeholder*="phone" i]',
-    'input[placeholder*="user" i]',
+    'input[placeholder*="email" i]',
     'input[placeholder*="number" i]',
+    // Generic single-field entry common on SPAs — deliberately excludes
+    // 'input[placeholder*="user" i]' and username inputs.
+    'input[placeholder*="registered" i]',
   ],
 
   // Password input
@@ -321,7 +329,7 @@ interface PineLabsOneAdapterData {
   storageState: BrowserStorageState;
   maskedIdentifier: string;   // e.g. "**XXXXX890" — safe to persist in plaintext
   step: "AWAITING_PASSWORD" | "AWAITING_OTP" | "CONNECTED";
-  loginMode: "password";       // always password; OTP is optional 2FA after password
+  loginMode: "password";       // auth mode; OTP is primary factor in /authV2 flow
   storedIdentifier?: string;   // encrypted inside the session token; never logged
   merchantId?: string;
   storeId?: string;
@@ -331,22 +339,47 @@ interface PineLabsOneAdapterData {
 
 // ── Utility functions ─────────────────────────────────────────────────────────
 
-/** Mask mobile/user ID for safe persistence. E.g. "9876543210" → "**XXXXX210" */
+/**
+ * Mask a mobile or email identifier for safe plaintext persistence.
+ *
+ *   "9876543210"       → "**XXXXX210"   (mobile: last 3 visible)
+ *   "merchant@foo.com" → "me**@foo.com" (email: first 2 chars + domain visible)
+ */
 function maskIdentifier(id: string): string {
-  const digits = id.replace(/\D/g, "");
-  if (digits.length >= 10) {
-    return "**XXXXX" + digits.slice(-3);
+  // Email masking — first 2 chars of local part + full domain
+  if (id.includes("@")) {
+    const atIdx = id.indexOf("@");
+    const local  = id.slice(0, atIdx);
+    const domain = id.slice(atIdx);          // includes "@"
+    const visible = local.slice(0, Math.min(2, local.length));
+    return `${visible}**${domain}`;
   }
-  // Non-mobile (user ID or email): show last 3 chars of original
-  return "**" + id.slice(-3);
+  // Mobile — last 3 digits visible
+  const digits = id.replace(/\D/g, "");
+  return "**XXXXX" + digits.slice(-3);
 }
 
-/** Validate mobile (10 digits) or user ID (alphanumeric, 4–20 chars). */
-function validateIdentifier(id: string): { valid: boolean; reason?: string } {
+/**
+ * Validate a Pine Labs ONE identifier.
+ * Accepts: 10-digit Indian mobile number OR a valid email address.
+ * Rejects: bare usernames, user IDs, and any other format.
+ */
+function validateIdentifier(id: string): { valid: boolean; reason?: string; kind?: "mobile" | "email" } {
+  // 10-digit mobile (may be prefixed with country code +91 or 0)
   const digits = id.replace(/\D/g, "");
-  if (/^\d{10}$/.test(digits)) return { valid: true };          // 10-digit mobile
-  if (/^[A-Za-z0-9_.-]{4,20}$/.test(id)) return { valid: true }; // user ID
-  return { valid: false, reason: "Enter your 10-digit registered mobile number or Pine Labs user ID." };
+  if (/^\d{10}$/.test(digits)) return { valid: true, kind: "mobile" };
+
+  // Valid email format
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(id) && id.length <= 100) {
+    return { valid: true, kind: "email" };
+  }
+
+  return {
+    valid: false,
+    reason:
+      "Enter your 10-digit registered mobile number or registered email address " +
+      "for your Pine Labs ONE merchant account.",
+  };
 }
 
 /** Returns true if the current page URL matches a login/pre-auth pattern. */
@@ -443,7 +476,7 @@ async function collectDiagnostics(page: Page): Promise<{
 }
 
 /**
- * Fill the identifier (mobile/user ID) into the page.
+ * Fill the identifier (email ID or mobile number) into the page.
  * Tries all known selector patterns. Returns true on success.
  */
 async function fillIdentifier(page: Page, identifier: string): Promise<boolean> {
@@ -784,17 +817,16 @@ export const pineLabsOneAdapter: ProviderAdapter = {
 
   supportedLoginMethods: [
     {
-      key:              "mobile_password",
-      label:            "Registered Mobile / User ID",
-      identifierLabel:  "Registered Mobile Number or User ID",
-      identifierType:   "mobile",
-      // Pine Labs ONE /authV2 sends OTP immediately after identifier entry
-      // (OTP-first flow). Password step may or may not appear depending on
-      // the login path (mobile → OTP; user ID → may get password or OTP).
-      // requiresPassword: false so the route does not reject no-password
-      // initiate calls from the merchant connect UI.
+      key:             "mobile_password",
+      // OTP is routed to whichever identifier the merchant enters:
+      //   registered email  → OTP arrives in that email inbox
+      //   registered mobile → OTP arrives on that mobile via SMS
+      // Username / User ID is NOT a valid OTP destination and is excluded.
+      label:            "Registered Email ID or Mobile Number",
+      identifierLabel:  "Registered Email ID or Mobile Number",
+      identifierType:   "email_or_mobile",
       requiresOtp:      true,
-      requiresPassword: false,
+      requiresPassword: false,   // OTP-first; password may appear mid-flow
       mayRequireCaptcha: true,
     },
   ],
@@ -814,7 +846,7 @@ export const pineLabsOneAdapter: ProviderAdapter = {
       return {
         status: "FAILED",
         failReason: "MISSING_IDENTIFIER",
-        failDetail: "Mobile number or user ID is required.",
+        failDetail: "Registered email ID or mobile number is required.",
       };
     }
 
@@ -1011,7 +1043,7 @@ export const pineLabsOneAdapter: ProviderAdapter = {
                   status: "FAILED",
                   failReason: "INVALID_IDENTIFIER",
                   failDetail: `Pine Labs ONE returned an error: "${errText}". ` +
-                    "Verify this mobile number / user ID is registered with Pine Labs ONE.",
+                    "Verify this email address or mobile number is registered with Pine Labs ONE.",
                 };
               }
             }
@@ -1849,7 +1881,7 @@ export const pineLabsOneAdapter: ProviderAdapter = {
         failReason: "SESSION_EXPIRED",
         failDetail:
           `Your Pine Labs ONE session has expired. ` +
-          `Please enter your mobile number or user ID again to receive a new OTP.`,
+          `Please enter your registered email address or mobile number again to receive a new OTP.`,
         nextStep: null,
       };
     } catch (err: any) {

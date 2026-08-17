@@ -120,8 +120,8 @@ ${manualActionHtml()}
   <h1>Sign In to Pine Labs ONE</h1>
   ${showCaptcha ? captchaHtml() : ""}
   <form action="/login/user" method="POST" id="login-form">
-    <label for="mobile">Mobile Number or User ID</label>
-    <input type="tel" id="mobile" name="mobile" placeholder="Enter mobile number or User ID" required />
+    <label for="mobile">Registered Email ID or Mobile Number</label>
+    <input type="text" id="mobile" name="mobile" placeholder="Registered email ID or 10-digit mobile" required />
     <button type="submit" id="next-btn">Next</button>
   </form>
 </div>
@@ -345,10 +345,13 @@ export async function startMockPineLabsOneServer(
     // ── POST /login/user — submit identifier
     if ((url === "/login/user" || url === "/authV2/sign-in/user-details") && method === "POST") {
       const body = await parseBody(req);
-      const identifier = (body["mobile"] ?? body["userId"] ?? "").trim();
+      // Accept mobile, email, or any identifier key the adapter may POST
+      const identifier = (
+        body["mobile"] ?? body["email"] ?? body["emailId"] ?? body["identifier"] ?? ""
+      ).trim();
       if (!identifier || identifier.length < 4) {
         res.writeHead(200, { "Content-Type": "text/html" });
-        res.end(`<html><body><p role="alert">Please enter a valid mobile number or user ID</p>
+        res.end(`<html><body><p role="alert">Please enter a valid registered email ID or mobile number</p>
 ${identifierFormHtml(false, false)}</body></html>`);
         return;
       }

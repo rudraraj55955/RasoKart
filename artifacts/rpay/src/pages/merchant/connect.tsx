@@ -236,7 +236,7 @@ async function portalFetch(path: string, init?: RequestInit): Promise<Response> 
 
 // ── Portal provider slugs — providers that use the Connector Engine ────────────
 // razorpay:       API Key + Secret — api_key_connector (operational).
-// pinelabs_one:   Registered mobile/user-ID + password + optional OTP 2FA — portal_session_connector (Playwright).
+// pinelabs_one:   Registered email ID or mobile number → OTP (authV2 OTP-first) — portal_session_connector (Playwright).
 // paytm_merchant: Registered Mobile + OTP — portal_session_connector (Playwright).
 const PORTAL_PROVIDER_SLUGS = new Set(["pinelabs_one", "razorpay", "paytm_merchant"]);
 
@@ -2486,10 +2486,15 @@ function PineLabsOnePortalCard({
   // ── Step 1: initiate (identifier entry) ────────────────────────────────────
   async function handleInitiate() {
     const id = identifier.trim();
-    const isMobile   = /^\d{10}$/.test(id);
-    const isUserId   = id.length >= 4 && id.length <= 50;
-    if (!isMobile && !isUserId) {
-      setErrorMsg("Enter your 10-digit Pine Labs ONE registered mobile number or user ID.");
+    // Accept 10-digit mobile OR valid email. User ID / username is not a valid
+    // OTP destination for Pine Labs ONE and must not be submitted.
+    const isMobile = /^\d{10}$/.test(id.replace(/\D/g, ""));
+    const isEmail  = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(id) && id.length <= 100;
+    if (!isMobile && !isEmail) {
+      setErrorMsg(
+        "Enter your registered email address or 10-digit mobile number " +
+        "for your Pine Labs ONE account."
+      );
       return;
     }
     setInitiating(true);
@@ -2507,7 +2512,7 @@ function PineLabsOnePortalCard({
         toast.info(result.message ?? "Enter your Pine Labs ONE account password below.");
       } else if (result.status === "AWAITING_OTP") {
         setUiStep("otp");
-        toast.success("OTP sent to your registered mobile. Enter it below.");
+        toast.success("OTP sent to your registered email or mobile. Enter it below.");
       } else if (result.status === "AWAITING_USER_ACTION") {
         setErrorMsg(
           result.message ??
@@ -2589,7 +2594,7 @@ function PineLabsOnePortalCard({
         setTimeout(() => handleSync(), 1500);
       } else if (body.status === "FAILED" && body.errorCode === "OTP_EXPIRED") {
         setUiStep("identifier");
-        setErrorMsg("OTP expired. Please enter your mobile number or user ID again to start over.");
+        setErrorMsg("OTP expired. Please enter your registered email or mobile number again to start over.");
       } else {
         const msg = body.message ?? "OTP verification failed. Please check the OTP and try again.";
         setErrorMsg(msg);
@@ -3003,13 +3008,13 @@ function PineLabsOnePortalCard({
 
             <div>
               <label className="text-xs text-muted-foreground block mb-1">
-                Mobile Number or User ID
+                Registered Email ID or Mobile Number
               </label>
               <Input
                 className="h-8 text-sm"
-                placeholder="10-digit mobile or Pine Labs ONE user ID"
+                placeholder="Email ID or 10-digit mobile registered with Pine Labs ONE"
                 type="text"
-                autoComplete="username"
+                autoComplete="email"
                 value={identifier}
                 onChange={e => setIdentifier(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && handleInitiate()}
@@ -3017,8 +3022,8 @@ function PineLabsOnePortalCard({
             </div>
 
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Enter the mobile number or user ID registered with your Pine Labs ONE merchant account.
-              You will be prompted for your password on the next step.
+              Enter the email address or mobile number registered with your Pine Labs ONE
+              merchant account. An OTP will be sent to whichever you enter.
               Visit{" "}
               <a
                 href="https://one.pinelabs.com"
@@ -3028,7 +3033,7 @@ function PineLabsOnePortalCard({
               >
                 one.pinelabs.com
               </a>{" "}
-              if you need to verify your registered details.
+              to verify your registered details if needed.
             </p>
 
             <Button
