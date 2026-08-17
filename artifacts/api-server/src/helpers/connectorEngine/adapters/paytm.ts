@@ -455,7 +455,7 @@ interface PaytmAdapterData {
   /** Masked mobile, e.g. "**XXXXXX890" — safe to display, never the full number. */
   maskedMobile?: string;
   /** FSM step. */
-  step: "AWAITING_OTP" | "CONNECTED";
+  step: "AWAITING_OTP" | "AWAITING_PASSWORD" | "CONNECTED";
   /** ISO string when session was established. */
   connectedAt?: string;
   /** MID extracted during discoverEntities (may be empty if not yet discovered). */
@@ -1463,7 +1463,7 @@ export const paytmMerchantAdapter: ProviderAdapter = {
         const adData: PaytmAdapterData = {
           storageState,
           maskedMobile: maskMobile(mobile),
-          step: "AWAITING_OTP",
+          step: "AWAITING_PASSWORD",
           loginMode: "password",
           storedMobile: mobile,  // encrypted inside session token (AES-256-GCM), never logged
         };
@@ -1475,11 +1475,11 @@ export const paytmMerchantAdapter: ProviderAdapter = {
           return { status: "FAILED", failReason: "SESSION_ENCRYPT_FAILED", failDetail: "Internal error." };
         }
         return {
-          status: "AWAITING_OTP",
+          status: "AWAITING_PASSWORD",
           encryptedSessionToken: enc.token,
-          nextStep: "ENTER_OTP",
+          nextStep: "ENTER_PASSWORD",
           nextStepPrompt:
-            `Enter your Paytm Business account password for (${maskMobile(mobile)}). ` +
+            `Enter your Paytm Business account password for ${maskMobile(mobile)}. ` +
             "Your password is transmitted encrypted and never stored.",
         };
       }
@@ -1792,7 +1792,9 @@ export const paytmMerchantAdapter: ProviderAdapter = {
         return {
           status: "FAILED",
           failReason: "SESSION_EXPIRED_REAUTH",
-          failDetail: "OTP session has expired. Please restart the connection to receive a new OTP.",
+          failDetail: isPasswordMode
+            ? "Session has expired. Please restart the connection and re-enter your Paytm Business password."
+            : "OTP session has expired. Please restart the connection to receive a new OTP.",
         };
       }
 
@@ -2364,7 +2366,8 @@ export const paytmMerchantAdapter: ProviderAdapter = {
 
   // ── reconnect ────────────────────────────────────────────────────────────────
   // Tries stored session first (runs CONNECTED gate); on failure returns
-  // AWAITING_OTP to prompt for a new OTP. Never returns CONNECTED on failure.
+  // AWAITING_OTP (OTP mode) or AWAITING_PASSWORD (password mode) to prompt for
+  // re-entry. Never returns CONNECTED on failure.
 
   async reconnect(encryptedSessionToken: string): Promise<InitiateResult> {
     const tokenResult = decryptSessionToken(encryptedSessionToken);
@@ -2386,6 +2389,9 @@ export const paytmMerchantAdapter: ProviderAdapter = {
         nextStep: "ENTER_OTP",
       };
     }
+
+    // Determine the correct waiting status for the session's login mode.
+    const isPasswordSession = adData.loginMode === "password";
 
     let ctx = null as Awaited<ReturnType<typeof newIsolatedContext>> | null;
     try {
@@ -2411,7 +2417,16 @@ export const paytmMerchantAdapter: ProviderAdapter = {
         };
       }
 
-      logger.info({ slug: "paytm_merchant" }, "paytm_reconnect_session_expired");
+      logger.info({ slug: "paytm_merchant", isPasswordSession }, "paytm_reconnect_session_expired");
+      if (isPasswordSession) {
+        return {
+          status: "AWAITING_PASSWORD" as any,
+          failReason: "SESSION_EXPIRED",
+          failDetail: `Your Paytm Business session has expired. ` +
+            `Enter your Paytm Business password for ${adData.maskedMobile ?? "your account"} to reconnect.`,
+          nextStep: "ENTER_PASSWORD",
+        };
+      }
       return {
         status: "AWAITING_OTP" as any,
         failReason: "SESSION_EXPIRED",
@@ -2420,6 +2435,15 @@ export const paytmMerchantAdapter: ProviderAdapter = {
       };
     } catch (err: any) {
       logger.error({ slug: "paytm_merchant", err: err?.message }, "paytm_reconnect_error");
+      if (isPasswordSession) {
+        return {
+          status: "AWAITING_PASSWORD" as any,
+          failReason: "RECONNECT_ERROR",
+          failDetail: `Could not verify session: ${err?.message ?? "unknown"}. ` +
+            `Please enter your Paytm Business password to reconnect.`,
+          nextStep: "ENTER_PASSWORD",
+        };
+      }
       return {
         status: "AWAITING_OTP" as any,
         failReason: "RECONNECT_ERROR",
