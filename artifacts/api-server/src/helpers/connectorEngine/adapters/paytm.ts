@@ -150,17 +150,38 @@ const SESSION_TTL_HOURS = 24;
 // These are maintained separately from business logic to ease future updates.
 
 const SEL = {
-  // Phone / mobile number input on the login form
+  // Phone / mobile number input on the login form — single-field variants.
+  // Ordered: most specific / most reliable first.
   MOBILE_INPUT: [
     'input[type="tel"]',
     'input[name="phone"]',
     'input[name="mobile"]',
     'input[name="mobileNo"]',
+    'input[name="phoneNumber"]',
+    'input[name="username"]',           // some portals label it "username"
     'input[placeholder*="mobile" i]',
     'input[placeholder*="phone" i]',
+    'input[placeholder*="Enter mobile" i]',
+    'input[placeholder*="Enter phone" i]',
+    'input[placeholder*="Mobile number" i]',
     'input[id*="mobile" i]',
     'input[id*="phone" i]',
     'input[autocomplete="tel"]',
+    'input[autocomplete="tel-national"]',
+    'input[aria-label*="mobile" i]',
+    'input[aria-label*="phone number" i]',
+    // Broad type="text" variants for portals that don't use type="tel"
+    'input[type="text"][placeholder*="mobile" i]',
+    'input[type="text"][placeholder*="phone" i]',
+    'input[type="number"][placeholder*="mobile" i]',
+  ],
+
+  // Mobile number as individual digit boxes (≥10 boxes = phone, not OTP).
+  // Key disambiguator: OTP uses 4–8 boxes; mobile uses 10 boxes.
+  MOBILE_DIGIT_BOXES: [
+    'input[type="text"][maxlength="1"]',
+    'input[type="number"][maxlength="1"]',
+    'input[type="tel"][maxlength="1"]',
   ],
 
   // "Get OTP" / "Continue" button after mobile entry
@@ -168,15 +189,16 @@ const SEL = {
     'button:has-text("Get OTP")',
     'button:has-text("Request OTP")',
     'button:has-text("Send OTP")',
-    // Paytm may use "Proceed" on the first step
     'button:has-text("Proceed")',
     'button:has-text("Continue")',
+    'button:has-text("Next")',
     '[role="button"]:has-text("Get OTP")',
     '[role="button"]:has-text("Send OTP")',
     '[type="submit"]:has-text("OTP")',
+    '[type="submit"]',                  // last-resort fallback
   ],
 
-  // OTP input — handles both single-field and individual digit boxes
+  // OTP input — single-field variants (maxlength ≥ 4 distinguishes from digit boxes)
   OTP_INPUT_SINGLE: [
     'input[autocomplete="one-time-code"]',
     'input[name="otp"]',
@@ -188,7 +210,7 @@ const SEL = {
     'input[type="tel"][maxlength="6"]',
     'input[type="text"][maxlength="6"]',
   ],
-  // Individual digit boxes (Paytm's custom OTP component)
+  // Individual digit boxes for OTP (4–8 boxes disambiguated by countDigitBoxes < 10)
   OTP_INPUT_DIGITS: [
     'input[type="text"][maxlength="1"]',
     'input[type="number"][maxlength="1"]',
@@ -209,20 +231,17 @@ const SEL = {
 
   // Dashboard landmarks — at least one must be visible for CONNECTED to pass
   DASHBOARD_LANDMARK: [
-    // Text that only appears on the authenticated dashboard
     'text=Total Transactions',
     'text=Gross Sales',
     'text=Settlement Amount',
     'text=Success Rate',
-    // Navigation items that only appear when logged in
     'a[href*="/transactions"]',
     'a[href*="/settlement"]',
     'a[href*="/reports"]',
-    // Generic dashboard structure
     '[data-testid*="dashboard"]',
     'nav[aria-label*="sidebar" i]',
+    'nav[aria-label*="merchant" i]',
     '[aria-label*="merchant" i]',
-    // Profile / account menu (only shown when authenticated)
     '[aria-label*="profile" i]',
     '[aria-label*="account" i]',
   ],
@@ -245,7 +264,50 @@ const SEL = {
     '[id*="captcha"]',
     'text=complete the CAPTCHA',
     'text=verify you are human',
-    'text=I\'m not a robot',
+    "text=I'm not a robot",
+  ],
+
+  // WAF / device-verification / rate-limit markers
+  WAF_MARKERS: [
+    '#challenge-running',
+    '#cf-wrapper',
+    '.cf-browser-verification',
+    'text=Checking your browser',
+    'text=Verifying you are human',
+    'text=Device verification',
+    'text=Verify your device',
+    'text=Too many requests',
+    'text=Rate limit exceeded',
+    'text=Please solve the puzzle',
+    'text=Security check required',
+  ],
+
+  // Cookie / privacy consent banner accept buttons
+  COOKIE_BANNER: [
+    'button:has-text("Accept All")',
+    'button:has-text("Accept Cookies")',
+    'button:has-text("Accept & Continue")',
+    'button:has-text("I Accept")',
+    'button:has-text("I Agree")',
+    'button:has-text("Got it")',
+    '[data-testid="cookie-accept"]',
+    '[data-testid="consent-accept"]',
+    '[aria-label="Accept cookies"]',
+    '[id*="accept-cookies"]',
+  ],
+
+  // Phone / mobile login mode selectors (when email/phone toggle exists)
+  LOGIN_MODE_PHONE: [
+    'button:has-text("Mobile")',
+    'button:has-text("Phone")',
+    'button:has-text("Mobile Number")',
+    '[role="tab"]:has-text("Mobile")',
+    '[role="tab"]:has-text("Phone")',
+    'a:has-text("Mobile Number")',
+    '[data-testid="mobile-tab"]',
+    '[data-testid="phone-tab"]',
+    'input[type="radio"][value="mobile"]',
+    'input[type="radio"][value="phone"]',
   ],
 
   // Account block / suspicious activity
@@ -279,7 +341,7 @@ const SEL = {
     '[class*="txn-row"]',
     '[class*="transactionItem"]',
     'tr[class*="transaction"]',
-    'tbody tr',  // generic table row fallback
+    'tbody tr',
   ],
 
   // MID in profile page
@@ -435,6 +497,205 @@ async function isBlocked(page: Page): Promise<boolean> {
   return false;
 }
 
+// ── New resilience helpers ─────────────────────────────────────────────────────
+
+/**
+ * Count the total number of visible single-character digit input boxes on the
+ * page (main frame only — cross-origin frames are inaccessible).
+ *
+ * KEY DISAMBIGUATOR:
+ *   ≥ 10 boxes → mobile number digit entry (10-digit Indian phone)
+ *    4–8 boxes → OTP digit entry
+ * This prevents OTP_INPUT_DIGITS selectors from matching phone digit boxes.
+ */
+async function countDigitBoxes(page: Page): Promise<number> {
+  for (const sel of SEL.MOBILE_DIGIT_BOXES) {
+    try {
+      const count = await page.locator(sel).count();
+      if (count > 0) return count;
+    } catch {}
+  }
+  return 0;
+}
+
+/**
+ * Try each selector in the main page AND all accessible same-origin frames.
+ * Returns the first visible locator found, or null. Never throws.
+ *
+ * Same-origin frames are accessible; cross-origin frames are silently skipped
+ * (accessing their DOM throws a SecurityError that is caught and ignored).
+ */
+async function tryLocatorIncludingFrames(
+  page: Page,
+  selectors: string[],
+  timeout = ACTION_TIMEOUT_MS / 2,
+) {
+  // Main page first (fast path)
+  const mainResult = await tryLocator(page, selectors, timeout);
+  if (mainResult) return mainResult;
+
+  // Same-origin frames (e.g. iframe-wrapped login forms)
+  const frames = page.frames();
+  for (const frame of frames) {
+    if (frame === page.mainFrame()) continue;
+    const frameUrl = frame.url();
+    // Skip blank and non-http frames (cross-origin data URIs, chrome-extension, etc.)
+    if (!frameUrl || frameUrl === "about:blank" || !frameUrl.startsWith("http")) continue;
+    for (const sel of selectors) {
+      try {
+        const loc = frame.locator(sel).first();
+        const n = await loc.count();
+        if (n > 0 && (await loc.isVisible().catch(() => false))) return loc as any;
+      } catch {
+        // SecurityError on cross-origin frame — skip silently
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Attempt to dismiss a cookie / privacy consent banner.
+ * Best-effort — never throws. Returns true if a button was clicked.
+ */
+async function dismissCookieBanner(page: Page): Promise<boolean> {
+  for (const sel of SEL.COOKIE_BANNER) {
+    try {
+      const el = page.locator(sel).first();
+      if ((await el.count()) > 0 && (await el.isVisible())) {
+        await el.click({ timeout: 3_000 });
+        return true;
+      }
+    } catch {}
+  }
+  return false;
+}
+
+/**
+ * Attempt to select the mobile / phone login mode if a mode toggle is present
+ * (e.g. "Mobile" / "Email" tabs on the login page).
+ * Best-effort — never throws. Returns true if a mode selector was clicked.
+ */
+async function selectMobileLoginMode(page: Page): Promise<boolean> {
+  for (const sel of SEL.LOGIN_MODE_PHONE) {
+    try {
+      const el = page.locator(sel).first();
+      if ((await el.count()) > 0 && (await el.isVisible())) {
+        await el.click({ timeout: 3_000 });
+        return true;
+      }
+    } catch {}
+  }
+  return false;
+}
+
+/**
+ * Detect WAF / device-verification / rate-limit pages.
+ * Returns a short reason code if detected, null otherwise. Never throws.
+ */
+async function detectWaf(page: Page): Promise<string | null> {
+  for (const sel of SEL.WAF_MARKERS) {
+    try {
+      if ((await page.locator(sel).count()) > 0) return "WAF_OR_DEVICE_VERIFICATION";
+    } catch {}
+  }
+  try {
+    const title = await page.title();
+    if (/checking your browser|verif(y|ying)|challenge|access denied/i.test(title)) {
+      return "WAF_OR_DEVICE_VERIFICATION";
+    }
+  } catch {}
+  return null;
+}
+
+/**
+ * Collect safe page diagnostic information for error messages and logs.
+ * NEVER captures: full HTML, cookies, user data, query params, or secrets.
+ * Strips query strings to avoid leaking redirect tokens.
+ */
+async function collectPageDiagnostics(page: Page): Promise<{
+  urlPath: string;
+  title: string;
+  frameCount: number;
+  visibleInputCount: number;
+  digitBoxCount: number;
+  hasWaf: boolean;
+  hasCaptcha: boolean;
+  hasCookieBanner: boolean;
+  hasModeSelector: boolean;
+}> {
+  let urlPath = "";
+  let title = "";
+  let frameCount = 0;
+  let visibleInputCount = 0;
+  let digitBoxCount = 0;
+  let hasWaf = false;
+  let hasCaptchaBool = false;
+  let hasCookieBanner = false;
+  let hasModeSelector = false;
+
+  try { urlPath = new URL(page.url()).pathname; } catch { urlPath = page.url().split("?")[0]; }
+  try { title = (await page.title()).slice(0, 80); } catch {}
+  try { frameCount = Math.max(0, page.frames().length - 1); } catch {}
+  try { visibleInputCount = await page.locator("input:visible").count(); } catch {}
+  try { digitBoxCount = await countDigitBoxes(page); } catch {}
+  try { hasWaf = (await detectWaf(page)) !== null; } catch {}
+  try { hasCaptchaBool = await hasCaptcha(page); } catch {}
+  try {
+    for (const sel of SEL.COOKIE_BANNER) {
+      if ((await page.locator(sel).count()) > 0) { hasCookieBanner = true; break; }
+    }
+  } catch {}
+  try {
+    for (const sel of SEL.LOGIN_MODE_PHONE) {
+      if ((await page.locator(sel).count()) > 0) { hasModeSelector = true; break; }
+    }
+  } catch {}
+
+  return { urlPath, title, frameCount, visibleInputCount, digitBoxCount, hasWaf, hasCaptcha: hasCaptchaBool, hasCookieBanner, hasModeSelector };
+}
+
+/**
+ * Fill the mobile number in the current page.
+ * Handles three layouts:
+ *   1. Single-field input (main page)
+ *   2. Single-field input inside a same-origin iframe
+ *   3. Digit-box layout (10 individual maxlength="1" inputs)
+ *
+ * Returns true if filled successfully. NEVER logs the mobile number.
+ */
+async function fillMobileInPage(page: Page, mobile: string): Promise<boolean> {
+  // Single-field input — main page + same-origin iframes
+  const singleInput = await tryLocatorIncludingFrames(page, SEL.MOBILE_INPUT);
+  if (singleInput) {
+    try {
+      await singleInput.click({ timeout: ACTION_TIMEOUT_MS });
+      await singleInput.fill(mobile, { timeout: ACTION_TIMEOUT_MS });
+      return true;
+    } catch {}
+  }
+
+  // Digit-box layout (main page only — cross-origin iframe digit boxes are inaccessible)
+  const digitCount = await countDigitBoxes(page);
+  if (digitCount >= mobile.length) {
+    for (const sel of SEL.MOBILE_DIGIT_BOXES) {
+      const boxes = page.locator(sel);
+      const count = await boxes.count().catch(() => 0);
+      if (count >= mobile.length) {
+        for (let i = 0; i < mobile.length; i++) {
+          try {
+            await boxes.nth(i).click({ timeout: ACTION_TIMEOUT_MS });
+            await boxes.nth(i).fill(mobile[i]!, { timeout: ACTION_TIMEOUT_MS });
+          } catch {}
+        }
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 /**
  * Fill OTP — handles both single-field and individual-digit-box layouts.
  * Returns true if OTP was successfully filled.
@@ -463,17 +724,40 @@ async function fillOtp(page: Page, otp: string): Promise<boolean> {
 }
 
 /**
+ * Describes the detected state of the login page after navigation.
+ *
+ *   "mobile_form"        — single-field mobile number input is visible
+ *   "mobile_form_digits" — 10 individual digit-box inputs for mobile number
+ *                          (Paytm portal's alternate phone entry UI)
+ *   "otp_form"           — 4–8 digit boxes or single OTP field visible
+ *   "dashboard"          — already on the authenticated dashboard
+ *   "waf"                — WAF / device-verification / rate-limit page
+ *   false                — could not reach any recognisable page
+ */
+type LoginPageState =
+  | "mobile_form"
+  | "mobile_form_digits"
+  | "otp_form"
+  | "dashboard"
+  | "waf"
+  | false;
+
+/**
  * Navigate to the Paytm Business login page and detect the current auth state.
  *
- * Returns:
- *   "otp_form"    — OTP inputs visible (pending session from initiateSession)
- *   "mobile_form" — Mobile entry form visible (fresh / expired session)
- *   "dashboard"   — Already on dashboard (session still live)
- *   false         — Could not reach any recognisable page
+ * Sequence of checks on each URL candidate:
+ *   1. Dashboard URL → "dashboard"
+ *   2. WAF / device verification markers → "waf"
+ *   3. Dismiss cookie/privacy consent banner (best-effort)
+ *   4. Select mobile login mode if a toggle is present (best-effort)
+ *   5. Count single-char digit boxes:
+ *      ≥ 10 → "mobile_form_digits" (phone number, NOT OTP)
+ *       4–8 → "otp_form"
+ *   6. Single-field mobile input (main page + same-origin iframes) → "mobile_form"
+ *   7. Single-field OTP input → "otp_form"
+ *   If no URL candidate yields a recognisable state → false
  */
-async function navigateToLoginPage(
-  page: Page,
-): Promise<"mobile_form" | "otp_form" | "dashboard" | false> {
+async function navigateToLoginPage(page: Page): Promise<LoginPageState> {
   for (const url of getLoginUrlCandidates()) {
     try {
       await page.goto(url, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
@@ -481,23 +765,46 @@ async function navigateToLoginPage(
 
       const currentUrl = page.url();
 
-      // Redirected to dashboard — session was still valid
+      // (1) Redirected to dashboard — session was still valid
       if (isDashboardUrl(currentUrl)) return "dashboard";
 
-      // Check for OTP inputs first — portal puts us directly on OTP step if initiate
-      // session cookies are still live (the portal remembers the pending OTP request)
-      const otpLoc = await tryLocator(
-        page,
-        [...SEL.OTP_INPUT_SINGLE, ...SEL.OTP_INPUT_DIGITS],
-        ACTION_TIMEOUT_MS,
-      );
-      if (otpLoc) return "otp_form";
+      // (2) WAF / device-verification / rate-limit page
+      const wafReason = await detectWaf(page);
+      if (wafReason) return "waf";
 
-      // Check for mobile input — fresh session or expired OTP session
-      const mobileInput = await tryLocator(page, SEL.MOBILE_INPUT, ACTION_TIMEOUT_MS);
+      // (3) Best-effort: dismiss cookie/privacy consent banner
+      await dismissCookieBanner(page);
+
+      // (4) Best-effort: select mobile login mode if a toggle is present
+      await selectMobileLoginMode(page);
+
+      // Brief wait for JS-driven DOM updates after the interactions above
+      await page.waitForLoadState("domcontentloaded", { timeout: 2_000 }).catch(() => {});
+
+      // (5) Count single-char digit boxes — the critical disambiguator.
+      //     Some Paytm portal versions use 10 individual maxlength="1" boxes for
+      //     phone entry.  OTP_INPUT_DIGITS selectors match these boxes too, so
+      //     the only reliable way to tell them apart is the count:
+      //       ≥ 10 boxes → mobile number digit entry
+      //        4–8 boxes → OTP digit entry
+      const digitCount = await countDigitBoxes(page);
+      if (digitCount >= 10) return "mobile_form_digits";
+      if (digitCount >= 4)  return "otp_form";
+
+      // (6) Single-field mobile input — main page + same-origin iframes
+      const mobileInput = await tryLocatorIncludingFrames(
+        page, SEL.MOBILE_INPUT, ACTION_TIMEOUT_MS,
+      );
       if (mobileInput) return "mobile_form";
+
+      // (7) Single-field OTP input
+      const otpSingle = await tryLocatorIncludingFrames(
+        page, SEL.OTP_INPUT_SINGLE, ACTION_TIMEOUT_MS,
+      );
+      if (otpSingle) return "otp_form";
+
     } catch {
-      // try next URL candidate
+      // Navigation or DOM query failed — try next URL candidate
     }
   }
   return false;
@@ -732,32 +1039,11 @@ export const paytmMerchantAdapter: ProviderAdapter = {
 
       logger.info({ slug: "paytm_merchant" }, "paytm_initiate_navigating");
 
-      // Navigate to login page
-      const loginReached = await navigateToLoginPage(page);
+      // Navigate to login page and detect its current state
+      const loginState = await navigateToLoginPage(page);
 
-      // If already on dashboard (session still valid) — this shouldn't happen in initiate
-      if (!loginReached) {
-        const onDash = await verifyDashboardAuthenticated(page);
-        if (onDash.verified) {
-          // Unexpected: we have a live session already. Return CONNECTED.
-          const storageState = await extractStorageState(ctx.context);
-          const adData: PaytmAdapterData = {
-            storageState,
-            maskedMobile: maskMobile(mobile),
-            step: "CONNECTED",
-            connectedAt: new Date().toISOString(),
-          };
-          const payload = makeSessionPayload("paytm_merchant", 0, adData as unknown as Record<string, unknown>, {
-            expiresAt: new Date(Date.now() + SESSION_TTL_HOURS * 60 * 60 * 1000),
-          });
-          const enc = encryptSessionPayload(payload);
-          return {
-            status: "CONNECTED",
-            encryptedSessionToken: enc.ok ? enc.token : undefined,
-            nextStep: "COMPLETE",
-          };
-        }
-
+      // ── State: portal unreachable ─────────────────────────────────────────
+      if (!loginState) {
         return {
           status: "FAILED",
           failReason: "PORTAL_UNREACHABLE",
@@ -766,6 +1052,71 @@ export const paytmMerchantAdapter: ProviderAdapter = {
           helpUrl: HELP_URL,
         };
       }
+
+      // ── State: WAF / device verification ─────────────────────────────────
+      if (loginState === "waf") {
+        logger.warn({ slug: "paytm_merchant" }, "paytm_initiate_waf_detected");
+        return {
+          status: "AWAITING_USER_ACTION" as any,
+          failReason: "WAF_OR_DEVICE_VERIFICATION",
+          failDetail: "Paytm Business is showing a device-verification or rate-limit page. " +
+            "This is transient — please wait a few minutes and try again.",
+          helpUrl: HELP_URL,
+        };
+      }
+
+      // ── State: already on dashboard (unexpected in a fresh context) ───────
+      if (loginState === "dashboard") {
+        const onDash = await verifyDashboardAuthenticated(page);
+        if (onDash.verified) {
+          const storageState = await extractStorageState(ctx.context);
+          const adData: PaytmAdapterData = {
+            storageState,
+            maskedMobile: maskMobile(mobile),
+            step: "CONNECTED",
+            connectedAt: new Date().toISOString(),
+          };
+          const payload = makeSessionPayload(
+            "paytm_merchant", 0, adData as unknown as Record<string, unknown>,
+            { expiresAt: new Date(Date.now() + SESSION_TTL_HOURS * 60 * 60 * 1000) },
+          );
+          const enc = encryptSessionPayload(payload);
+          return {
+            status: "CONNECTED",
+            encryptedSessionToken: enc.ok ? enc.token : undefined,
+            nextStep: "COMPLETE",
+          };
+        }
+        return {
+          status: "FAILED",
+          failReason: "PORTAL_UNREACHABLE",
+          failDetail: "Could not reach the Paytm Business login page. " +
+            "The portal may be temporarily unavailable.",
+          helpUrl: HELP_URL,
+        };
+      }
+
+      // ── State: OTP form visible before mobile entry (unexpected) ──────────
+      // A fresh isolated context has no cookies, so seeing an OTP form here
+      // means the portal's digit-box count was 4–8 (ambiguous, classified as
+      // OTP) OR the portal showed an unexpected step. Fail closed with
+      // diagnostics so support can investigate.
+      if (loginState === "otp_form") {
+        const diag = await collectPageDiagnostics(page);
+        logger.warn({ slug: "paytm_merchant", diag }, "paytm_initiate_unexpected_otp_form");
+        return {
+          status: "FAILED",
+          failReason: "LOGIN_UI_CHANGED",
+          failDetail: `Paytm is showing an OTP/verification form before mobile entry ` +
+            `(path=${diag.urlPath}, title="${diag.title}", inputs=${diag.visibleInputCount}, ` +
+            `digitBoxes=${diag.digitBoxCount}). ` +
+            "The portal UI may have changed — please contact RasoKart support.",
+          helpUrl: HELP_URL,
+        };
+      }
+
+      // ── State: mobile_form or mobile_form_digits ──────────────────────────
+      // (loginState is one of those two at this point)
 
       // Check for CAPTCHA at login entry
       if (await hasCaptcha(page)) {
@@ -785,26 +1136,31 @@ export const paytmMerchantAdapter: ProviderAdapter = {
         };
       }
 
-      // Fill mobile number
-      const mobileInput = await tryLocator(page, SEL.MOBILE_INPUT);
-      if (!mobileInput) {
+      // Fill mobile number — handles single-field, iframe-embedded, AND digit-box layouts
+      const filled = await fillMobileInPage(page, mobile);
+      if (!filled) {
+        // Collect safe diagnostics for the error message (no secrets included)
+        const diag = await collectPageDiagnostics(page);
+        logger.warn({ slug: "paytm_merchant", diag }, "paytm_initiate_mobile_input_not_found");
         return {
           status: "FAILED",
-          failReason: "PORTAL_STRUCTURE_CHANGED",
-          failDetail: "Could not locate the mobile number input on the Paytm Business " +
-            "login page. The portal UI may have changed — please contact RasoKart support.",
+          failReason: "LOGIN_UI_CHANGED",
+          failDetail: `Could not locate the mobile number input on the Paytm Business ` +
+            `login page (path=${diag.urlPath}, title="${diag.title}", ` +
+            `frames=${diag.frameCount}, inputs=${diag.visibleInputCount}, ` +
+            `digitBoxes=${diag.digitBoxCount}, waf=${diag.hasWaf}, ` +
+            `captcha=${diag.hasCaptcha}, cookieBanner=${diag.hasCookieBanner}). ` +
+            "The portal UI may have changed — please contact RasoKart support.",
           helpUrl: HELP_URL,
         };
       }
-      await mobileInput.fill(mobile, { timeout: ACTION_TIMEOUT_MS });
-      // `mobile` variable out of scope after the next await (GC eligible)
 
-      // Click "Get OTP" button
-      const otpBtn = await tryLocator(page, SEL.GET_OTP_BTN);
+      // Click "Get OTP" button (searches main page + same-origin iframes)
+      const otpBtn = await tryLocatorIncludingFrames(page, SEL.GET_OTP_BTN);
       if (!otpBtn) {
         return {
           status: "FAILED",
-          failReason: "PORTAL_STRUCTURE_CHANGED",
+          failReason: "LOGIN_UI_CHANGED",
           failDetail: "Could not locate the 'Get OTP' button on the Paytm Business login page.",
           helpUrl: HELP_URL,
         };

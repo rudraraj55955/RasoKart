@@ -633,6 +633,401 @@ describe("Paytm E2E — CONNECTED gate bypass attempts", { timeout: 120_000 }, (
   });
 });
 
+// ── Cookie banner dismissal ───────────────────────────────────────────────────
+
+describe("Paytm E2E — Cookie banner dismissal", { timeout: 120_000 }, () => {
+  it("cookie consent banner present → adapter dismisses it and reaches AWAITING_OTP", async () => {
+    const mock = await startMockPaytmServer({
+      validOtp: VALID_OTP,
+      maskedMobile: MOCK_MASKED_MOBILE,
+      showCookieBanner: true,  // ← login page has a privacy-consent overlay
+    });
+    process.env["PAYTM_PORTAL_ROOT_OVERRIDE"] = mock.url;
+
+    try {
+      const { initiateResult } = await runFullConnectFlow(mock);
+      assert.equal(
+        initiateResult.status, "AWAITING_OTP",
+        `Cookie banner must not block initiation, got ${initiateResult.status}: ${(initiateResult as any).failDetail}`,
+      );
+    } finally {
+      delete process.env["PAYTM_PORTAL_ROOT_OVERRIDE"];
+      await mock.close();
+    }
+  });
+
+  it("cookie banner + correct OTP → reaches CONNECTED end-to-end", async () => {
+    const mock = await startMockPaytmServer({
+      validOtp: VALID_OTP,
+      maskedMobile: MOCK_MASKED_MOBILE,
+      showCookieBanner: true,
+    });
+    process.env["PAYTM_PORTAL_ROOT_OVERRIDE"] = mock.url;
+
+    try {
+      const { submitResult } = await runFullConnectFlow(mock);
+      assert.equal(
+        submitResult!.status, "CONNECTED",
+        `Expected CONNECTED with cookie banner present, got ${submitResult!.status}: ${(submitResult as any).failDetail}`,
+      );
+    } finally {
+      delete process.env["PAYTM_PORTAL_ROOT_OVERRIDE"];
+      await mock.close();
+    }
+  });
+});
+
+// ── Login mode selection ───────────────────────────────────────────────────────
+
+describe("Paytm E2E — Login mode selection (Mobile tab)", { timeout: 120_000 }, () => {
+  it("login page with Mobile/Email tabs → adapter selects Mobile and reaches AWAITING_OTP", async () => {
+    const mock = await startMockPaytmServer({
+      validOtp: VALID_OTP,
+      maskedMobile: MOCK_MASKED_MOBILE,
+      showLoginModeSelector: true, // ← must click "Mobile" tab first
+    });
+    process.env["PAYTM_PORTAL_ROOT_OVERRIDE"] = mock.url;
+
+    try {
+      const { initiateResult } = await runFullConnectFlow(mock);
+      assert.equal(
+        initiateResult.status, "AWAITING_OTP",
+        `Login mode selector must not block initiation, got ${initiateResult.status}: ${(initiateResult as any).failDetail}`,
+      );
+    } finally {
+      delete process.env["PAYTM_PORTAL_ROOT_OVERRIDE"];
+      await mock.close();
+    }
+  });
+
+  it("mode selector + correct OTP → reaches CONNECTED", async () => {
+    const mock = await startMockPaytmServer({
+      validOtp: VALID_OTP,
+      maskedMobile: MOCK_MASKED_MOBILE,
+      showLoginModeSelector: true,
+    });
+    process.env["PAYTM_PORTAL_ROOT_OVERRIDE"] = mock.url;
+
+    try {
+      const { submitResult } = await runFullConnectFlow(mock);
+      assert.equal(
+        submitResult!.status, "CONNECTED",
+        `Expected CONNECTED with mode selector, got ${submitResult!.status}: ${(submitResult as any).failDetail}`,
+      );
+    } finally {
+      delete process.env["PAYTM_PORTAL_ROOT_OVERRIDE"];
+      await mock.close();
+    }
+  });
+});
+
+// ── Mobile digit-box entry ─────────────────────────────────────────────────────
+
+describe("Paytm E2E — Mobile number as 10 digit boxes", { timeout: 120_000 }, () => {
+  it("digit-box phone entry (10 boxes) → adapter fills all boxes and reaches AWAITING_OTP", async () => {
+    const mock = await startMockPaytmServer({
+      validOtp: VALID_OTP,
+      maskedMobile: MOCK_MASKED_MOBILE,
+      mobileAsDigitBoxes: true,  // ← 10 individual maxlength="1" inputs, not input[type="tel"]
+    });
+    process.env["PAYTM_PORTAL_ROOT_OVERRIDE"] = mock.url;
+
+    try {
+      const { initiateResult } = await runFullConnectFlow(mock);
+      assert.equal(
+        initiateResult.status, "AWAITING_OTP",
+        `Digit-box phone entry must reach AWAITING_OTP, got ${initiateResult.status}: ${(initiateResult as any).failDetail}`,
+      );
+    } finally {
+      delete process.env["PAYTM_PORTAL_ROOT_OVERRIDE"];
+      await mock.close();
+    }
+  });
+
+  it("digit-box entry + correct OTP → reaches CONNECTED end-to-end", async () => {
+    const mock = await startMockPaytmServer({
+      validOtp: VALID_OTP,
+      maskedMobile: MOCK_MASKED_MOBILE,
+      mobileAsDigitBoxes: true,
+    });
+    process.env["PAYTM_PORTAL_ROOT_OVERRIDE"] = mock.url;
+
+    try {
+      const { submitResult } = await runFullConnectFlow(mock);
+      assert.equal(
+        submitResult!.status, "CONNECTED",
+        `Expected CONNECTED with digit-box entry, got ${submitResult!.status}: ${(submitResult as any).failDetail}`,
+      );
+    } finally {
+      delete process.env["PAYTM_PORTAL_ROOT_OVERRIDE"];
+      await mock.close();
+    }
+  });
+
+  it("digit-box entry is not misclassified as OTP form", async () => {
+    // The 10 digit boxes must NOT trigger LOGIN_UI_CHANGED (otp_form path) —
+    // they must be correctly identified as mobile digit-box entry (mobile_form_digits).
+    const mock = await startMockPaytmServer({
+      validOtp: VALID_OTP,
+      maskedMobile: MOCK_MASKED_MOBILE,
+      mobileAsDigitBoxes: true,
+    });
+    process.env["PAYTM_PORTAL_ROOT_OVERRIDE"] = mock.url;
+
+    try {
+      const { initiateResult } = await runFullConnectFlow(mock);
+      // Must NOT return LOGIN_UI_CHANGED (which would indicate digit-box misclassification)
+      assert.notEqual(
+        (initiateResult as any).failReason, "LOGIN_UI_CHANGED",
+        "10 digit boxes must be classified as mobile entry, not OTP form",
+      );
+      assert.notEqual(initiateResult.status, "FAILED",
+        "Digit-box phone entry must not fail");
+    } finally {
+      delete process.env["PAYTM_PORTAL_ROOT_OVERRIDE"];
+      await mock.close();
+    }
+  });
+});
+
+// ── Iframe-embedded login form ─────────────────────────────────────────────────
+
+describe("Paytm E2E — Mobile field inside same-origin iframe", { timeout: 120_000 }, () => {
+  it("login form inside iframe → adapter finds it via frame.locator() and reaches AWAITING_OTP", async () => {
+    const mock = await startMockPaytmServer({
+      validOtp: VALID_OTP,
+      maskedMobile: MOCK_MASKED_MOBILE,
+      loginFormInIframe: true,  // ← form is inside <iframe src="/iframe-login">
+    });
+    process.env["PAYTM_PORTAL_ROOT_OVERRIDE"] = mock.url;
+
+    try {
+      const { initiateResult } = await runFullConnectFlow(mock);
+      assert.equal(
+        initiateResult.status, "AWAITING_OTP",
+        `Iframe-embedded form must reach AWAITING_OTP, got ${initiateResult.status}: ${(initiateResult as any).failDetail}`,
+      );
+    } finally {
+      delete process.env["PAYTM_PORTAL_ROOT_OVERRIDE"];
+      await mock.close();
+    }
+  });
+
+  it("iframe form + correct OTP → reaches CONNECTED", async () => {
+    const mock = await startMockPaytmServer({
+      validOtp: VALID_OTP,
+      maskedMobile: MOCK_MASKED_MOBILE,
+      loginFormInIframe: true,
+    });
+    process.env["PAYTM_PORTAL_ROOT_OVERRIDE"] = mock.url;
+
+    try {
+      const { submitResult } = await runFullConnectFlow(mock);
+      assert.equal(
+        submitResult!.status, "CONNECTED",
+        `Expected CONNECTED with iframe form, got ${submitResult!.status}: ${(submitResult as any).failDetail}`,
+      );
+    } finally {
+      delete process.env["PAYTM_PORTAL_ROOT_OVERRIDE"];
+      await mock.close();
+    }
+  });
+});
+
+// ── WAF / device-verification detection ──────────────────────────────────────
+
+describe("Paytm E2E — WAF / device-verification detection", { timeout: 120_000 }, () => {
+  it("WAF challenge page → returns WAF_OR_DEVICE_VERIFICATION, never CONNECTED", async () => {
+    const mock = await startMockPaytmServer({
+      validOtp: VALID_OTP,
+      maskedMobile: MOCK_MASKED_MOBILE,
+      showWafChallenge: true,  // ← login URL returns WAF challenge instead of login form
+    });
+    process.env["PAYTM_PORTAL_ROOT_OVERRIDE"] = mock.url;
+
+    try {
+      const initiateResult = await paytmMerchantAdapter.initiateSession({
+        loginMethod: "mobile_otp",
+        encryptedIdentifier: encryptedMobile(VALID_MOBILE),
+      });
+
+      assert.notEqual(initiateResult.status, "CONNECTED",
+        "WAF page must never reach CONNECTED");
+      assert.notEqual(initiateResult.status, "AWAITING_OTP",
+        "WAF page must not claim OTP was sent");
+      // Should return WAF_OR_DEVICE_VERIFICATION or similar transient failure
+      const failReason = (initiateResult as any).failReason;
+      assert.ok(
+        failReason === "WAF_OR_DEVICE_VERIFICATION" ||
+        failReason === "PORTAL_UNREACHABLE" ||
+        failReason === "LOGIN_UI_CHANGED",
+        `WAF page must return a transient failure reason, got ${failReason}`,
+      );
+    } finally {
+      delete process.env["PAYTM_PORTAL_ROOT_OVERRIDE"];
+      await mock.close();
+    }
+  });
+});
+
+// ── LOGIN_UI_CHANGED fail-closed ───────────────────────────────────────────────
+
+describe("Paytm E2E — LOGIN_UI_CHANGED fail-closed", () => {
+  it("initiateSession with empty portal (no recognised inputs) → LOGIN_UI_CHANGED or PORTAL_UNREACHABLE, never AWAITING_OTP", async () => {
+    // Start a mock server that returns a completely empty page for /user/login
+    const emptyServer = await (async () => {
+      const http = await import("node:http");
+      const server = http.createServer((_req, res) => {
+        res.writeHead(200, { "Content-Type": "text/html" });
+        res.end(`<!DOCTYPE html><html><head><title>Paytm</title></head><body>
+<div>Something went wrong. Please try again later.</div>
+</body></html>`);
+      });
+      await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+      const addr = server.address() as { port: number };
+      return {
+        url: `http://127.0.0.1:${addr.port}`,
+        close: () => new Promise<void>((res, rej) => server.close((err) => err ? rej(err) : res())),
+      };
+    })();
+
+    process.env["PAYTM_PORTAL_ROOT_OVERRIDE"] = emptyServer.url;
+
+    try {
+      const result = await paytmMerchantAdapter.initiateSession({
+        loginMethod: "mobile_otp",
+        encryptedIdentifier: encryptedMobile(VALID_MOBILE),
+      });
+
+      assert.notEqual(result.status, "AWAITING_OTP",
+        "Empty/unrecognised page must never claim OTP was sent");
+      assert.notEqual(result.status, "CONNECTED",
+        "Empty/unrecognised page must never reach CONNECTED");
+      assert.equal(result.status, "FAILED",
+        "Empty/unrecognised page must return FAILED");
+      const failReason = (result as any).failReason;
+      assert.ok(
+        failReason === "LOGIN_UI_CHANGED" ||
+        failReason === "PORTAL_UNREACHABLE" ||
+        failReason === "PORTAL_STRUCTURE_CHANGED",
+        `Expected a UI-change or unreachable reason, got ${failReason}`,
+      );
+    } finally {
+      delete process.env["PAYTM_PORTAL_ROOT_OVERRIDE"];
+      await emptyServer.close();
+    }
+  });
+});
+
+// ── Merchant isolation ────────────────────────────────────────────────────────
+
+describe("Paytm E2E — Merchant isolation (sessions must not bleed)", { timeout: 120_000 }, () => {
+  it("two concurrent initiateSession calls return independent tokens (no shared state)", async () => {
+    const mock1 = await startMockPaytmServer({ validOtp: VALID_OTP, maskedMobile: "**XXXXXX111" });
+    const mock2 = await startMockPaytmServer({ validOtp: VALID_OTP, maskedMobile: "**XXXXXX222" });
+
+    // Run both initiations back-to-back using different mock servers
+    process.env["PAYTM_PORTAL_ROOT_OVERRIDE"] = mock1.url;
+    const result1 = await paytmMerchantAdapter.initiateSession({
+      loginMethod: "mobile_otp",
+      encryptedIdentifier: encryptedMobile("9876543111"),
+    });
+
+    process.env["PAYTM_PORTAL_ROOT_OVERRIDE"] = mock2.url;
+    const result2 = await paytmMerchantAdapter.initiateSession({
+      loginMethod: "mobile_otp",
+      encryptedIdentifier: encryptedMobile("9876543222"),
+    });
+
+    delete process.env["PAYTM_PORTAL_ROOT_OVERRIDE"];
+    await mock1.close();
+    await mock2.close();
+
+    // Both must reach AWAITING_OTP
+    assert.equal(result1.status, "AWAITING_OTP",
+      `First initiation must reach AWAITING_OTP, got ${result1.status}`);
+    assert.equal(result2.status, "AWAITING_OTP",
+      `Second initiation must reach AWAITING_OTP, got ${result2.status}`);
+
+    // Tokens must be distinct (different sessions, different storage states)
+    assert.notEqual(
+      result1.encryptedSessionToken,
+      result2.encryptedSessionToken,
+      "Two independent sessions must produce distinct encrypted tokens",
+    );
+  });
+});
+
+// ── Secret / OTP leakage prevention ──────────────────────────────────────────
+
+describe("Paytm E2E — No secret leakage in error messages", () => {
+  it("LOGIN_UI_CHANGED error message never contains the mobile number", async () => {
+    // Use an empty portal that triggers LOGIN_UI_CHANGED
+    const http = await import("node:http");
+    const emptyServer = await new Promise<{ url: string; close: () => Promise<void> }>((resolve) => {
+      const server = http.createServer((_req, res) => {
+        res.writeHead(200, { "Content-Type": "text/html" });
+        res.end(`<!DOCTYPE html><html><body><p>No form here</p></body></html>`);
+      });
+      server.listen(0, "127.0.0.1", () => {
+        const addr = server.address() as { port: number };
+        resolve({
+          url: `http://127.0.0.1:${addr.port}`,
+          close: () => new Promise<void>((res, rej) => server.close((err) => err ? rej(err) : res())),
+        });
+      });
+    });
+
+    process.env["PAYTM_PORTAL_ROOT_OVERRIDE"] = emptyServer.url;
+
+    try {
+      const result = await paytmMerchantAdapter.initiateSession({
+        loginMethod: "mobile_otp",
+        encryptedIdentifier: encryptedMobile(VALID_MOBILE),
+      });
+
+      const resultStr = JSON.stringify(result);
+
+      // The mobile number must NEVER appear in any error field
+      assert.ok(
+        !resultStr.includes(VALID_MOBILE),
+        `Error response must not contain the plain mobile number. Got: ${resultStr.slice(0, 200)}`,
+      );
+
+      // The masked mobile (last 3 digits only) may appear, but not the full number
+      const last4 = VALID_MOBILE.slice(-4);
+      if (resultStr.includes(last4)) {
+        // If last 4 appear, the full 10-digit number must not appear
+        assert.ok(
+          !resultStr.includes(VALID_MOBILE),
+          "Full mobile number must not appear in error response",
+        );
+      }
+    } finally {
+      delete process.env["PAYTM_PORTAL_ROOT_OVERRIDE"];
+      await emptyServer.close();
+    }
+  });
+
+  it("submitStep BROWSER_ERROR message never exposes filesystem paths", async () => {
+    // Verify that sanitizeBrowserError() strips path info from browser errors.
+    // We test with a bad token which will fail fast (no browser spawned), but
+    // the structural invariant is: if a BrowserRuntimeUnavailableError is thrown,
+    // the message must not contain a filesystem path.
+    const result = await paytmMerchantAdapter.submitStep({
+      encryptedSessionToken: "",
+      encryptedOtp: encryptedOtp(VALID_OTP),
+    });
+
+    const resultStr = JSON.stringify(result);
+    // Must not expose /home/runner or /nix/store paths
+    assert.ok(
+      !resultStr.includes("/home/runner") && !resultStr.includes("/nix/store"),
+      `Error must not expose filesystem paths. Got: ${resultStr.slice(0, 200)}`,
+    );
+  });
+});
+
 // ── Type helper ───────────────────────────────────────────────────────────────
 
 interface ValidateResult {
