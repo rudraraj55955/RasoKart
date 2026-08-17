@@ -98,3 +98,4 @@
 - [Paytm digit-box vs OTP disambiguation](paytm-digitbox-disambiguation.md) — maxlength="1" boxes are phone entry (10 boxes) OR OTP (4–8 boxes); count-based check MUST precede OTP_INPUT_DIGITS selectors or navigateToLoginPage mis-classifies phone as otp_form.
 - [Paytm portal migration Aug 2026](paytm-portal-migration-aug2026.md) — login moved to dashboard.paytm.com; form in cross-origin accounts.paytm.com iframe; password-only (no OTP); old URLs return HTTP 200 + 404 content.
 - [Pine Labs ONE connector architecture](pinelabs-one-arch.md) — portal_session_connector using Playwright; mobile_password login; mock server + fail-closed + e2e test files; PineLabsOnePortalCard in connect.tsx.
+- [Pine Labs ONE provider visibility fix](pinelabs-one-visibility-fix.md) — portal providers need status="live" in seed upsert; resolveVisible() hides status="sandbox" from merchants by default.
