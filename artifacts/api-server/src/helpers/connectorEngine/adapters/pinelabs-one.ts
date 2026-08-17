@@ -100,12 +100,22 @@ const LOGIN_PAGE_PATTERNS = [
   "/auth",
 ];
 
-/** URL patterns that indicate the session is on an OTP-entry page. */
+/**
+ * URL patterns that indicate the session is on an OTP-entry page.
+ * Covers both mobile-OTP and email-OTP portal paths observed on Pine Labs ONE.
+ * All comparisons use lower-case (see isOtpUrl).
+ */
 const OTP_URL_PATTERNS = [
-  "/verify-otp",
-  "/authv2/sign-in/otp",
-  "/sign-in/otp",
-  "/otp-verification",
+  "/verify-otp",             // /authV2/sign-in/verify-otp  (mobile, confirmed production)
+  "/authv2/sign-in/otp",     // potential alternate OTP sub-path
+  "/sign-in/otp",            // shorter variant
+  "/otp-verification",       // generic OTP verification page
+  "/email-otp",              // email-specific OTP page  (may appear for email identifiers)
+  "/mobile-otp",             // mobile-specific OTP page (may appear for mobile identifiers)
+  "/verify-email",           // email verification OTP variant
+  "/otp-verify",             // reversed slug variant
+  "/enter-otp",              // explicit enter-OTP slug
+  "/otp",                    // bare /otp segment (catch-all; checked last to avoid false positive on e.g. /forgot)
 ];
 
 /** URL patterns indicating we are on the authenticated dashboard. */
@@ -962,7 +972,11 @@ export const pineLabsOneAdapter: ProviderAdapter = {
         await page.waitForTimeout(300);
         await clickSubmit(page, SEL.NEXT_BTN);
 
-        // Wait for navigation / DOM outcome
+        // ── Parallel wait: OTP URL navigation OR DOM outcome ────────────────
+        // Pine Labs ONE /authV2 OTP-first flow: the portal navigates to the OTP
+        // URL BEFORE rendering the OTP input elements. Running both waits in
+        // parallel ensures we detect the OTP URL even in the window between
+        // navigation completion and first DOM paint.
         const outcomes = [
           ...SEL.PASSWORD_INPUT,
           ...SEL.OTP_INPUT_SINGLE,
@@ -971,13 +985,18 @@ export const pineLabsOneAdapter: ProviderAdapter = {
           ...SEL.CAPTCHA,
           ...SEL.MANUAL_ACTION,
         ];
-        await waitForAny(page, outcomes, NAV_TIMEOUT_MS);
+        await Promise.race([
+          waitForAny(page, outcomes, NAV_TIMEOUT_MS).catch(() => {}),
+          // waitForURL runs server-side; resolves as soon as the page URL
+          // matches any OTP URL pattern (catches navigation before DOM paint).
+          page.waitForURL(
+            (url: URL) => OTP_URL_PATTERNS.some(p => url.href.toLowerCase().includes(p)),
+            { timeout: NAV_TIMEOUT_MS },
+          ).catch(() => {}),
+        ]);
 
         // ── URL-first OTP detection ─────────────────────────────────────────
-        // Pine Labs ONE authV2 flow: after identifier submission the portal
-        // navigates to /authV2/sign-in/verify-otp (OTP-first, no password step).
-        // URL detection is always checked before DOM scanning because SPA
-        // route changes complete before input elements are rendered.
+        // Always check URL before DOM; SPA route changes complete first.
         const urlAfterSubmit = page.url();
         if (isOtpUrl(urlAfterSubmit)) {
           const storageState = await extractStorageState(ctx.context);
@@ -999,12 +1018,16 @@ export const pineLabsOneAdapter: ProviderAdapter = {
             { slug: "pinelabs_one", maskedIdentifier: maskIdentifier(identifier), urlPath: new URL(urlAfterSubmit).pathname },
             "pinelabs_one_initiate_otp_url_detected",
           );
+          // Build a prompt that reflects whether the identifier is an email
+          // or a mobile number, so the merchant knows where to look for the OTP.
+          const isEmail = identifier.includes("@");
+          const otpDestination = isEmail ? "email inbox" : "registered mobile";
           return {
             status: "AWAITING_OTP",
             encryptedSessionToken: enc.token,
             nextStep: "ENTER_OTP",
             nextStepPrompt:
-              `An OTP has been sent to your registered mobile (${maskIdentifier(identifier)}). ` +
+              `An OTP has been sent to your ${otpDestination} (${maskIdentifier(identifier)}). ` +
               "Enter it below to connect your Pine Labs ONE account. " +
               "The OTP is used once and discarded immediately.",
           };
@@ -1121,9 +1144,10 @@ export const pineLabsOneAdapter: ProviderAdapter = {
           status: "FAILED",
           failReason: "PORTAL_UI_CHANGED",
           failDetail:
-            `Pine Labs ONE did not transition to the password step after identifier entry ` +
-            `(path=${diag2.urlPath}, title="${diag2.title}"). ` +
-            "The portal UI may have changed — please contact RasoKart support.",
+            `Pine Labs ONE did not show a recognisable OTP, password, or error screen after ` +
+            `identifier entry (path=${diag2.urlPath}, title="${diag2.title}"). ` +
+            "Verify your registered email or mobile is correct and try again. " +
+            "If the issue persists, contact RasoKart support.",
           helpUrl: HELP_URL,
         };
       }
