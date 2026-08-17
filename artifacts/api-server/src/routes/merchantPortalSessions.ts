@@ -68,23 +68,9 @@ function requireMerchant(req: any, res: any, next: any) {
   next();
 }
 
-// ── Public: browser-health probe ──────────────────────────────────────────────
-// Intentionally registered BEFORE router.use(requireAuth) so it is accessible
-// without authentication. The response contains no merchant data, no credentials,
-// and no server paths — it only indicates whether Chromium is launchable.
-// Used by deploy scripts, monitoring, and CI to verify the Playwright runtime.
-router.get("/browser-health", async (_req: any, res: any) => {
-  try {
-    const poolStatus = browserPoolStatus();
-    const probe      = await probeBrowserReady();
-    res.json({ ...probe, pool: poolStatus });
-  } catch (err: any) {
-    logger.error({ err: err.message }, "merchant_portal_browser_health_failed");
-    res.status(500).json({ ready: false, reason: "health_check_exception" });
-  }
-});
-
 // ── Auth guard (all routes below require a valid merchant JWT) ─────────────────
+// NOTE: the public browser-health probe is mounted at /api/browser-health
+//       (routes/index.ts) so it bypasses the /merchant/* auth alias entirely.
 
 router.use(requireAuth, requireMerchant);
 

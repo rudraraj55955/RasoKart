@@ -255,7 +255,7 @@ jobs:
           check https://rasokart.com/merchant/login
           check https://rasokart.com/agent/login
           check https://rasokart.com/agent/activate
-          check https://rasokart.com/api/merchant/portal-sessions/browser-health
+          check https://rasokart.com/api/browser-health
           check https://rasokart.com/sitemap.xml
           check https://rasokart.com/robots.txt
           echo "--- Contact form POST ---"

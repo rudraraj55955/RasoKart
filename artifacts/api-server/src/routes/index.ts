@@ -1,6 +1,7 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request, type Response } from "express";
 import healthRouter from "./health";
 import openApiDocsRouter from "./openApiDocs";
+import { browserPoolStatus, probeBrowserReady } from "../helpers/connectorEngine/browserPool";
 import authRouter from "./auth";
 import dashboardRouter from "./dashboard";
 import merchantsRouter from "./merchants";
@@ -113,6 +114,21 @@ const router: IRouter = Router();
 router.use(healthRouter);
 // Public OpenAPI spec + Swagger UI — no auth required (must be before requireAuth middleware)
 router.use(openApiDocsRouter);
+
+// ── Public: Connector-engine browser health ────────────────────────────────
+// Mounted here — BEFORE any /merchant/* auth aliases — so it is reachable
+// without a JWT. Returns no merchant data, no credentials, no server paths.
+// Used by deploy scripts, CI, and monitoring to verify the Playwright runtime.
+router.get("/browser-health", async (_req: Request, res: Response) => {
+  try {
+    const poolStatus = browserPoolStatus();
+    const probe      = await probeBrowserReady();
+    res.json({ ...probe, pool: poolStatus });
+  } catch (err: any) {
+    res.status(500).json({ ready: false, reason: "health_check_exception" });
+  }
+});
+
 router.use("/auth", authRouter);
 // Top-level alias: some deploy configs / older frontend builds call
 // `/api/merchant/login` directly. Mounts the same authRouter so
