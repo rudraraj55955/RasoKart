@@ -2494,6 +2494,13 @@ function PineLabsOnePortalCard({
    * re-renders — making the handler truly non-reentrant on fast double-taps.
    */
   const submittingOtpRef = useRef(false);
+  /**
+   * Ref-based in-flight guard for handleSubmitPassword.
+   * Mirrors submittingOtpRef so fast double-taps on the password submit button
+   * cannot fire duplicate POST requests before React re-renders the button to
+   * disabled.
+   */
+  const submittingPasswordRef = useRef(false);
 
   useEffect(() => {
     setUiStep(deriveStep(session));
@@ -2577,8 +2584,13 @@ function PineLabsOnePortalCard({
 
   // ── Step 2: submit password ─────────────────────────────────────────────────
   async function handleSubmitPassword() {
+    // Synchronous ref guard — prevents duplicate POSTs from fast double-taps
+    // that arrive before React re-renders the button to disabled.
+    if (submittingPasswordRef.current) return;
+    submittingPasswordRef.current = true;
     const pw = password.trim();
     if (!pw) {
+      submittingPasswordRef.current = false;
       setErrorMsg("Enter your Pine Labs ONE account password.");
       return;
     }
@@ -2611,6 +2623,7 @@ function PineLabsOnePortalCard({
       setErrorMsg("Could not submit password. Please try again.");
     } finally {
       setSubmitting(false);
+      submittingPasswordRef.current = false;
     }
   }
 
