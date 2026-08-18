@@ -21,7 +21,7 @@
  * Audit log shows non-secret events (connect, credential update, disconnect).
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useListProviders, useListMerchantConnections } from "@workspace/api-client-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -2473,6 +2473,12 @@ function PineLabsOnePortalCard({
    *   "portal_link"  — merchant clicked "Login with OTP" (portal's own link)
    */
   const [otpSource, setOtpSource] = useState<"2fa" | "portal_link">("2fa");
+  /**
+   * Ref-based in-flight guard for handleSubmitOtp.
+   * A ref (not state) is used so the check is synchronous — before React
+   * re-renders — making the handler truly non-reentrant on fast double-taps.
+   */
+  const submittingOtpRef = useRef(false);
 
   useEffect(() => {
     setUiStep(deriveStep(session));
@@ -2667,8 +2673,13 @@ function PineLabsOnePortalCard({
 
   // ── Step 3: submit OTP (2FA) ────────────────────────────────────────────────
   async function handleSubmitOtp() {
+    // Ref guard: checked synchronously before any React re-render, so a fast
+    // double-tap cannot sneak in a second call while the first is in flight.
+    if (submittingOtpRef.current) return;
+    submittingOtpRef.current = true;
     const otpVal = otp.trim().replace(/\s/g, "");
     if (!otpVal || otpVal.length < 4) {
+      submittingOtpRef.current = false;
       setErrorMsg("Enter the OTP you received on your registered mobile.");
       return;
     }
@@ -2700,6 +2711,7 @@ function PineLabsOnePortalCard({
       setOtp("");
       setErrorMsg("Could not submit OTP. Please try again.");
     } finally {
+      submittingOtpRef.current = false;
       setSubmitting(false);
     }
   }
