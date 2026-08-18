@@ -1607,6 +1607,249 @@ describe("PineLabsOne E2E — resend cooldown countdown must not match as a rese
   });
 });
 
+// ── Resend cooldown → transition → active control ────────────────────────────
+//
+// Regression for: false "new OTP sent" message when resend_otp is called while
+// the portal still shows the cooldown countdown ("Resend OTP in NN secs").
+//
+// The mock server resendCooldownThenActive flag tracks /login/verify-otp GETs
+// per server instance. To prevent state from bleeding between tests, each test
+// below gets its OWN describe block with its own before/after and fresh server,
+// so otpPageVisitCount always starts at 0 for every test.
+//
+// Flow simulated by the mock:
+//   • Initial OTP-first login → /authV2/sign-in/verify-otp (NOT counted)
+//   • First  resend nav → /login/verify-otp (count=1) → cooldown text only
+//   • Second resend nav → /login/verify-otp (count=2) → active div[role=button]
+
+// ── Part 1: cooldown → RESEND_NOT_AVAILABLE (no phantom success) ─────────────
+
+describe("PineLabsOne E2E — resend_otp during cooldown returns RESEND_NOT_AVAILABLE (not a false success)", () => {
+  let srv: MockServer;
+  const VALID_MOBILE = "9664664664";
+  const VALID_OTP    = "334455";
+
+  before(async () => {
+    const ready = await checkBrowser();
+    if (!ready) return;
+    srv = await startMockPineLabsOneServer({
+      validPassword:            "AnyPass!",
+      validOtp:                 VALID_OTP,
+      maskedIdentifier:         "**XXXXX664",
+      merchantId:               "PL_COOL1_001",
+      otpFirst:                 true,
+      resendCooldownThenActive: true,
+    });
+    process.env["PINELABS_ONE_PORTAL_OVERRIDE"] = srv.url;
+  });
+
+  after(async () => {
+    delete process.env["PINELABS_ONE_PORTAL_OVERRIDE"];
+    await srv?.close();
+  });
+
+  it("cooldown countdown text must not be clicked as a resend control — session is preserved with RESEND_NOT_AVAILABLE", async () => {
+    const browserReady = await checkBrowser();
+    if (!browserReady) return;
+
+    // OTP-first login → /authV2/sign-in/verify-otp (does NOT increment otpPageVisitCount)
+    const init = await pineLabsOneAdapter.initiateSession({
+      loginMethod:         "mobile_password",
+      encryptedIdentifier: enc(VALID_MOBILE),
+    });
+    assert.equal(
+      init.status, "AWAITING_OTP",
+      `OTP-first initiate must return AWAITING_OTP; got: ${init.status} — ${init.failDetail}`,
+    );
+    assert.ok(init.encryptedSessionToken, "initiate must return a session token");
+
+    // First explicit resend nav → /login/verify-otp (count=1) → cooldown HTML rendered.
+    // The adapter must NOT match the countdown text as a clickable control.
+    const resend = await pineLabsOneAdapter.submitStep({
+      encryptedSessionToken: init.encryptedSessionToken,
+      loginMethod:           "resend_otp",
+    });
+
+    assert.equal(
+      resend.status, "AWAITING_OTP",
+      `Session must be preserved on cooldown; got: ${resend.status} — ${resend.failDetail}`,
+    );
+    assert.equal(
+      resend.failReason, "RESEND_NOT_AVAILABLE",
+      `Cooldown countdown must yield RESEND_NOT_AVAILABLE, not a phantom success; ` +
+      `got: ${resend.failReason}`,
+    );
+    assert.equal(
+      resend.encryptedSessionToken, init.encryptedSessionToken,
+      "Original session token must be returned unchanged on RESEND_NOT_AVAILABLE",
+    );
+    assert.ok(
+      !resend.nextStepPrompt?.toLowerCase().includes("new otp has been sent"),
+      `nextStepPrompt must NOT claim a new OTP was sent during cooldown; ` +
+      `got: ${resend.nextStepPrompt}`,
+    );
+  });
+});
+
+// ── Part 2: after cooldown expires, active control is found and clicked ───────
+
+describe("PineLabsOne E2E — resend_otp after cooldown expires clicks the active div control and returns AWAITING_OTP", () => {
+  let srv: MockServer;
+  const VALID_MOBILE = "9664664665";
+  const VALID_OTP    = "334456";
+
+  before(async () => {
+    const ready = await checkBrowser();
+    if (!ready) return;
+    srv = await startMockPineLabsOneServer({
+      validPassword:            "AnyPass!",
+      validOtp:                 VALID_OTP,
+      maskedIdentifier:         "**XXXXX665",
+      merchantId:               "PL_COOL2_001",
+      otpFirst:                 true,
+      resendCooldownThenActive: true,   // fresh server: otpPageVisitCount=0
+    });
+    process.env["PINELABS_ONE_PORTAL_OVERRIDE"] = srv.url;
+  });
+
+  after(async () => {
+    delete process.env["PINELABS_ONE_PORTAL_OVERRIDE"];
+    await srv?.close();
+  });
+
+  it("preserves session through cooldown then clicks active control and returns AWAITING_OTP with no failReason", async () => {
+    const browserReady = await checkBrowser();
+    if (!browserReady) return;
+
+    // Fresh server: otpPageVisitCount=0.
+    const init = await pineLabsOneAdapter.initiateSession({
+      loginMethod:         "mobile_password",
+      encryptedIdentifier: enc(VALID_MOBILE),
+    });
+    assert.equal(
+      init.status, "AWAITING_OTP",
+      `OTP-first initiate must return AWAITING_OTP; got: ${init.status} — ${init.failDetail}`,
+    );
+    assert.ok(init.encryptedSessionToken, "initiate must return a session token");
+
+    // First resend nav → count=1 → cooldown.
+    const cooldownResend = await pineLabsOneAdapter.submitStep({
+      encryptedSessionToken: init.encryptedSessionToken,
+      loginMethod:           "resend_otp",
+    });
+    assert.equal(
+      cooldownResend.failReason, "RESEND_NOT_AVAILABLE",
+      `First resend must hit cooldown (RESEND_NOT_AVAILABLE); got: ${cooldownResend.failReason} — ${cooldownResend.failDetail}`,
+    );
+    assert.ok(
+      cooldownResend.encryptedSessionToken,
+      "Session token must be preserved on RESEND_NOT_AVAILABLE",
+    );
+
+    // Second resend nav → count=2 → cooldown expired → active div[role=button] shown.
+    // The adapter must find it, click it, and return AWAITING_OTP with no failReason.
+    const activeResend = await pineLabsOneAdapter.submitStep({
+      encryptedSessionToken: cooldownResend.encryptedSessionToken,
+      loginMethod:           "resend_otp",
+    });
+    assert.equal(
+      activeResend.status, "AWAITING_OTP",
+      `After cooldown expires, resend_otp must return AWAITING_OTP; ` +
+      `got: ${activeResend.status} — ${activeResend.failDetail}`,
+    );
+    assert.ok(
+      !activeResend.failReason,
+      `Successful post-cooldown resend must have no failReason; got: ${activeResend.failReason}`,
+    );
+    assert.ok(
+      activeResend.encryptedSessionToken,
+      "Successful resend must return a refreshed session token",
+    );
+    assert.ok(
+      activeResend.nextStepPrompt?.toLowerCase().includes("otp"),
+      `nextStepPrompt must confirm a new OTP was sent; got: ${activeResend.nextStepPrompt}`,
+    );
+  });
+});
+
+// ── Part 3: full transition flow reaches CONNECTED ────────────────────────────
+
+describe("PineLabsOne E2E — full cooldown transition: initiate → cooldown resend → active resend → OTP → CONNECTED", () => {
+  let srv: MockServer;
+  const VALID_MOBILE = "9664664666";
+  const VALID_OTP    = "334457";
+
+  before(async () => {
+    const ready = await checkBrowser();
+    if (!ready) return;
+    srv = await startMockPineLabsOneServer({
+      validPassword:            "AnyPass!",
+      validOtp:                 VALID_OTP,
+      maskedIdentifier:         "**XXXXX666",
+      merchantId:               "PL_COOL3_001",
+      businessName:             "Cooldown Transition Test Co",
+      otpFirst:                 true,
+      resendCooldownThenActive: true,   // fresh server: otpPageVisitCount=0
+    });
+    process.env["PINELABS_ONE_PORTAL_OVERRIDE"] = srv.url;
+  });
+
+  after(async () => {
+    delete process.env["PINELABS_ONE_PORTAL_OVERRIDE"];
+    await srv?.close();
+  });
+
+  it("OTP submitted after post-cooldown resend reaches CONNECTED", async () => {
+    const browserReady = await checkBrowser();
+    if (!browserReady) return;
+
+    // Step 1: OTP-first initiate (count stays 0)
+    const init = await pineLabsOneAdapter.initiateSession({
+      loginMethod:         "mobile_password",
+      encryptedIdentifier: enc(VALID_MOBILE),
+    });
+    assert.equal(
+      init.status, "AWAITING_OTP",
+      `OTP-first initiate must return AWAITING_OTP; got: ${init.status} — ${init.failDetail}`,
+    );
+    assert.ok(init.encryptedSessionToken, "initiate must return a session token");
+
+    // Step 2: first resend nav (count=1) → cooldown → session preserved
+    const cooldownResend = await pineLabsOneAdapter.submitStep({
+      encryptedSessionToken: init.encryptedSessionToken,
+      loginMethod:           "resend_otp",
+    });
+    assert.equal(
+      cooldownResend.failReason, "RESEND_NOT_AVAILABLE",
+      `First resend must be blocked by cooldown; got: ${cooldownResend.failReason}`,
+    );
+    assert.ok(cooldownResend.encryptedSessionToken, "Cooldown must preserve session token");
+
+    // Step 3: second resend nav (count=2) → active control clicked → fresh OTP dispatched
+    const activeResend = await pineLabsOneAdapter.submitStep({
+      encryptedSessionToken: cooldownResend.encryptedSessionToken,
+      loginMethod:           "resend_otp",
+    });
+    assert.equal(
+      activeResend.status, "AWAITING_OTP",
+      `Post-cooldown resend must return AWAITING_OTP; got: ${activeResend.status} — ${activeResend.failDetail}`,
+    );
+    assert.ok(!activeResend.failReason, `No failReason expected after successful resend; got: ${activeResend.failReason}`);
+    assert.ok(activeResend.encryptedSessionToken, "Post-cooldown resend must return a refreshed session token");
+
+    // Step 4: submit OTP → CONNECTED
+    const connected = await pineLabsOneAdapter.submitStep({
+      encryptedSessionToken: activeResend.encryptedSessionToken,
+      encryptedOtp:          enc(VALID_OTP),
+    });
+    assert.equal(
+      connected.status, "CONNECTED",
+      `Expected CONNECTED after full cooldown transition + OTP; ` +
+      `got: ${connected.status} — ${connected.failDetail}`,
+    );
+  });
+});
+
 // ── Portal unreachable ────────────────────────────────────────────────────────
 
 describe("PineLabsOne E2E — portal unreachable", () => {

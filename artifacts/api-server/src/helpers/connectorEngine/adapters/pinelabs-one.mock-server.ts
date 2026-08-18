@@ -100,6 +100,18 @@ export interface MockServerConfig {
    * return RESEND_NOT_AVAILABLE with the session preserved).
    */
   resendCooldownActive?: boolean;
+  /**
+   * Simulate the cooldown-then-active transition on the live portal:
+   *   - First visit to the OTP page: shows "Resend OTP in NN secs" countdown
+   *     (no clickable control) — resend_otp must return RESEND_NOT_AVAILABLE.
+   *   - Second and subsequent visits: shows the active div[role="button"]
+   *     resend control — resend_otp must click it and return AWAITING_OTP.
+   *
+   * Used to verify the full transition flow:
+   *   resend_otp (cooldown) → RESEND_NOT_AVAILABLE (session preserved) →
+   *   resend_otp (expired)  → AWAITING_OTP (button found and clicked).
+   */
+  resendCooldownThenActive?: boolean;
 }
 
 export interface MockServer {
@@ -435,6 +447,11 @@ export async function startMockPineLabsOneServer(
   const validOtp          = config.validOtp          ?? "123456";
   const invalidPasswordMsg = config.invalidPasswordMsg ?? "Invalid username or password";
 
+  // ── Cooldown-then-active transition state ────────────────────────────────────
+  // Tracks how many times the OTP page has been fetched (per-server lifetime).
+  // Used by resendCooldownThenActive: first visit → cooldown, later → active div.
+  let otpPageVisitCount = 0;
+
   const server = http.createServer(async (req, res) => {
     const url    = req.url ?? "/";
     const method = req.method ?? "GET";
@@ -654,7 +671,13 @@ ${identifierFormHtml(false, false)}</body></html>`);
     }
 
     // ── GET /login/password — password entry
-    if ((url.startsWith("/login/password") || url.startsWith("/authV2/sign-in")) && method === "GET") {
+    // NOTE: must explicitly exclude /authV2/sign-in/verify-otp so the OTP entry
+    // handler below matches it first. Without this guard the broad prefix catches
+    // /authV2/sign-in/verify-otp, sees no user_session cookie, and redirects to
+    // /login/user → /login/verify-otp — silently incrementing otpPageVisitCount
+    // before any explicit resend navigation and breaking resendCooldownThenActive.
+    if ((url.startsWith("/login/password") ||
+         (url.startsWith("/authV2/sign-in") && !url.startsWith("/authV2/sign-in/verify-otp"))) && method === "GET") {
       if (isAuth) { res.writeHead(302, { Location: "/home" }); res.end(); return; }
       if (!hasUserSession) { res.writeHead(302, { Location: "/login/user" }); res.end(); return; }
       res.writeHead(200, { "Content-Type": "text/html" });
@@ -715,6 +738,32 @@ ${identifierFormHtml(false, false)}</body></html>`);
     // ── GET /login/verify-otp — OTP entry
     if ((url.startsWith("/login/verify-otp") || url.startsWith("/authV2/sign-in/verify-otp")) && method === "GET") {
       if (isAuth) { res.writeHead(302, { Location: "/home" }); res.end(); return; }
+      // ── Cooldown-then-active transition ──────────────────────────────────────
+      // Tracks the adapter's explicit resend navigation to /login/verify-otp.
+      // The initial OTP-first login redirect lands on /authV2/sign-in/verify-otp
+      // and must NOT be counted as a resend attempt — only /login/verify-otp
+      // visits (the URL the adapter navigates to in the resend_otp branch) count.
+      if (config.resendCooldownThenActive) {
+        // Only count the path the adapter navigates to for resend (not the
+        // authV2 OTP-first redirect which the browser follows automatically).
+        const isResendNavPath = url.startsWith("/login/verify-otp");
+        if (isResendNavPath) {
+          otpPageVisitCount += 1;
+        }
+        // During the initial authV2 OTP page load (not a resend attempt) or
+        // the first explicit resend navigation → show cooldown countdown.
+        // From the second resend navigation onwards → show active div control.
+        const isStillCoolingDown = !isResendNavPath || otpPageVisitCount <= 1;
+        const transitionConfig: MockServerConfig = {
+          ...config,
+          resendCooldownThenActive: false,          // prevent recursion
+          resendCooldownActive:     isStillCoolingDown,
+          liveResendControl:        !isStillCoolingDown,
+        };
+        res.writeHead(200, { "Content-Type": "text/html" });
+        res.end(otpFormHtml(undefined, undefined, transitionConfig));
+        return;
+      }
       res.writeHead(200, { "Content-Type": "text/html" });
       res.end(otpFormHtml(undefined, undefined, config));
       return;
