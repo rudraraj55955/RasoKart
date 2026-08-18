@@ -63,6 +63,14 @@ export interface MockServerConfig {
    * guard in hasCaptcha() (requires visibility + non-zero bounding box).
    */
   hiddenCaptcha?:       boolean;
+  /**
+   * Simulate the Pine Labs ONE mandatory language-selection interstitial
+   * (observed Aug 2026). When true, GET /login/user redirects to
+   * /authV2/language which shows a language picker. Clicking Continue
+   * redirects to /authV2/verify-user where the identifier form is shown.
+   * Used to regression-test handleLanguageInterstitial() in the adapter.
+   */
+  languageInterstitial?: boolean;
 }
 
 export interface MockServer {
@@ -103,6 +111,54 @@ function parseBody(req: http.IncomingMessage): Promise<Record<string, string>> {
 }
 
 // ── HTML templates ────────────────────────────────────────────────────────────
+
+/**
+ * Language selection interstitial page — mirrors one.pinelabs.com/authV2/language.
+ * Shows 10 radio inputs (English first) and a Continue button.
+ * Used to regression-test handleLanguageInterstitial() in the adapter.
+ */
+function languagePageHtml(): string {
+  return `<!DOCTYPE html><html><head><title>Pine Labs ONE - Select Language</title></head><body>
+<div id="language-container" style="padding:40px">
+  <h1>What's your preferred language?</h1>
+  <p>You can change the language later from 'settings'.</p>
+  <form action="/authV2/language" method="POST" id="language-form">
+    <label><input type="radio" name="lang" value="en" id="lang-en" /> English</label><br/>
+    <label><input type="radio" name="lang" value="hi" /> &#2361;&#2367;&#2306;&#2342;&#2368;</label><br/>
+    <label><input type="radio" name="lang" value="te" /> &#3108;&#3142;&#3122;&#3137;&#3095;&#3137;</label><br/>
+    <label><input type="radio" name="lang" value="ta" /> &#2980;&#2990;&#3007;&#2996;&#3021;</label><br/>
+    <label><input type="radio" name="lang" value="mr" /> &#2350;&#2352;&#2366;&#2336;&#2368;</label><br/>
+    <label><input type="radio" name="lang" value="kn" /> &#3221;&#3240;&#3277;&#3240;&#3233;</label><br/>
+    <label><input type="radio" name="lang" value="gu" /> &#2711;&#2753;&#2716;&#2736;&#2750;&#2724;&#2752;</label><br/>
+    <label><input type="radio" name="lang" value="ml" /> &#3374;&#3378;&#3375;&#3390;&#3379;&#3330;</label><br/>
+    <label><input type="radio" name="lang" value="bn" /> &#2476;&#2494;&#2434;&#2482;&#2494;</label><br/>
+    <label><input type="radio" name="lang" value="pa" /> &#2602;&#2672;&#2588;&#2622;&#2604;&#2624;</label><br/>
+    <button type="submit" id="continue-btn">Continue</button>
+  </form>
+</div>
+</body></html>`;
+}
+
+/**
+ * Identifier form at /authV2/verify-user — mirrors the real portal page
+ * that appears after language selection (Aug 2026 portal change).
+ * Uses placeholder "Enter mobile number/ email ID/ user ID" and
+ * button text "Sign in securely" (type=button, not type=submit).
+ */
+function verifyUserFormHtml(showCaptcha: boolean, showHiddenCaptcha?: boolean): string {
+  return `<!DOCTYPE html><html><head><title>Pine Labs ONE - Sign In</title></head><body>
+<div id="login-container" style="padding:40px">
+  <h1>Let's sign in to Pine Labs ONE</h1>
+  <p>Sign in using mobile number or email ID or user ID</p>
+  ${showCaptcha ? captchaHtml() : ""}
+  ${showHiddenCaptcha ? hiddenCaptchaHtml() : ""}
+  <form action="/authV2/verify-user" method="POST" id="verify-user-form">
+    <input name="identifier" placeholder="Enter mobile number/ email ID/ user ID" id="identifier-input" />
+    <button type="button" id="sign-in-btn" onclick="this.form.submit()">Sign in securely</button>
+  </form>
+</div>
+</body></html>`;
+}
 
 function captchaHtml(): string {
   return `<iframe src="https://www.google.com/recaptcha/api.js" title="recaptcha" id="captcha-frame" style="width:300px;height:78px;border:0"></iframe>`;
@@ -351,6 +407,62 @@ export async function startMockPineLabsOneServer(
       return;
     }
 
+    // ── Language interstitial routes (languageInterstitial: true) ────────────
+    // Simulates one.pinelabs.com/authV2/language — the mandatory language picker
+    // that appears for fresh (cookie-less) sessions before the identifier form.
+    if (url.startsWith("/authV2/language") && method === "GET") {
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end(languagePageHtml());
+      return;
+    }
+    if (url === "/authV2/language" && method === "POST") {
+      // Language selected → redirect to /authV2/verify-user (identifier form)
+      res.writeHead(302, {
+        Location: "/authV2/verify-user",
+        "Set-Cookie": "lang_selected=en; Path=/; SameSite=Lax",
+      });
+      res.end();
+      return;
+    }
+
+    // ── GET /authV2/verify-user — identifier entry (post-language page) ──────
+    if (url.startsWith("/authV2/verify-user") && method === "GET") {
+      if (isAuth) { res.writeHead(302, { Location: "/home" }); res.end(); return; }
+      if (hasOtpSession)  { res.writeHead(302, { Location: "/login/verify-otp" }); res.end(); return; }
+      if (hasUserSession) { res.writeHead(302, { Location: "/login/password" });  res.end(); return; }
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end(verifyUserFormHtml(config.showCaptcha ?? false, config.hiddenCaptcha ?? false));
+      return;
+    }
+
+    // ── POST /authV2/verify-user — submit identifier ──────────────────────────
+    if (url === "/authV2/verify-user" && method === "POST") {
+      const body = await parseBody(req);
+      const identifier = (
+        body["identifier"] ?? body["mobile"] ?? body["email"] ?? ""
+      ).trim();
+      if (!identifier || identifier.length < 4) {
+        res.writeHead(200, { "Content-Type": "text/html" });
+        res.end(`<html><body><p role="alert">Please enter a valid registered email ID or mobile number</p>
+${verifyUserFormHtml(false)}</body></html>`);
+        return;
+      }
+      if (config.otpFirst) {
+        res.writeHead(302, {
+          Location: "/authV2/sign-in/verify-otp",
+          "Set-Cookie": "otp_session=1; Path=/; HttpOnly; SameSite=Lax",
+        });
+        res.end();
+        return;
+      }
+      res.writeHead(302, {
+        Location: "/login/password",
+        "Set-Cookie": "user_session=1; Path=/; HttpOnly; SameSite=Lax",
+      });
+      res.end();
+      return;
+    }
+
     // ── GET /login/user — identifier entry
     if ((url.startsWith("/login/user") || url.startsWith("/authV2/sign-in/user-details")) && method === "GET") {
       if (isAuth) { res.writeHead(302, { Location: "/home" }); res.end(); return; }
@@ -359,6 +471,13 @@ export async function startMockPineLabsOneServer(
       }
       if (hasUserSession) {
         res.writeHead(302, { Location: "/login/password" }); res.end(); return;
+      }
+      // Simulate language interstitial — redirect to language picker first
+      if (config.languageInterstitial) {
+        const redirectTo = encodeURIComponent(url.split("?")[0] ?? "/login/user");
+        res.writeHead(302, { Location: `/authV2/language?redirectTo=${redirectTo}` });
+        res.end();
+        return;
       }
       res.writeHead(200, { "Content-Type": "text/html" });
       res.end(identifierFormHtml(config.showCaptcha ?? false, config.showManualAction ?? false, config.hiddenCaptcha ?? false));

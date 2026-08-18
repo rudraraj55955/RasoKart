@@ -111,7 +111,12 @@ const OTP_URL_PATTERNS = [
   "/verify-otp",             // /authV2/sign-in/verify-otp  (mobile, confirmed production)
   "/authv2/sign-in/otp",     // potential alternate OTP sub-path
   "/authv2/sign-in/verify",  // catches /authV2/sign-in/verifyOTP, /authV2/sign-in/verifyMobile etc.
-  "/authv2/verify",          // /authV2/verify* paths
+  // NOTE: "/authv2/verify" was intentionally removed — it is too broad and
+  // matches "/authV2/verify-user" which is the identifier-entry page (not OTP).
+  // Use more specific sub-paths below instead.
+  "/authv2/verify-otp",      // /authV2/verify-otp  (direct OTP verify variant)
+  "/authv2/verify-mobile",   // /authV2/verify-mobile (mobile OTP variant)
+  "/authv2/verify-email",    // /authV2/verify-email  (email OTP variant)
   "/sign-in/otp",            // shorter variant
   "/sign-in/verify",         // /sign-in/verifyOTP etc.
   "/otp-verification",       // generic OTP verification page
@@ -199,9 +204,13 @@ const SEL = {
     'input[maxlength="1"][type="number"]',
   ],
 
-  // "Next" / "Continue" button after identifier entry
+  // "Next" / "Continue" button after identifier entry.
+  // Includes "Sign in securely" — the button text used on the
+  // /authV2/verify-user page (observed Aug 2026, type=button not type=submit).
   NEXT_BTN: [
     'button[type="submit"]:visible',
+    'button:has-text("Sign in securely"):visible',  // /authV2/verify-user submit (Aug 2026)
+    'button:has-text("Sign in"):visible',           // generic sign-in button variant
     'button:has-text("Next"):visible',
     'button:has-text("Continue"):visible',
     'button:has-text("Proceed"):visible',
@@ -420,6 +429,74 @@ function isDashboardUrl(url: string): boolean {
 function isOtpUrl(url: string): boolean {
   const lc = url.toLowerCase();
   return OTP_URL_PATTERNS.some(p => lc.includes(p));
+}
+
+/**
+ * Returns true if the URL is the Pine Labs ONE language-selection interstitial.
+ * The portal redirects fresh (cookie-less) browser sessions to /authV2/language
+ * before showing the identifier form. This must be detected and dismissed
+ * before any login-form selectors are applied.
+ */
+function isLanguageUrl(url: string): boolean {
+  return url.toLowerCase().includes("/authv2/language");
+}
+
+/**
+ * Detect and dismiss the Pine Labs ONE mandatory language-selection interstitial.
+ *
+ * Behaviour (observed on one.pinelabs.com, Aug 2026):
+ *   • Fresh Playwright contexts (no cookies) are redirected to
+ *     /authV2/language?redirectTo=/login/user before the identifier form.
+ *   • The page shows 10 radio buttons (English first) and a "Continue" button.
+ *   • After selecting English and clicking Continue, the portal navigates to
+ *     /authV2/verify-user — the actual identifier-entry page.
+ *
+ * Returns true if the language page was detected and handled.
+ * No-op and returns false if the page is not the language interstitial.
+ */
+async function handleLanguageInterstitial(page: Page): Promise<boolean> {
+  const url = page.url();
+  if (!isLanguageUrl(url)) return false;
+
+  logger.info({ slug: "pinelabs_one", urlPath: (() => { try { return new URL(url).pathname; } catch { return url; } })() },
+    "pinelabs_one_language_interstitial_detected");
+
+  // Select English — try to click the label/element that reads exactly "English"
+  let selected = false;
+  try {
+    // Playwright text= selector matches by visible text content
+    const engEl = page.locator("text=English").first();
+    if (await engEl.count() > 0 && await engEl.isVisible()) {
+      await engEl.click({ timeout: ACTION_TIMEOUT_MS });
+      selected = true;
+    }
+  } catch { /* fall through to radio fallback */ }
+
+  if (!selected) {
+    // Fallback: click the first radio button — English is always listed first
+    try {
+      const firstRadio = page.locator('input[type="radio"]').first();
+      if (await firstRadio.count() > 0) {
+        await firstRadio.click({ timeout: ACTION_TIMEOUT_MS });
+      }
+    } catch { /* continue even if click fails */ }
+  }
+
+  // Click the Continue button
+  await clickSubmit(page, [
+    'button:has-text("Continue"):visible',
+    'button[type="submit"]:visible',
+    'button:has-text("Proceed"):visible',
+  ]);
+
+  // Wait for the SPA to navigate away from the language page
+  await page.waitForTimeout(2_500);
+
+  const newUrl = page.url();
+  logger.info({ slug: "pinelabs_one", urlPath: (() => { try { return new URL(newUrl).pathname; } catch { return newUrl; } })() },
+    "pinelabs_one_language_interstitial_dismissed");
+
+  return true;
 }
 
 /** Try each selector in an array; return the first visible locator found. */
@@ -794,6 +871,17 @@ async function navigateToLogin(page: Page): Promise<LoginPageState | null> {
   // Give React SPA time to render
   await page.waitForTimeout(1_500);
 
+  // ── Language-selection interstitial ───────────────────────────────────────
+  // Pine Labs ONE redirects fresh (cookie-less) Playwright sessions to
+  // /authV2/language before showing the identifier form. This is a
+  // mandatory one-time step that must be dismissed to reach /authV2/verify-user.
+  // After handleLanguageInterstitial() the page is on the identifier form.
+  const langHandled = await handleLanguageInterstitial(page);
+  if (langHandled) {
+    // Re-wait for the SPA to fully render the identifier form
+    await page.waitForTimeout(1_500);
+  }
+
   const url = page.url();
 
   // ── OTP URL (Pine Labs ONE authV2 OTP-first flow) ─────────────────────────
@@ -827,13 +915,18 @@ async function navigateToLogin(page: Page): Promise<LoginPageState | null> {
   const idField = await tryLocator(page, SEL.IDENTIFIER_INPUT);
   if (idField) return "identifier_form";
 
-  // Try alternative login URL
+  // Try alternative login URL — /authV2/verify-user is the identifier page
+  // on the current portal (Aug 2026). The old /authV2/sign-in/user-details
+  // path may also redirect here after the language interstitial.
   try {
-    await page.goto(`${getPortalOrigin()}/authV2/sign-in/user-details`, {
+    await page.goto(`${getPortalOrigin()}/authV2/verify-user`, {
       waitUntil: "domcontentloaded",
       timeout: NAV_TIMEOUT_MS,
     });
     await page.waitForTimeout(1_500);
+    // Handle language page if it re-appears on direct navigation
+    await handleLanguageInterstitial(page);
+    await page.waitForTimeout(1_000);
     const urlAlt = page.url();
     if (isOtpUrl(urlAlt)) return "otp_form";
     const idField2 = await tryLocator(page, SEL.IDENTIFIER_INPUT);

@@ -898,6 +898,95 @@ describe("PineLabsOne E2E — OTP-first flow (/authV2) → CONNECTED", () => {
   });
 });
 
+// ── Language interstitial regression ─────────────────────────────────────────
+// Real bug: Pine Labs ONE now redirects fresh Playwright contexts to
+// /authV2/language (language picker) before the identifier form. The adapter's
+// navigateToLogin() found only radio buttons → none matched SEL.IDENTIFIER_INPUT
+// → returned null → PORTAL_UNREACHABLE.
+// Fix: handleLanguageInterstitial() detects /authV2/language, clicks English,
+// clicks Continue, then /authV2/verify-user shows the identifier form.
+
+describe("PineLabsOne E2E — language interstitial is dismissed automatically (PORTAL_UNREACHABLE regression)", () => {
+  let srv: MockServer;
+  const VALID_MOBILE   = "9876543210";
+  const VALID_PASSWORD = "Password123!";
+  const MERCHANT_ID    = "LANG_PL12345";
+  const BUSINESS_NAME  = "Language Test Co";
+
+  before(async () => {
+    const ready = await checkBrowser();
+    if (!ready) return;
+    srv = await startMockPineLabsOneServer({
+      validPassword:        VALID_PASSWORD,
+      merchantId:           MERCHANT_ID,
+      businessName:         BUSINESS_NAME,
+      languageInterstitial: true,   // /login/user → /authV2/language → /authV2/verify-user
+    });
+    process.env["PINELABS_ONE_PORTAL_OVERRIDE"] = srv.url;
+  });
+
+  after(async () => {
+    delete process.env["PINELABS_ONE_PORTAL_OVERRIDE"];
+    await srv?.close();
+  });
+
+  it("language interstitial must NOT produce PORTAL_UNREACHABLE", async () => {
+    const browserReady = await checkBrowser();
+    if (!browserReady) return;
+
+    const result = await pineLabsOneAdapter.initiateSession({
+      loginMethod:         "mobile_password",
+      encryptedIdentifier: enc(VALID_MOBILE),
+    });
+
+    // The adapter must navigate past the language page and reach the identifier form
+    assert.notEqual(
+      result.status,
+      "FAILED",
+      `Expected AWAITING_* status but got FAILED (failReason: ${result.failReason}). ` +
+      `Language interstitial likely caused PORTAL_UNREACHABLE. failDetail: ${result.failDetail}`,
+    );
+    assert.notEqual(
+      result.failReason,
+      "PORTAL_UNREACHABLE",
+      "handleLanguageInterstitial() must dismiss the language page before selector scan",
+    );
+    // Must reach a real flow step
+    assert.ok(
+      result.status === "AWAITING_PASSWORD" || result.status === "AWAITING_OTP",
+      `Expected AWAITING_PASSWORD or AWAITING_OTP after language dismissal; ` +
+      `got: ${result.status} — ${result.failDetail}`,
+    );
+  });
+
+  it("full flow through language interstitial returns CONNECTED", async () => {
+    const browserReady = await checkBrowser();
+    if (!browserReady) return;
+
+    // Step 1: initiate (dismisses language page automatically)
+    const initResult = await pineLabsOneAdapter.initiateSession({
+      loginMethod:         "mobile_password",
+      encryptedIdentifier: enc(VALID_MOBILE),
+    });
+    if (initResult.status !== "AWAITING_PASSWORD") {
+      console.log("Skipping CONNECTED check — initiate returned:", initResult.status, initResult.failDetail);
+      return;
+    }
+
+    // Step 2: submit password (submitStep reads encryptedOtp for both password and OTP steps)
+    const submitResult = await pineLabsOneAdapter.submitStep?.({
+      encryptedSessionToken: initResult.encryptedSessionToken!,
+      encryptedOtp:          enc(VALID_PASSWORD),
+    });
+
+    assert.equal(
+      submitResult?.status,
+      "CONNECTED",
+      `Expected CONNECTED after password; got: ${submitResult?.status} — ${submitResult?.failDetail}`,
+    );
+  });
+});
+
 // ── Hidden CAPTCHA false-positive regression ───────────────────────────────────
 // Real bug: React SPAs (including Pine Labs ONE) pre-load CAPTCHA scripts and
 // inject hidden/zero-size container divs into the DOM even when no challenge
