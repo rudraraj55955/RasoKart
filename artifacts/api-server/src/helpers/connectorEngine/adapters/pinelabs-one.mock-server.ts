@@ -55,6 +55,14 @@ export interface MockServerConfig {
    * When false (default): POST /login/user → redirect to /login/password.
    */
   otpFirst?:            boolean;
+  /**
+   * Inject a HIDDEN CAPTCHA widget div (display:none, width=0, height=0).
+   * Reproduces the real-world pattern where React SPAs pre-load CAPTCHA
+   * scripts and insert invisible container divs into the DOM even when
+   * no challenge is active. Used to regression-test the false-positive
+   * guard in hasCaptcha() (requires visibility + non-zero bounding box).
+   */
+  hiddenCaptcha?:       boolean;
 }
 
 export interface MockServer {
@@ -97,7 +105,21 @@ function parseBody(req: http.IncomingMessage): Promise<Record<string, string>> {
 // ── HTML templates ────────────────────────────────────────────────────────────
 
 function captchaHtml(): string {
-  return `<iframe src="https://www.google.com/recaptcha/api.js" title="recaptcha" id="captcha-frame"></iframe>`;
+  return `<iframe src="https://www.google.com/recaptcha/api.js" title="recaptcha" id="captcha-frame" style="width:300px;height:78px;border:0"></iframe>`;
+}
+
+/**
+ * Hidden CAPTCHA widget — simulates the pre-loaded / inactive CAPTCHA
+ * container that React SPAs inject into the DOM even when no challenge is
+ * active. Must NOT trigger hasCaptcha() — the element is invisible and
+ * zero-size, so the bounding-box guard should skip it.
+ */
+function hiddenCaptchaHtml(): string {
+  return `
+<div class="captcha-container" style="display:none;width:0;height:0;overflow:hidden" aria-hidden="true">
+  <!-- pre-loaded CAPTCHA placeholder (not an active challenge) -->
+  <div class="captcha-widget" id="captcha-placeholder"></div>
+</div>`;
 }
 
 function manualActionHtml(): string {
@@ -109,7 +131,7 @@ function manualActionHtml(): string {
 </div>`;
 }
 
-function identifierFormHtml(showCaptcha: boolean, showManualAction: boolean): string {
+function identifierFormHtml(showCaptcha: boolean, showManualAction: boolean, showHiddenCaptcha?: boolean): string {
   if (showManualAction) {
     return `<!DOCTYPE html><html><head><title>Pine Labs ONE - Login</title></head><body>
 ${manualActionHtml()}
@@ -119,6 +141,7 @@ ${manualActionHtml()}
 <div id="login-container">
   <h1>Sign In to Pine Labs ONE</h1>
   ${showCaptcha ? captchaHtml() : ""}
+  ${showHiddenCaptcha ? hiddenCaptchaHtml() : ""}
   <form action="/login/user" method="POST" id="login-form">
     <label for="mobile">Registered Email ID or Mobile Number</label>
     <input type="text" id="mobile" name="mobile" placeholder="Registered email ID or 10-digit mobile" required />
@@ -338,7 +361,7 @@ export async function startMockPineLabsOneServer(
         res.writeHead(302, { Location: "/login/password" }); res.end(); return;
       }
       res.writeHead(200, { "Content-Type": "text/html" });
-      res.end(identifierFormHtml(config.showCaptcha ?? false, config.showManualAction ?? false));
+      res.end(identifierFormHtml(config.showCaptcha ?? false, config.showManualAction ?? false, config.hiddenCaptcha ?? false));
       return;
     }
 

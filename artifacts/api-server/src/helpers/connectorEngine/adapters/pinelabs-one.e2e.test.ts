@@ -898,6 +898,64 @@ describe("PineLabsOne E2E — OTP-first flow (/authV2) → CONNECTED", () => {
   });
 });
 
+// ── Hidden CAPTCHA false-positive regression ───────────────────────────────────
+// Real bug: React SPAs (including Pine Labs ONE) pre-load CAPTCHA scripts and
+// inject hidden/zero-size container divs into the DOM even when no challenge
+// is active. The old hasCaptcha() checked count()>0 without visibility or
+// bounding-box guards, so it false-fired and blocked the OTP flow entirely.
+// This suite verifies the fixed guard: hidden CAPTCHA DOM nodes must NOT
+// produce AWAITING_USER_ACTION — the real password/OTP flow must continue.
+
+describe("PineLabsOne E2E — hidden CAPTCHA does NOT block the flow (false-positive regression)", () => {
+  let srv: MockServer;
+  const VALID_MOBILE   = "9876543210";
+  const VALID_PASSWORD = "Password123!";
+
+  before(async () => {
+    const ready = await checkBrowser();
+    if (!ready) return;
+    srv = await startMockPineLabsOneServer({
+      validPassword: VALID_PASSWORD,
+      hiddenCaptcha: true,   // injects display:none zero-size .captcha-container div
+    });
+    process.env["PINELABS_ONE_PORTAL_OVERRIDE"] = srv.url;
+  });
+
+  after(async () => {
+    delete process.env["PINELABS_ONE_PORTAL_OVERRIDE"];
+    await srv?.close();
+  });
+
+  it("hidden/pre-loaded CAPTCHA DOM node must NOT trigger CAPTCHA_REQUIRED", async () => {
+    const browserReady = await checkBrowser();
+    if (!browserReady) return;
+
+    const result = await pineLabsOneAdapter.initiateSession({
+      loginMethod:         "mobile_password",
+      encryptedIdentifier: enc(VALID_MOBILE),
+    });
+
+    // Must NOT be CAPTCHA false-positive
+    assert.notEqual(
+      result.failReason,
+      "CAPTCHA_REQUIRED",
+      `hasCaptcha() false-fired on a hidden CAPTCHA DOM node — got failReason: ${result.failReason}`,
+    );
+    assert.notEqual(
+      result.status,
+      "AWAITING_USER_ACTION",
+      `Hidden CAPTCHA must not produce AWAITING_USER_ACTION; got: ${result.status}`,
+    );
+
+    // Must proceed to the real flow (password step here since mock is not OTP-first)
+    assert.equal(
+      result.status,
+      "AWAITING_PASSWORD",
+      `Expected AWAITING_PASSWORD when only a hidden CAPTCHA is present; got: ${result.status} — ${result.failDetail}`,
+    );
+  });
+});
+
 // ── Portal unreachable ────────────────────────────────────────────────────────
 
 describe("PineLabsOne E2E — portal unreachable", () => {

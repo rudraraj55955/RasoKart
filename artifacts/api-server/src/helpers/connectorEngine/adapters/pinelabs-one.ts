@@ -104,14 +104,21 @@ const LOGIN_PAGE_PATTERNS = [
  * URL patterns that indicate the session is on an OTP-entry page.
  * Covers both mobile-OTP and email-OTP portal paths observed on Pine Labs ONE.
  * All comparisons use lower-case (see isOtpUrl).
+ *
+ * Ordering: most-specific first. The bare "/otp" catch-all is last.
  */
 const OTP_URL_PATTERNS = [
   "/verify-otp",             // /authV2/sign-in/verify-otp  (mobile, confirmed production)
   "/authv2/sign-in/otp",     // potential alternate OTP sub-path
+  "/authv2/sign-in/verify",  // catches /authV2/sign-in/verifyOTP, /authV2/sign-in/verifyMobile etc.
+  "/authv2/verify",          // /authV2/verify* paths
   "/sign-in/otp",            // shorter variant
+  "/sign-in/verify",         // /sign-in/verifyOTP etc.
   "/otp-verification",       // generic OTP verification page
+  "/otpverification",        // camelCase slug without hyphen
   "/email-otp",              // email-specific OTP page  (may appear for email identifiers)
   "/mobile-otp",             // mobile-specific OTP page (may appear for mobile identifiers)
+  "/mobileverification",     // camelCase mobile verification slug
   "/verify-email",           // email verification OTP variant
   "/otp-verify",             // reversed slug variant
   "/enter-otp",              // explicit enter-OTP slug
@@ -438,11 +445,30 @@ async function waitForAny(
   } catch { return null; }
 }
 
-/** Detect visible CAPTCHA on page. */
+/**
+ * Detect VISIBLE CAPTCHA on page.
+ *
+ * Returns true ONLY when a CAPTCHA element is ALL of:
+ *   (a) present in the DOM        — count() > 0
+ *   (b) not hidden                — isVisible() === true
+ *   (c) has a non-trivial size    — bounding box ≥ 10 × 10 px
+ *
+ * React SPAs (including Pine Labs ONE) pre-load reCAPTCHA / hCaptcha scripts
+ * and insert hidden CAPTCHA container divs into the DOM even when no challenge
+ * is active. Without the visibility + bounding-box guard those hidden elements
+ * cause a false-positive that prevents the real OTP flow from proceeding.
+ */
 async function hasCaptcha(page: Page): Promise<boolean> {
   for (const sel of SEL.CAPTCHA) {
     try {
-      if (await page.locator(sel).count() > 0) return true;
+      const el = page.locator(sel).first();
+      if (await el.count() === 0) continue;
+      if (!await el.isVisible()) continue;
+      const bbox = await el.boundingBox();
+      // Reject zero-size / tiny placeholders — a real challenge is always rendered
+      if (!bbox || bbox.width < 10 || bbox.height < 10) continue;
+      logger.warn({ slug: "pinelabs_one", captchaSelector: sel }, "pinelabs_one_captcha_visible_detected");
+      return true;
     } catch { /* continue */ }
   }
   return false;
@@ -1033,47 +1059,59 @@ export const pineLabsOneAdapter: ProviderAdapter = {
           };
         }
 
-        // CAPTCHA after submit
-        if (await hasCaptcha(page)) {
-          return {
-            status: "AWAITING_USER_ACTION" as any,
-            failReason: "CAPTCHA_REQUIRED",
-            failDetail: "Pine Labs ONE is showing a CAPTCHA after identifier entry. Please wait and try again.",
-            helpUrl: HELP_URL,
-          };
-        }
+        // ── OTP DOM fallback ──────────────────────────────────────────────────
+        // Run BEFORE the captcha check. The portal may navigate to an OTP page
+        // at a URL we haven't yet catalogued in OTP_URL_PATTERNS. Only scan
+        // the DOM when the URL has moved away from the identifier-entry form —
+        // this prevents input[inputmode="numeric"] on the phone field itself
+        // from triggering a false AWAITING_OTP.
+        //
+        // Safe diagnostic: logs the URL *path* only — never the identifier or
+        // any credential — so production logs can reveal new OTP URL slugs
+        // without exposing merchant data.
+        const diagUrlPath = (() => { try { return new URL(urlAfterSubmit).pathname; } catch { return "?"; } })();
+        logger.info({ slug: "pinelabs_one", urlPath: diagUrlPath }, "pinelabs_one_post_submit_url");
 
-        // Manual action
-        if (await hasManualActionRequired(page)) {
-          return {
-            status: "AWAITING_USER_ACTION" as any,
-            failReason: "MANUAL_ACTION_REQUIRED",
-            failDetail:
-              "Pine Labs ONE requires QR code scan or device approval after identifier entry. " +
-              "Complete the verification on your registered device and try again.",
-            helpUrl: HELP_URL,
-          };
-        }
-
-        // Error message (e.g. user not found)
-        for (const errSel of SEL.ERROR_MSG) {
-          try {
-            const el = page.locator(errSel).first();
-            if (await el.count() > 0 && await el.isVisible()) {
-              const errText = (await el.textContent())?.trim() ?? "";
-              if (errText) {
-                return {
-                  status: "FAILED",
-                  failReason: "INVALID_IDENTIFIER",
-                  failDetail: `Pine Labs ONE returned an error: "${errText}". ` +
-                    "Verify this email address or mobile number is registered with Pine Labs ONE.",
-                };
-              }
+        const urlIsOnOtpOrPost = !urlAfterSubmit.toLowerCase().includes("/login/user") &&
+                                 !urlAfterSubmit.toLowerCase().includes("/user-details");
+        if (urlIsOnOtpOrPost) {
+          const otpDomVisible = await tryLocator(page, SEL.OTP_INPUT_SINGLE);
+          const digitBoxCount  = await page.locator('input[maxlength="1"]').count().catch(() => 0);
+          if (otpDomVisible || digitBoxCount >= 4) {
+            const storageState = await extractStorageState(ctx.context);
+            const adData: PineLabsOneAdapterData = {
+              storageState,
+              maskedIdentifier: maskIdentifier(identifier),
+              step: "AWAITING_OTP",
+              loginMode: "password",
+              storedIdentifier: identifier,
+            };
+            const payload = makeSessionPayload(
+              "pinelabs_one", 0, adData as unknown as Record<string, unknown>,
+            );
+            const enc = encryptSessionPayload(payload);
+            if (!enc.ok) {
+              return { status: "FAILED", failReason: "SESSION_ENCRYPT_FAILED", failDetail: "Internal error." };
             }
-          } catch { /* continue */ }
+            const isEmailDom = identifier.includes("@");
+            const otpDestDom  = isEmailDom ? "email inbox" : "registered mobile";
+            logger.info(
+              { slug: "pinelabs_one", maskedIdentifier: maskIdentifier(identifier), via: "dom_fallback", urlPath: diagUrlPath },
+              "pinelabs_one_initiate_awaiting_otp",
+            );
+            return {
+              status: "AWAITING_OTP",
+              encryptedSessionToken: enc.token,
+              nextStep: "ENTER_OTP",
+              nextStepPrompt:
+                `An OTP has been sent to your ${otpDestDom} (${maskIdentifier(identifier)}). ` +
+                "Enter it below to connect your Pine Labs ONE account. " +
+                "The OTP is used once and discarded immediately.",
+            };
+          }
         }
 
-        // Password field appeared — expected outcome
+        // Password field appeared — may occur on password-first portals
         const pwdVisible = await tryLocator(page, SEL.PASSWORD_INPUT);
         if (pwdVisible) {
           const storageState = await extractStorageState(ctx.context);
@@ -1105,48 +1143,48 @@ export const pineLabsOneAdapter: ProviderAdapter = {
           };
         }
 
-        // OTP field appeared via DOM scan — only checked when the URL has moved
-        // away from the identifier form. This guards against input[inputmode="numeric"]
-        // on the identifier form itself causing a false-positive AWAITING_OTP.
-        const urlForDomCheck = page.url();
-        const urlIsOnOtpOrPost = !urlForDomCheck.toLowerCase().includes("/login/user") &&
-                                 !urlForDomCheck.toLowerCase().includes("/user-details");
-        const otpVisible = urlIsOnOtpOrPost
-          ? await tryLocator(page, SEL.OTP_INPUT_SINGLE)
-          : null;
-        const digitBoxes = urlIsOnOtpOrPost
-          ? await page.locator('input[maxlength="1"]').count().catch(() => 0)
-          : 0;
-        if (otpVisible || digitBoxes >= 4) {
-          const storageState = await extractStorageState(ctx.context);
-          const adData: PineLabsOneAdapterData = {
-            storageState,
-            maskedIdentifier: maskIdentifier(identifier),
-            step: "AWAITING_OTP",
-            loginMode: "password",
-            storedIdentifier: identifier,
-          };
-          const payload = makeSessionPayload(
-            "pinelabs_one", 0, adData as unknown as Record<string, unknown>,
-          );
-          const enc = encryptSessionPayload(payload);
-          if (!enc.ok) {
-            return { status: "FAILED", failReason: "SESSION_ENCRYPT_FAILED", failDetail: "Internal error." };
-          }
-          logger.info(
-            { slug: "pinelabs_one", maskedIdentifier: maskIdentifier(identifier) },
-            "pinelabs_one_initiate_awaiting_otp",
-          );
+        // Error message (e.g. user not found, unregistered identifier)
+        for (const errSel of SEL.ERROR_MSG) {
+          try {
+            const el = page.locator(errSel).first();
+            if (await el.count() > 0 && await el.isVisible()) {
+              const errText = (await el.textContent())?.trim() ?? "";
+              if (errText) {
+                return {
+                  status: "FAILED",
+                  failReason: "INVALID_IDENTIFIER",
+                  failDetail: `Pine Labs ONE returned an error: "${errText}". ` +
+                    "Verify this email address or mobile number is registered with Pine Labs ONE.",
+                };
+              }
+            }
+          } catch { /* continue */ }
+        }
+
+        // CAPTCHA — only triggers when a challenge is VISIBLE with a non-zero
+        // bounding box. Hidden / pre-loaded CAPTCHA DOM nodes do NOT count.
+        if (await hasCaptcha(page)) {
           return {
-            status: "AWAITING_OTP",
-            encryptedSessionToken: enc.token,
-            nextStep: "ENTER_OTP",
-            nextStepPrompt:
-              `An OTP has been sent to ${maskIdentifier(identifier)}. Enter it below.`,
+            status: "AWAITING_USER_ACTION" as any,
+            failReason: "CAPTCHA_REQUIRED",
+            failDetail: "Pine Labs ONE is showing a CAPTCHA after identifier entry. Please wait and try again.",
+            helpUrl: HELP_URL,
           };
         }
 
-        // Unexpected state after submit
+        // QR code / device approval
+        if (await hasManualActionRequired(page)) {
+          return {
+            status: "AWAITING_USER_ACTION" as any,
+            failReason: "MANUAL_ACTION_REQUIRED",
+            failDetail:
+              "Pine Labs ONE requires QR code scan or device approval after identifier entry. " +
+              "Complete the verification on your registered device and try again.",
+            helpUrl: HELP_URL,
+          };
+        }
+
+        // Unexpected state — safe diagnostics for support triage (no credentials)
         const diag2 = await collectDiagnostics(page);
         logger.warn({ slug: "pinelabs_one", diag: diag2 }, "pinelabs_one_initiate_unexpected_state");
         return {
