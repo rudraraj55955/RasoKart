@@ -1800,6 +1800,12 @@ function PaytmPortalCard({
   const [submitting, setSubmitting] = useState(false);
   const [syncing, setSyncing]       = useState(false);
   const [errorMsg, setErrorMsg]     = useState<string | null>(null);
+  /**
+   * Ref-based in-flight guard for handleSubmitOtp.
+   * A ref (not state) is used so the check is synchronous — before React
+   * re-renders — making the handler truly non-reentrant on fast double-taps.
+   */
+  const submittingOtpRef = useRef(false);
 
   // Sync UI step when session prop changes (e.g. after query invalidation)
   useEffect(() => {
@@ -1872,8 +1878,13 @@ function PaytmPortalCard({
 
   // ── Step 2: submit OTP ────────────────────────────────────────────────────────
   async function handleSubmitOtp() {
+    // Ref guard: checked synchronously before any React re-render, so a fast
+    // double-tap cannot sneak in a second call while the first is in flight.
+    if (submittingOtpRef.current) return;
+    submittingOtpRef.current = true;
     const otpVal = otp.trim().replace(/\s/g, "");
     if (!otpVal || otpVal.length < 4) {
+      submittingOtpRef.current = false;
       setErrorMsg("Enter the OTP you received on your mobile.");
       return;
     }
@@ -1910,6 +1921,7 @@ function PaytmPortalCard({
       setOtp(""); // still wipe on error
       setErrorMsg("Could not submit OTP. Please try again.");
     } finally {
+      submittingOtpRef.current = false;
       setSubmitting(false);
     }
   }
