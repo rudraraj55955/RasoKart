@@ -86,6 +86,20 @@ export interface MockServerConfig {
    * With this option the adapter must return OTP_NOT_AVAILABLE (never click the link).
    */
   forgotPasswordLinkOnly?: boolean;
+  /**
+   * Render the resend control the way the LIVE authV2 portal does
+   * (verified 2026-08-18): a <div role="button" id="...-resend-timer-resend-link">
+   * rather than a <button>/<a>. Used to regression-test that
+   * SEL.RESEND_OTP_BTN matches the live div-based control.
+   */
+  liveResendControl?: boolean;
+  /**
+   * Simulate the live portal's resend cooldown state: instead of a clickable
+   * resend control, the OTP page shows "Resend OTP in NN secs" countdown text.
+   * The adapter must NOT match this text as a resend button (resend_otp must
+   * return RESEND_NOT_AVAILABLE with the session preserved).
+   */
+  resendCooldownActive?: boolean;
 }
 
 export interface MockServer {
@@ -285,7 +299,33 @@ function passwordErrorFormHtml(errorMsg: string): string {
 </body></html>`;
 }
 
-function otpFormHtml(showError?: string, showResend?: boolean): string {
+function otpFormHtml(
+  showError?: string,
+  showResend?: boolean,
+  opts?: { liveResendControl?: boolean; resendCooldownActive?: boolean },
+): string {
+  // Resend control variants:
+  //  - cooldown: live portal shows "Resend OTP in NN secs" countdown text
+  //    (no clickable control) — adapter must NOT match this.
+  //  - live div: <div role="button" id="...-resend-timer-resend-link"> — the
+  //    exact structure observed on the live authV2 portal (2026-08-18).
+  //  - legacy anchor: <a id="resend-otp-btn"> (pre-authV2 style).
+  let resendHtml = "";
+  if (showResend !== false) {
+    if (opts?.resendCooldownActive) {
+      resendHtml =
+        `<div id="sign-in-verify-otp-resend-timer" style="margin-top:12px">` +
+        `<span>Resend OTP in</span> <span>27 secs</span></div>`;
+    } else if (opts?.liveResendControl) {
+      resendHtml =
+        `<div role="button" id="sign-in-verify-otp-resend-timer-resend-link" ` +
+        `style="cursor:pointer;display:inline-block;margin-top:12px" ` +
+        `onclick="window.location.href='/login/resend-otp'">Resend OTP</div>`;
+    } else {
+      resendHtml =
+        `<a href="/login/resend-otp" id="resend-otp-btn" style="display:inline-block;margin-top:12px">Resend OTP</a>`;
+    }
+  }
   return `<!DOCTYPE html><html><head><title>Pine Labs ONE - OTP Verification</title></head><body>
 <div id="otp-container">
   <h1>2-Step Verification</h1>
@@ -296,9 +336,7 @@ function otpFormHtml(showError?: string, showResend?: boolean): string {
     <input type="text" id="otp" name="otp" placeholder="Enter OTP" autocomplete="one-time-code" maxlength="8" />
     <button type="submit" id="verify-btn">Verify</button>
   </form>
-  ${showResend !== false
-    ? `<a href="/login/resend-otp" id="resend-otp-btn" style="display:inline-block;margin-top:12px">Resend OTP</a>`
-    : ""}
+  ${resendHtml}
 </div>
 </body></html>`;
 }
@@ -678,7 +716,7 @@ ${identifierFormHtml(false, false)}</body></html>`);
     if ((url.startsWith("/login/verify-otp") || url.startsWith("/authV2/sign-in/verify-otp")) && method === "GET") {
       if (isAuth) { res.writeHead(302, { Location: "/home" }); res.end(); return; }
       res.writeHead(200, { "Content-Type": "text/html" });
-      res.end(otpFormHtml());
+      res.end(otpFormHtml(undefined, undefined, config));
       return;
     }
 
@@ -693,7 +731,7 @@ ${identifierFormHtml(false, false)}</body></html>`);
       if (otp !== validOtp) {
         res.writeHead(200, { "Content-Type": "text/html" });
         const isExpired = otp === "EXPIRED";
-        res.end(otpFormHtml(isExpired ? "OTP has expired. Please request a new one." : "Invalid OTP entered"));
+        res.end(otpFormHtml(isExpired ? "OTP has expired. Please request a new one." : "Invalid OTP entered", undefined, config));
         return;
       }
 
@@ -757,7 +795,7 @@ ${identifierFormHtml(false, false)}</body></html>`);
         res.writeHead(302, { Location: "/login/user" }); res.end(); return;
       }
       res.writeHead(200, { "Content-Type": "text/html" });
-      res.end(otpFormHtml("", true));
+      res.end(otpFormHtml("", true, config));
       return;
     }
 

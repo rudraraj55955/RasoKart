@@ -278,11 +278,19 @@ const SEL = {
    * mobile/email. The adapter clicks it and returns AWAITING_OTP.
    */
   RESEND_OTP_BTN: [
+    // Live authV2 portal (observed 2026-08-18): the resend control is a
+    // <div role="button" id="...-resend-timer-resend-link">Resend OTP</div>,
+    // NOT a <button> or <a>. During the ~30s cooldown the same area shows
+    // "Resend OTP in NN secs" — exact-text (:text-is) matching is used so the
+    // cooldown text never false-positives as a clickable resend control.
+    '[id$="resend-link"][role="button"]:visible',
+    'div[role="button"]:text-is("Resend OTP"):visible',
+    '[role="button"]:text-is("Resend OTP"):visible',
     'button:has-text("Resend OTP"):visible',
     'button:has-text("Resend"):visible',
     'a:has-text("Resend OTP"):visible',
     'a:has-text("Resend"):visible',
-    'span:has-text("Resend OTP"):visible',
+    'span:text-is("Resend OTP"):visible',
     '[data-testid="resend-otp"]:visible',
     '[data-testid="resend"]:visible',
     '[id="resend-otp-btn"]:visible',

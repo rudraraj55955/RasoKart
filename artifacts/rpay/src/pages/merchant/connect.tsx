@@ -2471,8 +2471,11 @@ function PineLabsOnePortalCard({
    * How the current AWAITING_OTP was reached:
    *   "2fa"          — portal triggered 2FA after password submission
    *   "portal_link"  — merchant clicked "Login with OTP" (portal's own link)
+   *   "otp_first"    — portal sent an OTP directly after the identifier step
+   *                    (the live authV2 flow for mobile/email logins — no
+   *                    password page is ever shown)
    */
-  const [otpSource, setOtpSource] = useState<"2fa" | "portal_link">("2fa");
+  const [otpSource, setOtpSource] = useState<"2fa" | "portal_link" | "otp_first">("2fa");
   /**
    * Ref-based in-flight guard for handleSubmitOtp.
    * A ref (not state) is used so the check is synchronous — before React
@@ -2536,6 +2539,11 @@ function PineLabsOnePortalCard({
         setUiStep("password");
         toast.info(result.message ?? "Enter your Pine Labs ONE account password below.");
       } else if (result.status === "AWAITING_OTP") {
+        // OTP-first flow (live authV2 portal): the OTP page has its own
+        // Resend control, so enable the Resend button with the portal's
+        // initial cooldown.
+        setOtpSource("otp_first");
+        setResendCooldown(60);
         setUiStep("otp");
         toast.success("OTP sent to your registered email or mobile. Enter it below.");
       } else if (result.status === "AWAITING_USER_ACTION") {
@@ -2673,9 +2681,11 @@ function PineLabsOnePortalCard({
 
   // ── Step 3: submit OTP (2FA) ────────────────────────────────────────────────
   async function handleSubmitOtp() {
-    // Ref guard: checked synchronously before any React re-render, so a fast
-    // double-tap cannot sneak in a second call while the first is in flight.
-    if (submittingOtpRef.current) return;
+    // Guard against concurrent submits: the ref is checked synchronously
+    // (before any React re-render) so a fast double-tap cannot sneak in a
+    // second call, and the state checks cover an Enter press racing an
+    // in-flight resend or submit.
+    if (submittingOtpRef.current || submitting || resending) return;
     submittingOtpRef.current = true;
     const otpVal = otp.trim().replace(/\s/g, "");
     if (!otpVal || otpVal.length < 4) {
@@ -3062,8 +3072,10 @@ function PineLabsOnePortalCard({
               )}
             </Button>
 
-            {/* Resend OTP — only for portal-link OTP (2FA resend not yet supported) */}
-            {otpSource === "portal_link" && (
+            {/* Resend OTP — for portal-link and OTP-first sessions (the live
+                portal's OTP page has a resend control in both cases; only the
+                post-password 2FA path lacks one) */}
+            {(otpSource === "portal_link" || otpSource === "otp_first") && (
               <Button
                 size="sm"
                 variant="outline"

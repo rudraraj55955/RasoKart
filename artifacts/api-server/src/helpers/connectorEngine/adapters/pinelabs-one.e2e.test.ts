@@ -1479,6 +1479,134 @@ describe("PineLabsOne E2E — resend_otp refreshes OTP session and returns AWAIT
   });
 });
 
+// ── Resend OTP — live authV2 div-based control (verified 2026-08-18) ─────────
+// The live portal renders the resend control as
+// <div role="button" id="...-resend-timer-resend-link">Resend OTP</div>,
+// not a <button>/<a>. During cooldown the area shows "Resend OTP in NN secs"
+// countdown text that must NOT match SEL.RESEND_OTP_BTN.
+
+describe("PineLabsOne E2E — live div-based resend control (authV2, OTP-first)", () => {
+  let srv: MockServer;
+  const VALID_OTP    = "555444";
+  const VALID_MOBILE = "9662662662";
+
+  before(async () => {
+    const ready = await checkBrowser();
+    if (!ready) return;
+    srv = await startMockPineLabsOneServer({
+      validPassword:     "AnyPass!",
+      validOtp:          VALID_OTP,
+      maskedIdentifier:  "**XXXXX662",
+      merchantId:        "PL_LIVE_RESEND_001",
+      otpFirst:          true,  // live authV2 flow: identifier → OTP page directly
+      liveResendControl: true,  // div[role=button][id$=resend-link]
+    });
+    process.env["PINELABS_ONE_PORTAL_OVERRIDE"] = srv.url;
+  });
+
+  after(async () => {
+    delete process.env["PINELABS_ONE_PORTAL_OVERRIDE"];
+    await srv?.close();
+  });
+
+  it("resend_otp clicks the div[role=button] resend-link control and returns AWAITING_OTP", async () => {
+    const browserReady = await checkBrowser();
+    if (!browserReady) return;
+
+    // OTP-first: initiate goes straight to AWAITING_OTP
+    const init = await pineLabsOneAdapter.initiateSession({
+      loginMethod:         "mobile_password",
+      encryptedIdentifier: enc(VALID_MOBILE),
+    });
+    if (init.status !== "AWAITING_OTP" || !init.encryptedSessionToken) {
+      console.log("Skipping: OTP-first initiate returned:", init.status, init.failDetail);
+      return;
+    }
+
+    const resend = await pineLabsOneAdapter.submitStep({
+      encryptedSessionToken: init.encryptedSessionToken,
+      loginMethod:           "resend_otp",
+    });
+
+    assert.equal(
+      resend.status, "AWAITING_OTP",
+      `resend_otp must return AWAITING_OTP via the div-based control; got: ${resend.status} — ${resend.failDetail}`,
+    );
+    assert.ok(
+      !resend.failReason,
+      `resend must succeed (no failReason) when the live div control is present; got: ${resend.failReason}`,
+    );
+    assert.ok(resend.encryptedSessionToken, "resend must return a session token");
+
+    // OTP is still valid after the div-based resend → CONNECTED
+    const connected = await pineLabsOneAdapter.submitStep({
+      encryptedSessionToken: resend.encryptedSessionToken,
+      encryptedOtp:          enc(VALID_OTP),
+    });
+    assert.equal(
+      connected.status, "CONNECTED",
+      `Expected CONNECTED after post-resend OTP; got: ${connected.status} — ${connected.failDetail}`,
+    );
+  });
+});
+
+describe("PineLabsOne E2E — resend cooldown countdown must not match as a resend control", () => {
+  let srv: MockServer;
+  const VALID_MOBILE = "9663663663";
+
+  before(async () => {
+    const ready = await checkBrowser();
+    if (!ready) return;
+    srv = await startMockPineLabsOneServer({
+      validPassword:        "AnyPass!",
+      validOtp:             "111222",
+      maskedIdentifier:     "**XXXXX663",
+      merchantId:           "PL_COOLDOWN_001",
+      otpFirst:             true,
+      resendCooldownActive: true, // page shows "Resend OTP in 27 secs" text only
+    });
+    process.env["PINELABS_ONE_PORTAL_OVERRIDE"] = srv.url;
+  });
+
+  after(async () => {
+    delete process.env["PINELABS_ONE_PORTAL_OVERRIDE"];
+    await srv?.close();
+  });
+
+  it("resend_otp during cooldown returns RESEND_NOT_AVAILABLE with session preserved", async () => {
+    const browserReady = await checkBrowser();
+    if (!browserReady) return;
+
+    const init = await pineLabsOneAdapter.initiateSession({
+      loginMethod:         "mobile_password",
+      encryptedIdentifier: enc(VALID_MOBILE),
+    });
+    if (init.status !== "AWAITING_OTP" || !init.encryptedSessionToken) {
+      console.log("Skipping: OTP-first initiate returned:", init.status, init.failDetail);
+      return;
+    }
+
+    const resend = await pineLabsOneAdapter.submitStep({
+      encryptedSessionToken: init.encryptedSessionToken,
+      loginMethod:           "resend_otp",
+    });
+
+    // The countdown text must never be clicked as a resend control.
+    assert.equal(
+      resend.status, "AWAITING_OTP",
+      `Session must be preserved during cooldown; got: ${resend.status} — ${resend.failDetail}`,
+    );
+    assert.equal(
+      resend.failReason, "RESEND_NOT_AVAILABLE",
+      `Cooldown countdown must yield RESEND_NOT_AVAILABLE (not a false-positive click); got: ${resend.failReason}`,
+    );
+    assert.equal(
+      resend.encryptedSessionToken, init.encryptedSessionToken,
+      "Original session token must be preserved on RESEND_NOT_AVAILABLE",
+    );
+  });
+});
+
 // ── Portal unreachable ────────────────────────────────────────────────────────
 
 describe("PineLabsOne E2E — portal unreachable", () => {
