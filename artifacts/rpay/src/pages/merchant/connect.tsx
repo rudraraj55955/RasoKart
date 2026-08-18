@@ -2501,6 +2501,13 @@ function PineLabsOnePortalCard({
    * disabled.
    */
   const submittingPasswordRef = useRef(false);
+  /**
+   * Ref-based in-flight guard for handleResendOtp.
+   * Mirrors submittingOtpRef / submittingPasswordRef so fast double-taps on the
+   * "Resend OTP" button cannot fire duplicate POST requests before React
+   * re-renders the button to disabled.
+   */
+  const resendingRef = useRef(false);
 
   useEffect(() => {
     setUiStep(deriveStep(session));
@@ -2668,7 +2675,11 @@ function PineLabsOnePortalCard({
 
   // ── Step 2c: resend OTP (click resend button on the portal's OTP page) ────────
   async function handleResendOtp() {
-    if (resendCooldown > 0 || resending) return; // guard: button should be disabled, but double-check
+    // Guard against concurrent submits: the ref is checked synchronously
+    // (before any React re-render) so a fast double-tap cannot sneak in a
+    // second call before the button re-renders to disabled.
+    if (resendingRef.current || resendCooldown > 0 || resending) return;
+    resendingRef.current = true;
     setResendCooldown(60); // start cooldown immediately to prevent double-click
     setResending(true);
     setErrorMsg(null);
@@ -2700,6 +2711,7 @@ function PineLabsOnePortalCard({
       setResendCooldown(0);
       setErrorMsg("Could not reach the server. Please try again.");
     } finally {
+      resendingRef.current = false;
       setResending(false);
     }
   }
