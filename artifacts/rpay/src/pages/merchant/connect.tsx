@@ -2465,6 +2465,8 @@ function PineLabsOnePortalCard({
   const [requestingOtp, setRequestingOtp] = useState(false);
   /** Resend OTP cooldown: remaining seconds (0 = button enabled). */
   const [resendCooldown, setResendCooldown] = useState(0);
+  /** True while a resend_otp submit-step request is in flight. */
+  const [resending, setResending] = useState(false);
   /**
    * How the current AWAITING_OTP was reached:
    *   "2fa"          — portal triggered 2FA after password submission
@@ -2627,8 +2629,9 @@ function PineLabsOnePortalCard({
 
   // ── Step 2c: resend OTP (click resend button on the portal's OTP page) ────────
   async function handleResendOtp() {
-    if (resendCooldown > 0) return; // guard: button should be disabled, but double-check
+    if (resendCooldown > 0 || resending) return; // guard: button should be disabled, but double-check
     setResendCooldown(60); // start cooldown immediately to prevent double-click
+    setResending(true);
     setErrorMsg(null);
     try {
       const res = await portalFetch(
@@ -2657,6 +2660,8 @@ function PineLabsOnePortalCard({
     } catch {
       setResendCooldown(0);
       setErrorMsg("Could not reach the server. Please try again.");
+    } finally {
+      setResending(false);
     }
   }
 
@@ -3036,7 +3041,7 @@ function PineLabsOnePortalCard({
               size="sm"
               className="w-full gap-1.5"
               onClick={handleSubmitOtp}
-              disabled={submitting || !otp.trim()}
+              disabled={submitting || resending || !otp.trim()}
             >
               {submitting ? (
                 <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Verifying…</>
@@ -3052,12 +3057,14 @@ function PineLabsOnePortalCard({
                 variant="outline"
                 className="w-full gap-1.5"
                 onClick={handleResendOtp}
-                disabled={submitting || resendCooldown > 0}
+                disabled={submitting || resending || resendCooldown > 0}
               >
-                <RefreshCw className="w-3.5 h-3.5" />
-                {resendCooldown > 0
-                  ? `Resend OTP (${resendCooldown}s)`
-                  : "Resend OTP"}
+                <RefreshCw className={`w-3.5 h-3.5${resending ? " animate-spin" : ""}`} />
+                {resending
+                  ? "Resending…"
+                  : resendCooldown > 0
+                    ? `Resend OTP (${resendCooldown}s)`
+                    : "Resend OTP"}
               </Button>
             )}
 
