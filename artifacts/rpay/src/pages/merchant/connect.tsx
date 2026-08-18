@@ -2461,11 +2461,28 @@ function PineLabsOnePortalCard({
   const [submitting, setSubmitting] = useState(false);
   const [syncing, setSyncing]       = useState(false);
   const [errorMsg, setErrorMsg]     = useState<string | null>(null);
+  /** Loading state while the adapter clicks the portal's "Login with OTP" link. */
+  const [requestingOtp, setRequestingOtp] = useState(false);
+  /** Resend OTP cooldown: remaining seconds (0 = button enabled). */
+  const [resendCooldown, setResendCooldown] = useState(0);
+  /**
+   * How the current AWAITING_OTP was reached:
+   *   "2fa"          — portal triggered 2FA after password submission
+   *   "portal_link"  — merchant clicked "Login with OTP" (portal's own link)
+   */
+  const [otpSource, setOtpSource] = useState<"2fa" | "portal_link">("2fa");
 
   useEffect(() => {
     setUiStep(deriveStep(session));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.status]);
+
+  // Resend OTP cooldown countdown timer
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const t = setTimeout(() => setResendCooldown(c => c - 1), 1_000);
+    return () => clearTimeout(t);
+  }, [resendCooldown]);
 
   const providerName = "Pine Labs ONE";
   const cmeta = CATEGORY_META["pos"] ?? { label: "POS", color: "bg-orange-500/10 text-orange-400 border-orange-500/20" };
@@ -2566,6 +2583,80 @@ function PineLabsOnePortalCard({
       setErrorMsg("Could not submit password. Please try again.");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  // ── Step 2b: request portal-native OTP (click "Login with OTP" link) ─────────
+  // No password needed — the adapter clicks Pine Labs ONE's own OTP link.
+  async function handleRequestOtpLogin() {
+    setRequestingOtp(true);
+    setErrorMsg(null);
+    try {
+      const res = await portalFetch(
+        "/api/merchant/portal-sessions/pinelabs_one/submit-step",
+        { method: "POST", body: JSON.stringify({ loginMethod: "portal_otp" }) },
+      );
+      const body = await res.json().catch(() => ({}));
+      qc.invalidateQueries({ queryKey: PORTAL_SESSIONS_QUERY_KEY });
+
+      if (body.status === "AWAITING_OTP") {
+        setOtpSource("portal_link");
+        setUiStep("otp");
+        setResendCooldown(60);
+        toast.info(body.message ?? "OTP sent to your registered mobile or email. Enter it below.");
+      } else if (body.errorCode === "OTP_NOT_AVAILABLE" || body.status === "AWAITING_PASSWORD") {
+        // The portal's OTP login is not available for this account.
+        // The server preserved the AWAITING_PASSWORD session so the merchant
+        // can still use their password — stay on the password step.
+        setErrorMsg(
+          body.message ??
+            "OTP login is not available for this account/session. Continue with Password.",
+        );
+      } else {
+        setErrorMsg(
+          body.message ??
+            "Could not request OTP from Pine Labs ONE. Please try again or use your password.",
+        );
+      }
+    } catch {
+      setErrorMsg("Could not reach the server. Please try again.");
+    } finally {
+      setRequestingOtp(false);
+    }
+  }
+
+  // ── Step 2c: resend OTP (click resend button on the portal's OTP page) ────────
+  async function handleResendOtp() {
+    if (resendCooldown > 0) return; // guard: button should be disabled, but double-check
+    setResendCooldown(60); // start cooldown immediately to prevent double-click
+    setErrorMsg(null);
+    try {
+      const res = await portalFetch(
+        "/api/merchant/portal-sessions/pinelabs_one/submit-step",
+        { method: "POST", body: JSON.stringify({ loginMethod: "resend_otp" }) },
+      );
+      const body = await res.json().catch(() => ({}));
+      qc.invalidateQueries({ queryKey: PORTAL_SESSIONS_QUERY_KEY });
+
+      if (body.status === "AWAITING_OTP" && !body.errorCode) {
+        // Resend succeeded — session preserved, new OTP on its way.
+        toast.success("OTP resent. Check your registered mobile or email.");
+      } else if (body.status === "AWAITING_OTP" && body.errorCode) {
+        // Resend attempted but button not found or click failed (errorCode = RESEND_NOT_AVAILABLE etc.).
+        // The existing OTP session is still alive; show the adapter's message.
+        setResendCooldown(0); // re-enable button so merchant can retry
+        setErrorMsg(
+          body.message ??
+            "Could not resend OTP. Your existing OTP may still be valid — " +
+            "enter it below or start over.",
+        );
+      } else {
+        setResendCooldown(0);
+        setErrorMsg(body.message ?? "Could not resend OTP. Please start over.");
+      }
+    } catch {
+      setResendCooldown(0);
+      setErrorMsg("Could not reach the server. Please try again.");
     }
   }
 
@@ -2812,8 +2903,9 @@ function PineLabsOnePortalCard({
                 <Lock className="w-3.5 h-3.5" /> Password Required
               </p>
               <p className="text-xs text-muted-foreground">
-                Enter your Pine Labs ONE account password to complete the connection.
-                It is AES-256 encrypted in transit and never stored or logged.
+                Enter your Pine Labs ONE account password, or use Pine Labs ONE's built-in
+                OTP login if your account supports it.
+                Credentials are AES-256 encrypted in transit and never stored or logged.
               </p>
             </div>
 
@@ -2846,32 +2938,57 @@ function PineLabsOnePortalCard({
               Your password is used once to authenticate your browser session, then immediately discarded.
             </p>
 
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                className="flex-1 gap-1.5"
-                onClick={handleSubmitPassword}
-                disabled={submitting || !password.trim()}
-              >
-                {submitting ? (
-                  <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Connecting…</>
-                ) : (
-                  <><CheckCircle2 className="w-3.5 h-3.5" /> Connect</>
-                )}
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="text-muted-foreground"
-                onClick={() => { setUiStep("identifier"); setPassword(""); setErrorMsg(null); }}
-              >
-                Start Over
-              </Button>
+            {/* Primary action: password submit */}
+            <Button
+              size="sm"
+              className="w-full gap-1.5"
+              onClick={handleSubmitPassword}
+              disabled={submitting || requestingOtp || !password.trim()}
+            >
+              {submitting ? (
+                <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Connecting…</>
+              ) : (
+                <><CheckCircle2 className="w-3.5 h-3.5" /> Continue with Password</>
+              )}
+            </Button>
+
+            {/* Divider */}
+            <div className="flex items-center gap-2">
+              <div className="flex-1 h-px bg-border/40" />
+              <span className="text-xs text-muted-foreground">or</span>
+              <div className="flex-1 h-px bg-border/40" />
             </div>
+
+            {/* Secondary action: portal-native OTP login */}
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full gap-1.5"
+              onClick={handleRequestOtpLogin}
+              disabled={submitting || requestingOtp}
+            >
+              {requestingOtp ? (
+                <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Requesting OTP…</>
+              ) : (
+                <><Clock className="w-3.5 h-3.5" /> Login with OTP</>
+              )}
+            </Button>
+            <p className="text-xs text-muted-foreground text-center">
+              Uses Pine Labs ONE's own OTP delivery — RasoKart never generates or sends the OTP.
+            </p>
+
+            <Button
+              size="sm"
+              variant="ghost"
+              className="w-full text-muted-foreground"
+              onClick={() => { setUiStep("identifier"); setPassword(""); setErrorMsg(null); }}
+            >
+              Start Over
+            </Button>
           </div>
         )}
 
-        {/* ── AWAITING_OTP state: 2FA OTP entry ────────────────────────── */}
+        {/* ── AWAITING_OTP state: OTP entry (2FA or portal-native OTP) ────── */}
         {uiStep === "otp" && (
           <div className="space-y-3">
             <div className="p-3 rounded-lg bg-amber-500/5 border border-amber-500/20">
@@ -2879,8 +2996,9 @@ function PineLabsOnePortalCard({
                 <Clock className="w-3.5 h-3.5" /> OTP Sent
               </p>
               <p className="text-xs text-muted-foreground">
-                An OTP has been sent to your Pine Labs ONE registered mobile.
-                Enter it below to complete 2-step verification.
+                {otpSource === "portal_link"
+                  ? "Pine Labs ONE has sent an OTP to your registered mobile or email. Enter it below — it is used once and immediately discarded by RasoKart."
+                  : "An OTP has been sent to your Pine Labs ONE registered mobile or email. Enter it below to complete 2-step verification."}
               </p>
             </div>
 
@@ -2913,28 +3031,58 @@ function PineLabsOnePortalCard({
               OTP is used once and discarded immediately — never stored.
             </p>
 
-            <div className="flex gap-2">
+            {/* Primary: verify OTP */}
+            <Button
+              size="sm"
+              className="w-full gap-1.5"
+              onClick={handleSubmitOtp}
+              disabled={submitting || !otp.trim()}
+            >
+              {submitting ? (
+                <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Verifying…</>
+              ) : (
+                <><CheckCircle2 className="w-3.5 h-3.5" /> Verify OTP</>
+              )}
+            </Button>
+
+            {/* Resend OTP — only for portal-link OTP (2FA resend not yet supported) */}
+            {otpSource === "portal_link" && (
               <Button
                 size="sm"
-                className="flex-1 gap-1.5"
-                onClick={handleSubmitOtp}
-                disabled={submitting || !otp.trim()}
+                variant="outline"
+                className="w-full gap-1.5"
+                onClick={handleResendOtp}
+                disabled={submitting || resendCooldown > 0}
               >
-                {submitting ? (
-                  <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Verifying…</>
-                ) : (
-                  <><CheckCircle2 className="w-3.5 h-3.5" /> Verify OTP</>
-                )}
+                <RefreshCw className="w-3.5 h-3.5" />
+                {resendCooldown > 0
+                  ? `Resend OTP (${resendCooldown}s)`
+                  : "Resend OTP"}
               </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="text-muted-foreground"
-                onClick={() => { setUiStep("identifier"); setOtp(""); setErrorMsg(null); }}
-              >
-                Start Over
-              </Button>
-            </div>
+            )}
+
+            {/*
+              "Back to Password" is intentionally absent:
+              after a portal_otp switch the server session is AWAITING_OTP with OTP-session
+              cookies in the portal browser context — the server cannot revert to a
+              password session without a full re-initiation. "Start Over" below performs
+              the correct action (re-enter identifier).
+            */}
+
+            <Button
+              size="sm"
+              variant="ghost"
+              className="w-full text-muted-foreground"
+              onClick={() => {
+                setUiStep("identifier");
+                setOtp("");
+                setErrorMsg(null);
+                setOtpSource("2fa");
+                setResendCooldown(0);
+              }}
+            >
+              Start Over
+            </Button>
           </div>
         )}
 

@@ -71,6 +71,21 @@ export interface MockServerConfig {
    * Used to regression-test handleLanguageInterstitial() in the adapter.
    */
   languageInterstitial?: boolean;
+  /**
+   * Show a "Login with OTP" anchor on the password page.
+   * When true: GET /login/password includes <a href="/login/otp-request" id="otp-login-link">
+   * and GET /login/otp-request clears user_session, sets otp_session, and redirects to
+   * GET /login/verify-otp.
+   * Used to test the portal_otp and resend_otp submitStep branches.
+   */
+  otpLink?: boolean;
+  /**
+   * Show ONLY a "Forgot Password" link on the password page (no OTP login link).
+   * Used to regression-test that SEL.OTP_LOGIN_LINK does NOT match Forgot-Password
+   * controls — clicking them could trigger a destructive password-reset flow.
+   * With this option the adapter must return OTP_NOT_AVAILABLE (never click the link).
+   */
+  forgotPasswordLinkOnly?: boolean;
 }
 
 export interface MockServer {
@@ -229,7 +244,19 @@ ${manualActionHtml()}
 </body></html>`;
 }
 
-function passwordFormHtml(showCaptcha: boolean): string {
+function passwordFormHtml(
+  showCaptcha: boolean,
+  showOtpLink?: boolean,
+  forgotPasswordLinkOnly?: boolean,
+): string {
+  // When forgotPasswordLinkOnly=true: show ONLY a "Forgot Password" link, no OTP login link.
+  // This simulates portals that don't support OTP login but do have a reset flow.
+  // The adapter must NOT treat a Forgot Password link as an OTP login link.
+  const extraLinks = forgotPasswordLinkOnly
+    ? `<a href="/login/forgot-password" id="forgot-password-link" style="display:inline-block;margin-top:12px">Forgot Password?</a>`
+    : showOtpLink
+      ? `<a href="/login/otp-request" id="otp-login-link" style="display:inline-block;margin-top:12px">Login with OTP</a>`
+      : "";
   return `<!DOCTYPE html><html><head><title>Pine Labs ONE - Enter Password</title></head><body>
 <div id="password-container">
   <h1>Enter Password</h1>
@@ -239,6 +266,7 @@ function passwordFormHtml(showCaptcha: boolean): string {
     <input type="password" id="password" name="password" placeholder="Enter your password" required />
     <button type="submit" id="sign-in-btn">Sign In</button>
   </form>
+  ${extraLinks}
 </div>
 </body></html>`;
 }
@@ -257,7 +285,7 @@ function passwordErrorFormHtml(errorMsg: string): string {
 </body></html>`;
 }
 
-function otpFormHtml(showError?: string): string {
+function otpFormHtml(showError?: string, showResend?: boolean): string {
   return `<!DOCTYPE html><html><head><title>Pine Labs ONE - OTP Verification</title></head><body>
 <div id="otp-container">
   <h1>2-Step Verification</h1>
@@ -268,6 +296,9 @@ function otpFormHtml(showError?: string): string {
     <input type="text" id="otp" name="otp" placeholder="Enter OTP" autocomplete="one-time-code" maxlength="8" />
     <button type="submit" id="verify-btn">Verify</button>
   </form>
+  ${showResend !== false
+    ? `<a href="/login/resend-otp" id="resend-otp-btn" style="display:inline-block;margin-top:12px">Resend OTP</a>`
+    : ""}
 </div>
 </body></html>`;
 }
@@ -589,7 +620,11 @@ ${identifierFormHtml(false, false)}</body></html>`);
       if (isAuth) { res.writeHead(302, { Location: "/home" }); res.end(); return; }
       if (!hasUserSession) { res.writeHead(302, { Location: "/login/user" }); res.end(); return; }
       res.writeHead(200, { "Content-Type": "text/html" });
-      res.end(passwordFormHtml(config.showCaptcha ?? false));
+      res.end(passwordFormHtml(
+        config.showCaptcha ?? false,
+        config.otpLink ?? false,
+        config.forgotPasswordLinkOnly ?? false,
+      ));
       return;
     }
 
@@ -671,6 +706,58 @@ ${identifierFormHtml(false, false)}</body></html>`);
         ],
       });
       res.end();
+      return;
+    }
+
+    // ── GET /login/otp-request — portal's "Login with OTP" link target
+    // Clears user_session, sets otp_session, redirects to OTP entry page.
+    // Only reachable when otpLink=true is configured; always shown in the route
+    // table so the browser navigation doesn't 404.
+    if (url === "/login/otp-request" && method === "GET") {
+      if (!cookies["user_session"] && !cookies["otp_session"]) {
+        // No session at all — redirect to identifier page
+        res.writeHead(302, { Location: "/login/user" });
+        res.end();
+        return;
+      }
+      // Swap user_session → otp_session, then go to OTP entry
+      res.writeHead(302, {
+        Location: "/login/verify-otp",
+        "Set-Cookie": [
+          "user_session=; Max-Age=0; Path=/",
+          "otp_session=1; Path=/; HttpOnly; SameSite=Lax",
+        ],
+      });
+      res.end();
+      return;
+    }
+
+    // ── GET /login/forgot-password — password reset entry point
+    // Returns a simple reset-flow page. The adapter must NOT treat this as an
+    // OTP login link; navigating here should NOT yield AWAITING_OTP.
+    if (url === "/login/forgot-password" && method === "GET") {
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end(`<!DOCTYPE html><html><head><title>Pine Labs ONE - Reset Password</title></head><body>
+<div id="forgot-password-container">
+  <h1>Reset your password</h1>
+  <p>Enter your registered email or mobile to receive a reset link.</p>
+  <form action="/login/forgot-password" method="POST">
+    <input type="text" id="reset-identifier" name="identifier" placeholder="Email or Mobile" />
+    <button type="submit">Send Reset Link</button>
+  </form>
+</div>
+</body></html>`);
+      return;
+    }
+
+    // ── GET /login/resend-otp — resend OTP button target
+    // Re-serves the OTP form (simulates portal resending OTP).
+    if (url === "/login/resend-otp" && method === "GET") {
+      if (!cookies["otp_session"]) {
+        res.writeHead(302, { Location: "/login/user" }); res.end(); return;
+      }
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end(otpFormHtml("", true));
       return;
     }
 

@@ -1045,6 +1045,440 @@ describe("PineLabsOne E2E — hidden CAPTCHA does NOT block the flow (false-posi
   });
 });
 
+// ── Portal-native OTP switch ("Login with OTP" link) ─────────────────────────
+//
+// Tests the portal_otp submitStep branch:
+//   identifier submit → AWAITING_PASSWORD →
+//   submitStep({ loginMethod: "portal_otp" }) →
+//   adapter clicks OTP link → /login/otp-request → /login/verify-otp →
+//   AWAITING_OTP (loginMode: "portal_otp") →
+//   submitStep({ encryptedOtp: enc(OTP) }) → CONNECTED
+//
+// Also covers: OTP link absent → OTP_NOT_AVAILABLE fallback message.
+// Also covers: resend_otp → click resend → AWAITING_OTP.
+
+describe("PineLabsOne E2E — portal-native OTP switch (loginMethod: portal_otp)", () => {
+  let srv: MockServer;
+  const VALID_MOBILE   = "9112233445";
+  const VALID_OTP      = "654321";
+  const MERCHANT_ID    = "PL_OTP_LINK_001";
+  const BUSINESS_NAME  = "Portal OTP Test Co";
+
+  before(async () => {
+    const ready = await checkBrowser();
+    if (!ready) return;
+    srv = await startMockPineLabsOneServer({
+      validPassword:    "AnyPass!",   // not used in this flow
+      validOtp:         VALID_OTP,
+      maskedIdentifier: "**XXXXX445",
+      merchantId:       MERCHANT_ID,
+      businessName:     BUSINESS_NAME,
+      otpLink:          true,         // /login/password shows "Login with OTP" anchor
+    });
+    process.env["PINELABS_ONE_PORTAL_OVERRIDE"] = srv.url;
+  });
+
+  after(async () => {
+    delete process.env["PINELABS_ONE_PORTAL_OVERRIDE"];
+    await srv?.close();
+  });
+
+  it("submitStep with loginMethod:portal_otp returns AWAITING_OTP after clicking the OTP link", async () => {
+    const browserReady = await checkBrowser();
+    if (!browserReady) return;
+
+    // Step 1: initiate → AWAITING_PASSWORD
+    const init = await pineLabsOneAdapter.initiateSession({
+      loginMethod:         "mobile_password",
+      encryptedIdentifier: enc(VALID_MOBILE),
+    });
+    assert.equal(
+      init.status, "AWAITING_PASSWORD",
+      `Expected AWAITING_PASSWORD; got: ${init.status} — ${init.failDetail}`,
+    );
+    if (!init.encryptedSessionToken) return;
+
+    // Step 2: click portal OTP link → AWAITING_OTP
+    const otpSwitchResult = await pineLabsOneAdapter.submitStep({
+      encryptedSessionToken: init.encryptedSessionToken,
+      loginMethod:           "portal_otp",
+    });
+
+    assert.equal(
+      otpSwitchResult.status, "AWAITING_OTP",
+      `Expected AWAITING_OTP after portal_otp switch; ` +
+      `got: ${otpSwitchResult.status} — ${otpSwitchResult.failDetail}`,
+    );
+    assert.ok(otpSwitchResult.encryptedSessionToken, "portal_otp must return a refreshed session token");
+    assert.equal(otpSwitchResult.nextStep, "ENTER_OTP");
+    assert.ok(
+      otpSwitchResult.nextStepPrompt?.toLowerCase().includes("otp"),
+      `nextStepPrompt must mention OTP; got: ${otpSwitchResult.nextStepPrompt}`,
+    );
+  });
+
+  it("full portal_otp flow: OTP switch → correct OTP → CONNECTED with ownership", async () => {
+    const browserReady = await checkBrowser();
+    if (!browserReady) return;
+
+    // Step 1: initiate → AWAITING_PASSWORD
+    const init = await pineLabsOneAdapter.initiateSession({
+      loginMethod:         "mobile_password",
+      encryptedIdentifier: enc(VALID_MOBILE),
+    });
+    if (init.status !== "AWAITING_PASSWORD" || !init.encryptedSessionToken) {
+      console.log("Skipping: initiate returned:", init.status, init.failDetail);
+      return;
+    }
+
+    // Step 2: request portal OTP → AWAITING_OTP
+    const otpSwitch = await pineLabsOneAdapter.submitStep({
+      encryptedSessionToken: init.encryptedSessionToken,
+      loginMethod:           "portal_otp",
+    });
+    if (otpSwitch.status !== "AWAITING_OTP" || !otpSwitch.encryptedSessionToken) {
+      console.log("Skipping: portal_otp switch returned:", otpSwitch.status, otpSwitch.failDetail);
+      return;
+    }
+
+    // Step 3: submit correct OTP → CONNECTED
+    const connected = await pineLabsOneAdapter.submitStep({
+      encryptedSessionToken: otpSwitch.encryptedSessionToken,
+      encryptedOtp:          enc(VALID_OTP),
+    });
+
+    // The adapter reads ownership data (merchantId, businessName) from the portal's
+    // /profile page and embeds it in the encrypted session token. The CONNECTED
+    // status itself confirms ownership verification passed (the adapter returns FAILED
+    // for no-ownership sessions). Verifying status + nextStep here is the same
+    // approach used by the equivalent password-flow test.
+    assert.equal(
+      connected.status, "CONNECTED",
+      `Expected CONNECTED after portal OTP; got: ${connected.status} — ${connected.failDetail}`,
+    );
+    assert.ok(connected.encryptedSessionToken, "CONNECTED must include a refreshed session token");
+    assert.equal(connected.nextStep, "COMPLETE");
+  });
+
+  it("full portal_otp flow: wrong OTP returns FAILED, not CONNECTED", async () => {
+    const browserReady = await checkBrowser();
+    if (!browserReady) return;
+
+    const init = await pineLabsOneAdapter.initiateSession({
+      loginMethod:         "mobile_password",
+      encryptedIdentifier: enc(VALID_MOBILE),
+    });
+    if (init.status !== "AWAITING_PASSWORD" || !init.encryptedSessionToken) return;
+
+    const otpSwitch = await pineLabsOneAdapter.submitStep({
+      encryptedSessionToken: init.encryptedSessionToken,
+      loginMethod:           "portal_otp",
+    });
+    if (otpSwitch.status !== "AWAITING_OTP" || !otpSwitch.encryptedSessionToken) return;
+
+    const wrongOtp = await pineLabsOneAdapter.submitStep({
+      encryptedSessionToken: otpSwitch.encryptedSessionToken,
+      encryptedOtp:          enc("000000"),
+    });
+
+    assert.notEqual(wrongOtp.status, "CONNECTED", "wrong OTP must not produce CONNECTED");
+    assert.ok(wrongOtp.failReason, "wrong OTP must return failReason");
+    assert.ok(!wrongOtp.failDetail?.includes("000000"), "failDetail must not echo OTP value");
+  });
+
+  it("calling portal_otp in AWAITING_OTP state returns WRONG_SESSION_STATE", async () => {
+    const browserReady = await checkBrowser();
+    if (!browserReady) return;
+
+    const init = await pineLabsOneAdapter.initiateSession({
+      loginMethod:         "mobile_password",
+      encryptedIdentifier: enc(VALID_MOBILE),
+    });
+    if (init.status !== "AWAITING_PASSWORD" || !init.encryptedSessionToken) return;
+
+    const otpSwitch = await pineLabsOneAdapter.submitStep({
+      encryptedSessionToken: init.encryptedSessionToken,
+      loginMethod:           "portal_otp",
+    });
+    if (otpSwitch.status !== "AWAITING_OTP" || !otpSwitch.encryptedSessionToken) return;
+
+    // Try portal_otp again when already AWAITING_OTP — should fail with WRONG_SESSION_STATE
+    const doubleSwitch = await pineLabsOneAdapter.submitStep({
+      encryptedSessionToken: otpSwitch.encryptedSessionToken,
+      loginMethod:           "portal_otp",
+    });
+
+    assert.equal(
+      doubleSwitch.failReason, "WRONG_SESSION_STATE",
+      `Expected WRONG_SESSION_STATE for double portal_otp; got: ${doubleSwitch.failReason}`,
+    );
+  });
+});
+
+// ── Portal OTP link absent — OTP_NOT_AVAILABLE fallback ──────────────────────
+
+describe("PineLabsOne E2E — portal_otp when OTP link absent returns OTP_NOT_AVAILABLE", () => {
+  let srv: MockServer;
+
+  before(async () => {
+    const ready = await checkBrowser();
+    if (!ready) return;
+    // otpLink is NOT set — password page has no "Login with OTP" anchor
+    srv = await startMockPineLabsOneServer({
+      validPassword: "NoOtpLink!",
+      otpLink:       false,
+    });
+    process.env["PINELABS_ONE_PORTAL_OVERRIDE"] = srv.url;
+  });
+
+  after(async () => {
+    delete process.env["PINELABS_ONE_PORTAL_OVERRIDE"];
+    await srv?.close();
+  });
+
+  it("portal_otp returns AWAITING_PASSWORD/OTP_NOT_AVAILABLE (session preserved) when OTP link is absent", async () => {
+    const browserReady = await checkBrowser();
+    if (!browserReady) return;
+
+    const init = await pineLabsOneAdapter.initiateSession({
+      loginMethod:         "mobile_password",
+      encryptedIdentifier: enc("9550050050"),
+    });
+    if (init.status !== "AWAITING_PASSWORD" || !init.encryptedSessionToken) {
+      console.log("Skipping: initiate returned:", init.status, init.failDetail);
+      return;
+    }
+
+    const result = await pineLabsOneAdapter.submitStep({
+      encryptedSessionToken: init.encryptedSessionToken,
+      loginMethod:           "portal_otp",
+    });
+
+    // When OTP is unavailable the adapter must NOT destroy the session (FAILED).
+    // It returns AWAITING_PASSWORD so the merchant can still enter their password.
+    assert.equal(
+      result.status, "AWAITING_PASSWORD",
+      `Expected AWAITING_PASSWORD (session preserved); got: ${result.status}`,
+    );
+    assert.equal(
+      result.failReason, "OTP_NOT_AVAILABLE",
+      `Expected OTP_NOT_AVAILABLE; got: ${result.failReason}`,
+    );
+    assert.ok(
+      result.encryptedSessionToken,
+      "AWAITING_PASSWORD result must include the preserved session token",
+    );
+    // The exact spec-required fallback message must be in failDetail
+    assert.ok(
+      result.failDetail?.includes("OTP login is not available"),
+      `failDetail must include the required fallback message; got: ${result.failDetail}`,
+    );
+    assert.ok(
+      result.failDetail?.includes("Continue with Password"),
+      `failDetail must instruct merchant to continue with password; got: ${result.failDetail}`,
+    );
+
+    // Verify the session is still usable: can still submit the correct password
+    const passwordResult = await pineLabsOneAdapter.submitStep({
+      encryptedSessionToken: result.encryptedSessionToken!,
+      encryptedOtp:          enc("NoOtpLink!"),   // the validPassword for this mock server
+    });
+    assert.equal(
+      passwordResult.status, "CONNECTED",
+      `Password submit after OTP_NOT_AVAILABLE must still reach CONNECTED; got: ${passwordResult.status} — ${passwordResult.failDetail}`,
+    );
+  });
+});
+
+// ── Forgot Password link must NOT be treated as OTP login link ────────────────
+// SECURITY: SEL.OTP_LOGIN_LINK must never match "Forgot Password" controls.
+// Clicking a password-reset link from within the connector could trigger a
+// destructive portal-side action the merchant did not intend.
+
+describe("PineLabsOne E2E — Forgot Password link is not an OTP login link (security regression)", () => {
+  let srv: MockServer;
+
+  before(async () => {
+    const ready = await checkBrowser();
+    if (!ready) return;
+    // forgotPasswordLinkOnly: password page has ONLY a "Forgot Password" link,
+    // NO "Login with OTP" link.  The adapter must return OTP_NOT_AVAILABLE.
+    srv = await startMockPineLabsOneServer({
+      validPassword:          "ForgotPwdOnly!",
+      otpLink:                false,
+      forgotPasswordLinkOnly: true,
+    });
+    process.env["PINELABS_ONE_PORTAL_OVERRIDE"] = srv.url;
+  });
+
+  after(async () => {
+    delete process.env["PINELABS_ONE_PORTAL_OVERRIDE"];
+    await srv?.close();
+  });
+
+  it("portal_otp returns OTP_NOT_AVAILABLE (never clicks Forgot Password link)", async () => {
+    const browserReady = await checkBrowser();
+    if (!browserReady) return;
+
+    const init = await pineLabsOneAdapter.initiateSession({
+      loginMethod:         "mobile_password",
+      encryptedIdentifier: enc("9000000000"),
+    });
+    if (init.status !== "AWAITING_PASSWORD" || !init.encryptedSessionToken) {
+      console.log("Skipping: initiate returned:", init.status);
+      return;
+    }
+
+    const result = await pineLabsOneAdapter.submitStep({
+      encryptedSessionToken: init.encryptedSessionToken,
+      loginMethod:           "portal_otp",
+    });
+
+    // The adapter must NOT have clicked the "Forgot Password" link.
+    // It must return OTP_NOT_AVAILABLE with the session preserved.
+    assert.equal(
+      result.status, "AWAITING_PASSWORD",
+      `Expected AWAITING_PASSWORD; got: ${result.status} (failReason: ${result.failReason}). ` +
+      "Forgot Password link must NOT be treated as an OTP login link.",
+    );
+    assert.equal(
+      result.failReason, "OTP_NOT_AVAILABLE",
+      `Expected OTP_NOT_AVAILABLE failReason; got: ${result.failReason}`,
+    );
+    assert.ok(
+      result.encryptedSessionToken,
+      "Session token must be preserved so merchant can still use their password",
+    );
+
+    // Confirm the session is still alive by submitting the correct password
+    const pwd = await pineLabsOneAdapter.submitStep({
+      encryptedSessionToken: result.encryptedSessionToken!,
+      encryptedOtp:          enc("ForgotPwdOnly!"),
+    });
+    assert.equal(
+      pwd.status, "CONNECTED",
+      `Password submit after Forgot-Password OTP_NOT_AVAILABLE must reach CONNECTED; ` +
+      `got: ${pwd.status} — ${pwd.failDetail}`,
+    );
+  });
+});
+
+// ── Resend OTP ────────────────────────────────────────────────────────────────
+
+describe("PineLabsOne E2E — resend_otp refreshes OTP session and returns AWAITING_OTP", () => {
+  let srv: MockServer;
+  const VALID_OTP  = "777888";
+  const VALID_MOBILE = "9661661661";
+
+  before(async () => {
+    const ready = await checkBrowser();
+    if (!ready) return;
+    srv = await startMockPineLabsOneServer({
+      validPassword:    "AnyPass!",
+      validOtp:         VALID_OTP,
+      maskedIdentifier: "**XXXXX661",
+      merchantId:       "PL_RESEND_001",
+      otpLink:          true,
+    });
+    process.env["PINELABS_ONE_PORTAL_OVERRIDE"] = srv.url;
+  });
+
+  after(async () => {
+    delete process.env["PINELABS_ONE_PORTAL_OVERRIDE"];
+    await srv?.close();
+  });
+
+  it("resend_otp in AWAITING_OTP state returns AWAITING_OTP with a refreshed token", async () => {
+    const browserReady = await checkBrowser();
+    if (!browserReady) return;
+
+    // Step 1: initiate → AWAITING_PASSWORD
+    const init = await pineLabsOneAdapter.initiateSession({
+      loginMethod:         "mobile_password",
+      encryptedIdentifier: enc(VALID_MOBILE),
+    });
+    if (init.status !== "AWAITING_PASSWORD" || !init.encryptedSessionToken) return;
+
+    // Step 2: portal OTP switch → AWAITING_OTP
+    const otpSwitch = await pineLabsOneAdapter.submitStep({
+      encryptedSessionToken: init.encryptedSessionToken,
+      loginMethod:           "portal_otp",
+    });
+    if (otpSwitch.status !== "AWAITING_OTP" || !otpSwitch.encryptedSessionToken) {
+      console.log("Skipping: portal_otp returned:", otpSwitch.status, otpSwitch.failDetail);
+      return;
+    }
+
+    // Step 3: resend OTP → still AWAITING_OTP
+    const resend = await pineLabsOneAdapter.submitStep({
+      encryptedSessionToken: otpSwitch.encryptedSessionToken,
+      loginMethod:           "resend_otp",
+    });
+
+    assert.equal(
+      resend.status, "AWAITING_OTP",
+      `resend_otp must return AWAITING_OTP; got: ${resend.status} — ${resend.failDetail}`,
+    );
+    assert.ok(resend.encryptedSessionToken, "resend must return a refreshed session token");
+    assert.equal(resend.nextStep, "ENTER_OTP");
+  });
+
+  it("resend_otp in AWAITING_PASSWORD state returns WRONG_SESSION_STATE", async () => {
+    const browserReady = await checkBrowser();
+    if (!browserReady) return;
+
+    const init = await pineLabsOneAdapter.initiateSession({
+      loginMethod:         "mobile_password",
+      encryptedIdentifier: enc(VALID_MOBILE),
+    });
+    if (init.status !== "AWAITING_PASSWORD" || !init.encryptedSessionToken) return;
+
+    const result = await pineLabsOneAdapter.submitStep({
+      encryptedSessionToken: init.encryptedSessionToken,
+      loginMethod:           "resend_otp",
+    });
+
+    assert.equal(
+      result.failReason, "WRONG_SESSION_STATE",
+      `Expected WRONG_SESSION_STATE for resend_otp in AWAITING_PASSWORD; got: ${result.failReason}`,
+    );
+  });
+
+  it("OTP submitted after resend is still valid and returns CONNECTED", async () => {
+    const browserReady = await checkBrowser();
+    if (!browserReady) return;
+
+    const init = await pineLabsOneAdapter.initiateSession({
+      loginMethod:         "mobile_password",
+      encryptedIdentifier: enc(VALID_MOBILE),
+    });
+    if (init.status !== "AWAITING_PASSWORD" || !init.encryptedSessionToken) return;
+
+    const otpSwitch = await pineLabsOneAdapter.submitStep({
+      encryptedSessionToken: init.encryptedSessionToken,
+      loginMethod:           "portal_otp",
+    });
+    if (otpSwitch.status !== "AWAITING_OTP" || !otpSwitch.encryptedSessionToken) return;
+
+    const resend = await pineLabsOneAdapter.submitStep({
+      encryptedSessionToken: otpSwitch.encryptedSessionToken,
+      loginMethod:           "resend_otp",
+    });
+    if (resend.status !== "AWAITING_OTP" || !resend.encryptedSessionToken) return;
+
+    // Submit the valid OTP after resend → CONNECTED
+    const connected = await pineLabsOneAdapter.submitStep({
+      encryptedSessionToken: resend.encryptedSessionToken,
+      encryptedOtp:          enc(VALID_OTP),
+    });
+
+    assert.equal(
+      connected.status, "CONNECTED",
+      `Expected CONNECTED after post-resend OTP; got: ${connected.status} — ${connected.failDetail}`,
+    );
+  });
+});
+
 // ── Portal unreachable ────────────────────────────────────────────────────────
 
 describe("PineLabsOne E2E — portal unreachable", () => {

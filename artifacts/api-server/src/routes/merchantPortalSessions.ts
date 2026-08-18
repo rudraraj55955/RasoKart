@@ -361,10 +361,13 @@ router.post("/:provider/submit-step", submitStepLimit, async (req: any, res) => 
   const providerSlug = req.params["provider"] as string;
   const merchantId   = getMerchantId(req);
 
-  // Read OTP/password from body — NEVER log these values
-  const { otp, password } = req.body ?? {};
+  // Read OTP/password/loginMethod from body — NEVER log otp or password values
+  const { otp, password, loginMethod } = req.body ?? {};
 
-  if (!otp && !password) {
+  // portal_otp and resend_otp are credential-free step transitions:
+  // the adapter clicks the portal's own OTP link or resend button.
+  const credentialFreeActions = ["portal_otp", "resend_otp"];
+  if (!otp && !password && !credentialFreeActions.includes(loginMethod)) {
     res.status(400).json({ error: "otp or password is required" });
     return;
   }
@@ -483,6 +486,7 @@ router.post("/:provider/submit-step", submitStepLimit, async (req: any, res) => 
       encryptedSessionToken: sessionToken,
       encryptedOtp:          encryptedOtp ?? undefined,
       encryptedPassword:     encryptedPassword ?? undefined,
+      loginMethod:           loginMethod ?? undefined,
     });
     // encryptedOtp / encryptedPassword go out of scope here — GC eligible
 

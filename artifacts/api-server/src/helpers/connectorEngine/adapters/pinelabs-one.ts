@@ -242,6 +242,52 @@ const SEL = {
     '[data-testid="verify-btn"]:visible',
   ],
 
+  /**
+   * "Login with OTP" link/button on the Pine Labs ONE password page.
+   * Merchants click this to request a portal-native OTP instead of entering
+   * their password. The adapter clicks this element, waits for navigation
+   * to the OTP page, then returns AWAITING_OTP.
+   *
+   * SECURITY: Only controls that explicitly represent "login / sign-in via OTP"
+   * are included. Forgot-password / password-reset controls are deliberately
+   * excluded — clicking them could trigger a password-reset flow, send an
+   * unexpected OTP, or alter portal account state in ways the merchant did not
+   * intend and RasoKart cannot control or audit.
+   *
+   * Selectors ordered most-specific first.
+   */
+  OTP_LOGIN_LINK: [
+    '[id="otp-login-link"]:visible',
+    '[data-testid="otp-login-link"]:visible',
+    '[data-testid="otp-login"]:visible',
+    '[data-testid="login-otp"]:visible',
+    'a:has-text("Login with OTP"):visible',
+    'button:has-text("Login with OTP"):visible',
+    'a:has-text("Sign in with OTP"):visible',
+    'button:has-text("Sign in with OTP"):visible',
+    'a:has-text("Login via OTP"):visible',
+    'button:has-text("Login via OTP"):visible',
+    'a:has-text("Sign in via OTP"):visible',
+    'button:has-text("Sign in via OTP"):visible',
+    'span:has-text("Login with OTP"):visible',
+  ],
+
+  /**
+   * "Resend OTP" button on the Pine Labs ONE OTP verification page.
+   * Clicking this asks the portal to deliver a new OTP to the registered
+   * mobile/email. The adapter clicks it and returns AWAITING_OTP.
+   */
+  RESEND_OTP_BTN: [
+    'button:has-text("Resend OTP"):visible',
+    'button:has-text("Resend"):visible',
+    'a:has-text("Resend OTP"):visible',
+    'a:has-text("Resend"):visible',
+    'span:has-text("Resend OTP"):visible',
+    '[data-testid="resend-otp"]:visible',
+    '[data-testid="resend"]:visible',
+    '[id="resend-otp-btn"]:visible',
+  ],
+
   // Dashboard landmark — at least one must be visible before CONNECTED is returned
   DASHBOARD_LANDMARK: [
     'nav[aria-label*="navigation" i]',
@@ -357,7 +403,13 @@ interface PineLabsOneAdapterData {
   storageState: BrowserStorageState;
   maskedIdentifier: string;   // e.g. "**XXXXX890" — safe to persist in plaintext
   step: "AWAITING_PASSWORD" | "AWAITING_OTP" | "CONNECTED";
-  loginMode: "password";       // auth mode; OTP is primary factor in /authV2 flow
+  /**
+   * Auth mode:
+   *   "password"   — merchant entered their portal password (classic flow)
+   *   "portal_otp" — merchant requested OTP via the portal's own "Login with OTP"
+   *                  link on the password page (no password needed; portal sends OTP)
+   */
+  loginMode: "password" | "portal_otp";
   storedIdentifier?: string;   // encrypted inside the session token; never logged
   merchantId?: string;
   storeId?: string;
@@ -1337,6 +1389,283 @@ export const pineLabsOneAdapter: ProviderAdapter = {
         failDetail: "No browser session state found. Please restart the connection.",
       };
     }
+
+    // ── Credential-free step transitions ──────────────────────────────────────
+    // portal_otp: click the portal's own "Login with OTP" link from the password page.
+    // resend_otp: click the "Resend OTP" button on the active OTP page.
+    // Neither action needs a credential — they are handled entirely here and
+    // return before the credential-validation block below.
+    if (params.loginMethod === "portal_otp" || params.loginMethod === "resend_otp") {
+      const isResend = params.loginMethod === "resend_otp";
+      if (isResend && adData.step !== "AWAITING_OTP") {
+        return {
+          status: "FAILED",
+          failReason: "WRONG_SESSION_STATE",
+          failDetail: "OTP resend requires an active OTP session. Please restart the connection.",
+        };
+      }
+      if (!isResend && adData.step !== "AWAITING_PASSWORD") {
+        return {
+          status: "FAILED",
+          failReason: "WRONG_SESSION_STATE",
+          failDetail: "OTP login switch requires the session to be in AWAITING_PASSWORD state. Please restart the connection.",
+        };
+      }
+
+      let otpCtx = null as Awaited<ReturnType<typeof newIsolatedContext>> | null;
+      try {
+        otpCtx = await newIsolatedContext(adData.storageState);
+        const otpPage = await otpCtx.context.newPage();
+
+        logger.info(
+          { slug: "pinelabs_one", action: isResend ? "resend_otp" : "portal_otp_switch" },
+          "pinelabs_one_portal_otp_action_start",
+        );
+
+        if (isResend) {
+          // ── Resend OTP: navigate to OTP page, click resend button ────────────
+          const otpUrl    = `${getPortalOrigin()}/login/verify-otp`;
+          const altOtpUrl = `${getPortalOrigin()}/authV2/sign-in/verify-otp`;
+          // Navigate to OTP page (browser context should have otp_session cookie)
+          try {
+            await otpPage.goto(otpUrl, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
+            await otpPage.waitForTimeout(1_500);
+          } catch { /* try alternate URL */ }
+
+          const otpPresent = await tryLocator(otpPage, SEL.OTP_INPUT_SINGLE);
+          if (!otpPresent) {
+            try {
+              await otpPage.goto(altOtpUrl, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
+              await otpPage.waitForTimeout(1_500);
+            } catch { /* continue */ }
+          }
+
+          const resendBtn = await tryLocator(otpPage, SEL.RESEND_OTP_BTN);
+          if (!resendBtn) {
+            // Resend button not found — the OTP page is still active and the
+            // existing OTP may still work. Preserve the session but report the failure.
+            logger.info(
+              { slug: "pinelabs_one", urlPath: (() => { try { return new URL(otpPage.url()).pathname; } catch { return "?"; } })() },
+              "pinelabs_one_resend_btn_not_found",
+            );
+            return {
+              status: "AWAITING_OTP",
+              encryptedSessionToken: params.encryptedSessionToken, // preserve original session
+              nextStep: "ENTER_OTP",
+              failReason: "RESEND_NOT_AVAILABLE",
+              failDetail:
+                "The Resend OTP button was not found on the portal page. " +
+                "Your existing OTP may still be valid — enter it below, or start over.",
+            };
+          }
+
+          let resendClicked = false;
+          try {
+            await resendBtn.click({ timeout: ACTION_TIMEOUT_MS });
+            await otpPage.waitForTimeout(1_500);
+            resendClicked = true;
+            logger.info({ slug: "pinelabs_one" }, "pinelabs_one_resend_btn_clicked");
+          } catch {
+            // Click threw — the existing OTP may still be valid; preserve session.
+            logger.warn({ slug: "pinelabs_one" }, "pinelabs_one_resend_btn_click_failed");
+          }
+
+          if (!resendClicked) {
+            return {
+              status: "AWAITING_OTP",
+              encryptedSessionToken: params.encryptedSessionToken,
+              nextStep: "ENTER_OTP",
+              failReason: "RESEND_CLICK_FAILED",
+              failDetail:
+                "Could not activate the Resend OTP button on the portal. " +
+                "Your existing OTP may still be valid — enter it below, or start over.",
+            };
+          }
+
+          const resendStorage = await extractStorageState(otpCtx.context);
+          const resendData: PineLabsOneAdapterData = {
+            ...adData, storageState: resendStorage, step: "AWAITING_OTP",
+          };
+          const resendPayload = makeSessionPayload(
+            "pinelabs_one", 0, resendData as unknown as Record<string, unknown>,
+          );
+          const resendEnc = encryptSessionPayload(resendPayload);
+          logger.info({ slug: "pinelabs_one" }, "pinelabs_one_resend_otp_complete");
+          return {
+            status: "AWAITING_OTP",
+            encryptedSessionToken: resendEnc.ok ? resendEnc.token : undefined,
+            nextStep: "ENTER_OTP",
+            nextStepPrompt: adData.maskedIdentifier
+              ? `A new OTP has been sent to your registered contact (${adData.maskedIdentifier}). Enter it below.`
+              : "A new OTP has been sent. Enter it below.",
+          };
+
+        } else {
+          // ── Portal OTP switch: navigate to password page, click OTP link ─────
+          const pwdUrl    = `${getPortalOrigin()}/login/password`;
+          const altPwdUrl = `${getPortalOrigin()}/authV2/sign-in`;
+
+          // Navigate to portal root (restores session cookies from storage state)
+          await otpPage.goto(getPortalOrigin(), { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
+          await otpPage.waitForTimeout(1_000);
+
+          // Navigate to password page (requires user_session cookie from initiate)
+          let pwdOnPage = await tryLocator(otpPage, SEL.PASSWORD_INPUT);
+          if (!pwdOnPage) {
+            try {
+              await otpPage.goto(pwdUrl, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
+              await otpPage.waitForTimeout(1_500);
+            } catch { /* continue */ }
+            pwdOnPage = await tryLocator(otpPage, SEL.PASSWORD_INPUT);
+          }
+          if (!pwdOnPage) {
+            try {
+              await otpPage.goto(altPwdUrl, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
+              await otpPage.waitForTimeout(1_500);
+            } catch { /* continue */ }
+          }
+
+          // Find the "Login with OTP" link on the password page
+          const otpLink = await tryLocator(otpPage, SEL.OTP_LOGIN_LINK);
+          if (!otpLink) {
+            logger.info(
+              {
+                slug: "pinelabs_one",
+                urlPath: (() => { try { return new URL(otpPage.url()).pathname; } catch { return "?"; } })(),
+              },
+              "pinelabs_one_portal_otp_link_not_found",
+            );
+            // Preserve the AWAITING_PASSWORD session — the merchant can still use their password.
+            return {
+              status: "AWAITING_PASSWORD",
+              encryptedSessionToken: params.encryptedSessionToken,
+              nextStep: "ENTER_PASSWORD",
+              failReason: "OTP_NOT_AVAILABLE",
+              failDetail:
+                "OTP login is not available for this account/session. Continue with Password.",
+              helpUrl: HELP_URL,
+            };
+          }
+
+          // Click the OTP link — the portal should redirect to the OTP page
+          let linkClicked = false;
+          try {
+            await otpLink.click({ timeout: ACTION_TIMEOUT_MS });
+            linkClicked = true;
+          } catch { /* fall through to OTP_NOT_AVAILABLE below */ }
+
+          if (!linkClicked) {
+            return {
+              status: "AWAITING_PASSWORD",
+              encryptedSessionToken: params.encryptedSessionToken,
+              nextStep: "ENTER_PASSWORD",
+              failReason: "OTP_NOT_AVAILABLE",
+              failDetail:
+                "OTP login is not available for this account/session. Continue with Password.",
+              helpUrl: HELP_URL,
+            };
+          }
+
+          // Wait for navigation to an OTP page (URL-first, then DOM fallback)
+          await Promise.race([
+            otpPage.waitForURL(
+              (url: URL) => OTP_URL_PATTERNS.some(p => url.href.toLowerCase().includes(p)),
+              { timeout: NAV_TIMEOUT_MS },
+            ).catch(() => {}),
+            waitForAny(otpPage, SEL.OTP_INPUT_SINGLE, NAV_TIMEOUT_MS).catch(() => {}),
+          ]);
+          await otpPage.waitForTimeout(1_500);
+
+          const urlAfterClick = otpPage.url();
+          const otpInputVisible = await tryLocator(otpPage, SEL.OTP_INPUT_SINGLE);
+          const digitBoxCount   = await otpPage.locator('input[maxlength="1"]').count().catch(() => 0);
+
+          if (!isOtpUrl(urlAfterClick) && !otpInputVisible && digitBoxCount < 4) {
+            logger.warn(
+              {
+                slug: "pinelabs_one",
+                urlPath: (() => { try { return new URL(urlAfterClick).pathname; } catch { return "?"; } })(),
+              },
+              "pinelabs_one_portal_otp_link_no_otp_page",
+            );
+            // OTP link was clicked but portal did not navigate to an OTP page.
+            // Preserve the AWAITING_PASSWORD session so the merchant can continue with password.
+            return {
+              status: "AWAITING_PASSWORD",
+              encryptedSessionToken: params.encryptedSessionToken,
+              nextStep: "ENTER_PASSWORD",
+              failReason: "OTP_NOT_AVAILABLE",
+              failDetail:
+                "OTP login is not available for this account/session. Continue with Password.",
+              helpUrl: HELP_URL,
+            };
+          }
+
+          const switchStorage = await extractStorageState(otpCtx.context);
+          const switchData: PineLabsOneAdapterData = {
+            ...adData,
+            storageState: switchStorage,
+            step: "AWAITING_OTP",
+            loginMode: "portal_otp",
+          };
+          const switchPayload = makeSessionPayload(
+            "pinelabs_one", 0, switchData as unknown as Record<string, unknown>,
+          );
+          const switchEnc = encryptSessionPayload(switchPayload);
+
+          const maskedId  = adData.maskedIdentifier ?? "";
+          const isEmailId = maskedId.includes("@");
+          const otpDest   = isEmailId ? "email inbox" : "registered mobile";
+
+          logger.info(
+            { slug: "pinelabs_one", maskedIdentifier: adData.maskedIdentifier },
+            "pinelabs_one_portal_otp_switch_success",
+          );
+          return {
+            status: "AWAITING_OTP",
+            encryptedSessionToken: switchEnc.ok ? switchEnc.token : undefined,
+            nextStep: "ENTER_OTP",
+            nextStepPrompt:
+              `Pine Labs ONE has sent an OTP to your ${otpDest}` +
+              (maskedId ? ` (${maskedId})` : "") +
+              ". Enter it below to complete the connection. " +
+              "The OTP is used once and discarded immediately.",
+          };
+        }
+      } catch (err: any) {
+        logger.warn(
+          { slug: "pinelabs_one", err: err?.message },
+          "pinelabs_one_portal_otp_action_error",
+        );
+        if (isResend) {
+          // Resend threw — the AWAITING_OTP session is still valid; preserve it.
+          return {
+            status: "AWAITING_OTP",
+            encryptedSessionToken: params.encryptedSessionToken,
+            nextStep: "ENTER_OTP",
+            failReason: "RESEND_ERROR",
+            failDetail:
+              "Could not complete the OTP resend. Your existing OTP may still be valid — " +
+              "enter it below, or start over.",
+          };
+        } else {
+          // portal_otp threw — preserve the AWAITING_PASSWORD session so the merchant
+          // can still use their password.
+          return {
+            status: "AWAITING_PASSWORD",
+            encryptedSessionToken: params.encryptedSessionToken,
+            nextStep: "ENTER_PASSWORD",
+            failReason: "OTP_NOT_AVAILABLE",
+            failDetail:
+              "OTP login is not available for this account/session. Continue with Password.",
+            helpUrl: HELP_URL,
+          };
+        }
+      } finally {
+        await otpCtx?.release();
+      }
+    }
+    // ── End of credential-free step transitions ───────────────────────────────
 
     if (!params.encryptedOtp) {
       return {

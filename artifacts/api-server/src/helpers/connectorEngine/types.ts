@@ -108,6 +108,16 @@ export interface SubmitStepParams {
   encryptedOtp?: string;
   /** Encrypted password — adapter decrypts, never stores after session is made */
   encryptedPassword?: string;
+  /**
+   * Optional login-method signal for credential-free step transitions:
+   *   "portal_otp"  — click the provider portal's own "Login with OTP" link
+   *                   from the password page; returns AWAITING_OTP or
+   *                   FAILED/OTP_NOT_AVAILABLE. No credential needed.
+   *   "resend_otp"  — click the "Resend OTP" button on the active OTP page;
+   *                   returns AWAITING_OTP. No credential needed.
+   * If absent, the adapter uses the credential (encryptedOtp / encryptedPassword).
+   */
+  loginMethod?: string;
 }
 
 export interface SubmitStepResult {
@@ -117,6 +127,7 @@ export interface SubmitStepResult {
   nextStepPrompt?: string;
   failReason?: string;
   failDetail?: string;
+  helpUrl?: string;
 }
 
 // ── Session validation ────────────────────────────────────────────────────────
