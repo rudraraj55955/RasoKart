@@ -31,6 +31,22 @@ Pine Labs ONE portal changed its login flow (observed Aug 2026):
 
 E2E regression tests: 2 tests, both pass (language interstitial dismissed → AWAITING_PASSWORD → CONNECTED).
 
+## /authV2/password — password page (Aug 2026)
+
+After clicking "Sign in securely" on `/authV2/verify-user`, the portal navigates to:
+- **`/authV2/password`** — password entry page ("Could you please provide your password?")
+  - `input[type="password" name="password"]`
+  - `<button type="submit">Verify</button>` ← must be in SEL.SIGN_IN_BTN
+  - Also shows "Want to sign in using OTP? Click here to receive OTP" link
+
+`submitStep()` password block must:
+1. Handle language interstitial after session restore
+2. Try `/authV2/password` directly
+3. If not found: full re-entry via `navigateToLogin()` → fill identifier → click "Sign in securely" → `Promise.race([waitForAny(PASSWORD_INPUT), waitForURL(/authv2/password)])`
+4. Fill password → click "Verify"
+
+**REMOVED** from `submitStep()`: unconditional navigation to `/authV2/sign-in` after identifier re-entry (it destroyed session state and left adapter on identifier form).
+
 ## Key rule
 
 **Why**: OTP URL patterns must be specific enough NOT to match identifier-entry pages. `/authv2/verify` matches `/authV2/verify-user` (login form). Always check new OTP URL patterns against known non-OTP pages.
