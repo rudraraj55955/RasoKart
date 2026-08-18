@@ -160,6 +160,28 @@ function verifyUserFormHtml(showCaptcha: boolean, showHiddenCaptcha?: boolean): 
 </body></html>`;
 }
 
+/**
+ * Password entry page at /authV2/password — mirrors the real portal page that
+ * appears after identifier submission (Aug 2026).
+ * Shows: "Could you please provide your password?", password input, "Verify" button,
+ * and an optional "Want to sign in using OTP?" link.
+ */
+function authV2PasswordFormHtml(showCaptcha: boolean, invalidMsg?: string): string {
+  return `<!DOCTYPE html><html><head><title>Pine Labs ONE - Password</title></head><body>
+<div id="password-container" style="padding:40px">
+  <h1>Could you please provide your password?</h1>
+  ${showCaptcha ? captchaHtml() : ""}
+  ${invalidMsg ? `<p role="alert" id="error-msg" style="color:red">${invalidMsg}</p>` : ""}
+  <form action="/authV2/password" method="POST" id="password-form">
+    <input type="password" name="password" id="password" placeholder="Enter password" required />
+    <a href="/authV2/sign-in/verify-otp" id="otp-link">Want to sign in using OTP? Click here to receive OTP</a>
+    <button type="submit" id="verify-btn">Verify</button>
+  </form>
+  <p><a href="/login/user">Forgot password?</a></p>
+</div>
+</body></html>`;
+}
+
 function captchaHtml(): string {
   return `<iframe src="https://www.google.com/recaptcha/api.js" title="recaptcha" id="captcha-frame" style="width:300px;height:78px;border:0"></iframe>`;
 }
@@ -455,9 +477,52 @@ ${verifyUserFormHtml(false)}</body></html>`);
         res.end();
         return;
       }
+      // Non-OTP flow: redirect to /authV2/password (real portal flow, Aug 2026)
       res.writeHead(302, {
-        Location: "/login/password",
+        Location: "/authV2/password",
         "Set-Cookie": "user_session=1; Path=/; HttpOnly; SameSite=Lax",
+      });
+      res.end();
+      return;
+    }
+
+    // ── GET /authV2/password — password entry page ────────────────────────────
+    // Mirrors the real portal page that appears after identifier submission.
+    if (url.startsWith("/authV2/password") && method === "GET") {
+      if (isAuth) { res.writeHead(302, { Location: "/home" }); res.end(); return; }
+      if (!hasUserSession) { res.writeHead(302, { Location: "/login/user" }); res.end(); return; }
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end(authV2PasswordFormHtml(config.showCaptcha ?? false));
+      return;
+    }
+
+    // ── POST /authV2/password — submit password ───────────────────────────────
+    if (url === "/authV2/password" && method === "POST") {
+      const body = await parseBody(req);
+      const password = (body["password"] ?? "").trim();
+
+      if (config.showBlocked) {
+        res.writeHead(200, {
+          "Content-Type": "text/html",
+          "Set-Cookie": "user_session=; Max-Age=0; Path=/",
+        });
+        res.end(blockedHtml());
+        return;
+      }
+
+      if (password !== validPassword) {
+        res.writeHead(200, { "Content-Type": "text/html" });
+        res.end(authV2PasswordFormHtml(false, invalidPasswordMsg));
+        return;
+      }
+
+      // Correct password → set auth cookie, redirect to dashboard
+      res.writeHead(302, {
+        Location: "/home",
+        "Set-Cookie": [
+          "user_session=; Max-Age=0; Path=/",
+          "auth_session=1; Path=/; HttpOnly; SameSite=Lax",
+        ],
       });
       res.end();
       return;

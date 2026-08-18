@@ -220,9 +220,11 @@ const SEL = {
     '[data-testid="submit-btn"]:visible',
   ],
 
-  // "Sign In" / "Login" / password-submit button
+  // "Sign In" / "Login" / password-submit button.
+  // "Verify" is the button text used on /authV2/password (Aug 2026 portal).
   SIGN_IN_BTN: [
     'button[type="submit"]:visible',
+    'button:has-text("Verify"):visible',      // /authV2/password submit (Aug 2026)
     'button:has-text("Sign In"):visible',
     'button:has-text("Log In"):visible',
     'button:has-text("Login"):visible',
@@ -1458,23 +1460,56 @@ export const pineLabsOneAdapter: ProviderAdapter = {
 
       } else {
         // ── Password step submission ─────────────────────────────────────
-        // Navigate to the password step URL
-        const pwdUrl  = `${getPortalOrigin()}/login/password`;
-        const altPwdUrl = `${getPortalOrigin()}/authV2/sign-in`;
+        //
+        // Portal flow confirmed Aug 2026:
+        //   /authV2/language (language picker, cookie-less sessions only)
+        //   → /authV2/verify-user  (identifier entry, "Sign in securely" button)
+        //   → /authV2/password     (password entry, "Verify" button)
+        //   → /home                (dashboard)
+        //
+        // Restoring the storageState preserves lang_selected + auth cookies,
+        // but the SPA does NOT restore to /authV2/password because React
+        // in-memory state is not persisted between contexts.  We must always
+        // re-drive the identifier → password form navigation.
 
-        // Check if already on password page
-        const pwdOnPage = await tryLocator(page, SEL.PASSWORD_INPUT);
-        if (!pwdOnPage) {
-          // Try to navigate to password step
-          try {
-            await page.goto(pwdUrl, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
-            await page.waitForTimeout(1_500);
-          } catch { /* continue */ }
+        // 1. Handle language interstitial if the session restore left us there.
+        await handleLanguageInterstitial(page);
+        await page.waitForTimeout(500);
 
-          // If still no password field, navigate to entry and re-fill identifier
-          const pwdAfterNav = await tryLocator(page, SEL.PASSWORD_INPUT);
-          if (!pwdAfterNav) {
-            // Re-navigate to identifier entry and re-submit
+        // 2. Check if session already restored to a full dashboard state.
+        //    Mid-login sessions should never be here, but a cached CONNECTED
+        //    session would skip the password step entirely.
+        const urlAfterRestore = page.url();
+        const restoredToDashboard =
+          (!isLoginUrl(urlAfterRestore) || isDashboardUrl(urlAfterRestore)) &&
+          (await verifyDashboardAuthenticated(page)).verified;
+
+        if (!restoredToDashboard) {
+          // 3. If session is already on the password page, skip re-entry.
+          let pwdOnPage = await tryLocator(page, SEL.PASSWORD_INPUT);
+
+          if (!pwdOnPage) {
+            // 4. Try navigating directly to /authV2/password.
+            //    The SPA + restored localStorage may render the password form
+            //    without requiring identifier re-entry.
+            try {
+              await page.goto(`${getPortalOrigin()}/authV2/password`, {
+                waitUntil: "domcontentloaded",
+                timeout: NAV_TIMEOUT_MS,
+              });
+              await page.waitForTimeout(1_500);
+              // Handle language interstitial in case it appears on direct nav.
+              await handleLanguageInterstitial(page);
+              await page.waitForTimeout(500);
+              pwdOnPage = await tryLocator(page, SEL.PASSWORD_INPUT);
+            } catch { /* continue to full re-entry */ }
+          }
+
+          if (!pwdOnPage) {
+            // 5. Full re-entry: navigate to identifier form, re-submit the
+            //    stored identifier, then wait for /authV2/password to render.
+            //    This is the reliable fallback — SPA in-memory state is not
+            //    preserved across isolated browser contexts.
             const loginState = await navigateToLogin(page);
             if (!loginState || loginState === "captcha" || loginState === "manual_action") {
               return {
@@ -1486,62 +1521,61 @@ export const pineLabsOneAdapter: ProviderAdapter = {
               };
             }
 
-            if ((loginState === "identifier_form") && adData.storedIdentifier) {
+            if (loginState === "identifier_form" && adData.storedIdentifier) {
               const filled = await fillIdentifier(page, adData.storedIdentifier);
               if (filled) {
                 await page.waitForTimeout(300);
                 await clickSubmit(page, SEL.NEXT_BTN);
-                await waitForAny(page, SEL.PASSWORD_INPUT, NAV_TIMEOUT_MS);
+                // Wait for /authV2/password URL OR password input visible —
+                // whichever comes first (SPA navigation completes before render).
+                await Promise.race([
+                  waitForAny(page, SEL.PASSWORD_INPUT, NAV_TIMEOUT_MS).catch(() => {}),
+                  page.waitForURL(
+                    (u: URL) => u.pathname.toLowerCase().includes("/authv2/password"),
+                    { timeout: NAV_TIMEOUT_MS },
+                  ).catch(() => {}),
+                ]);
+                await page.waitForTimeout(500);
+                pwdOnPage = await tryLocator(page, SEL.PASSWORD_INPUT);
               }
+            } else if (loginState === "password_form") {
+              // navigateToLogin() detected the password page directly.
+              pwdOnPage = await tryLocator(page, SEL.PASSWORD_INPUT);
             }
           }
+
+          // 6. Fill password
+          const pwdFilled = await fillPassword(page, credential);
+          // credential (password) goes out of scope after this — never stored
+          if (!pwdFilled) {
+            const diag = await collectDiagnostics(page);
+            return {
+              status: "FAILED",
+              failReason: "PASSWORD_FIELD_NOT_FOUND",
+              failDetail:
+                `Could not locate the password field on the Pine Labs ONE portal ` +
+                `(path=${diag.urlPath}, inputs=${diag.visibleInputCount}). ` +
+                "The portal UI may have changed — please contact RasoKart support.",
+            };
+          }
+
+          // 7. Submit password — "Verify" button on /authV2/password (Aug 2026)
+          await page.waitForTimeout(400);
+          await clickSubmit(page, SEL.SIGN_IN_BTN);
+
+          // 8. Wait for outcome: dashboard, OTP (portal may offer OTP switch),
+          //    error, CAPTCHA, or account block
+          const allOutcomes = [
+            ...SEL.DASHBOARD_LANDMARK,
+            ...SEL.OTP_INPUT_SINGLE,
+            ...SEL.OTP_DIGIT_BOX,
+            ...SEL.ERROR_MSG,
+            ...SEL.CAPTCHA,
+            ...SEL.BLOCKED,
+            ...SEL.MANUAL_ACTION,
+          ];
+          await waitForAny(page, allOutcomes, NAV_TIMEOUT_MS);
         }
-
-        // Try alternate URL if password field still not visible
-        try {
-          await page.goto(altPwdUrl, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
-          await page.waitForTimeout(1_500);
-        } catch { /* continue */ }
-
-        // Fill identifier again if visible (some portals require both fields on password page)
-        const identStillVisible = await tryLocator(page, SEL.IDENTIFIER_INPUT);
-        if (identStillVisible && adData.storedIdentifier) {
-          try {
-            await identStillVisible.click({ timeout: ACTION_TIMEOUT_MS });
-            await identStillVisible.fill(adData.storedIdentifier, { timeout: ACTION_TIMEOUT_MS });
-          } catch { /* continue */ }
-        }
-
-        // Fill password
-        const pwdFilled = await fillPassword(page, credential);
-        // credential (password) goes out of scope after this — never stored
-        if (!pwdFilled) {
-          const diag = await collectDiagnostics(page);
-          return {
-            status: "FAILED",
-            failReason: "PASSWORD_FIELD_NOT_FOUND",
-            failDetail:
-              `Could not locate the password field on the Pine Labs ONE portal ` +
-              `(path=${diag.urlPath}, inputs=${diag.visibleInputCount}). ` +
-              "The portal UI may have changed — please contact RasoKart support.",
-          };
-        }
-
-        // Submit password
-        await page.waitForTimeout(400);
-        await clickSubmit(page, SEL.SIGN_IN_BTN);
-
-        // Wait for outcome: dashboard, OTP, error, CAPTCHA, block
-        const allOutcomes = [
-          ...SEL.DASHBOARD_LANDMARK,
-          ...SEL.OTP_INPUT_SINGLE,
-          ...SEL.OTP_DIGIT_BOX,
-          ...SEL.ERROR_MSG,
-          ...SEL.CAPTCHA,
-          ...SEL.BLOCKED,
-          ...SEL.MANUAL_ACTION,
-        ];
-        await waitForAny(page, allOutcomes, NAV_TIMEOUT_MS);
       }
 
       // ── Shared outcome checks ─────────────────────────────────────────────
