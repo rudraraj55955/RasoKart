@@ -14,13 +14,14 @@
  * ────────
  * 1. Intercept the initiate endpoint and return AWAITING_PASSWORD so the UI
  *    transitions to the password-entry step without hitting the real adapter.
- * 2. Intercept submit-step with a ~2-second artificial delay.  During that
- *    window the button shows "Connecting…" and is `disabled`.
- * 3. Click "Continue with Password", then immediately click again with
- *    `force: true` to bypass Playwright's built-in actionability checks
- *    (simulating a tap that arrives before React re-renders).  A third attempt
- *    via Enter on the password input confirms the keyboard path is also guarded.
- * 4. Assert exactly ONE submit-step request was received.
+ * 2. Wrap `window.fetch` before the page loads. At the submit-step fetch
+ *    boundary, synchronously activate the password button again before the
+ *    first request leaves the browser or React can render its disabled state.
+ * 3. Intercept submit-step with a ~2-second artificial delay. During that
+ *    window the button still shows "Connecting…" and is `disabled`; Enter
+ *    attempts are also guarded.
+ * 4. Assert the re-entrant activation occurs exactly once and exactly ONE
+ *    submit-step request was received.
  *
  * All network calls are fully mocked — no real Pine Labs ONE portal or
  * Playwright adapter run is involved.
@@ -152,6 +153,45 @@ async function mockRoutes(
   );
 }
 
+/**
+ * Make a second DOM activation in the exact same JavaScript turn as the first
+ * password submit-step fetch. This deliberately happens before `fetch` sends
+ * the request and before React can commit the loading/disabled UI, which is
+ * the timing window a state-only in-flight guard would miss.
+ */
+async function installSubmitStepReentrancy(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const originalFetch = window.fetch.bind(window);
+    let reentrancyUsed = false;
+
+    window.fetch = (...args) => {
+      const [input] = args;
+      const url = input instanceof Request ? input.url : String(input);
+
+      if (
+        !reentrancyUsed &&
+        url.includes("/api/merchant/portal-sessions/pinelabs_one/submit-step")
+      ) {
+        reentrancyUsed = true;
+        const passwordButton = Array.from(document.querySelectorAll("button"))
+          .find(button => button.textContent?.includes("Continue with Password"));
+
+        if (passwordButton instanceof HTMLButtonElement) {
+          (window as Window & {
+            __pineLabsPasswordReentrantActivations?: number;
+          }).__pineLabsPasswordReentrantActivations =
+            ((window as Window & {
+              __pineLabsPasswordReentrantActivations?: number;
+            }).__pineLabsPasswordReentrantActivations ?? 0) + 1;
+          passwordButton.click();
+        }
+      }
+
+      return originalFetch(...args);
+    };
+  });
+}
+
 // ── token ─────────────────────────────────────────────────────────────────────
 
 let merchantToken: string;
@@ -209,11 +249,14 @@ test(
     await expect(connectBtnInFlight).toBeVisible({ timeout: 2_000 });
     await expect(connectBtnInFlight).toBeDisabled({ timeout: 2_000 });
 
-    // After the response lands the button reverts to its idle label
-    await expect(connectBtnReady).toBeEnabled({
+    // After the response lands the button reverts to its idle label, but stays
+    // disabled because the one-use password has been cleared.
+    await expect(connectBtnReady).toBeVisible({
       timeout: DELAY + 4_000,
     });
+    await expect(connectBtnReady).toBeDisabled();
     await expect(connectBtnInFlight).not.toBeVisible({ timeout: 2_000 });
+    await expect(passwordInput).toHaveValue("");
 
     // Exactly one request must have been sent
     expect(counters.submitStep).toBe(1);
@@ -224,8 +267,10 @@ test(
   "Fast double-tap and Enter while password is in-flight send only one submit-step request",
   async ({ page }) => {
     const counters = { initiate: 0, submitStep: 0 };
-    // 2-second delay keeps the request in-flight while we fire the extra taps.
+    // 2-second delay keeps the request in-flight while we exercise loading and
+    // keyboard feedback after the re-entrant activation.
     const DELAY = 2_000;
+    await installSubmitStepReentrancy(page);
     await mockRoutes(page, counters, DELAY);
     await goToConnect(page, merchantToken);
 
@@ -252,25 +297,32 @@ test(
 
     await expect(connectBtnReady).toBeEnabled({ timeout: 4_000 });
 
-    // ── Tap 1: normal click — starts the first (and only) submit-step call ───
+    // ── Tap 1: normal click ──────────────────────────────────────────────────
+    // The fetch wrapper synchronously activates this button one more time at
+    // the submit-step request boundary, before React can render it disabled.
     await connectBtnReady.click();
 
-    // Confirm in-flight state before the extra taps
+    // The nested activation must have happened exactly once.
+    await expect.poll(async () => page.evaluate(() => (
+      (window as Window & {
+        __pineLabsPasswordReentrantActivations?: number;
+      }).__pineLabsPasswordReentrantActivations ?? 0
+    ))).toBe(1);
+
+    // Confirm existing loading feedback still renders after the boundary race.
     await expect(connectBtnInFlight).toBeVisible({ timeout: 2_000 });
+    await expect(connectBtnInFlight).toBeDisabled({ timeout: 2_000 });
 
-    // ── Tap 2: force-click the disabled in-flight button ────────────────────
-    // `force: true` bypasses Playwright's actionability checks, simulating a
-    // second DOM click that would reach the handler if the ref guard were absent.
-    await connectBtnInFlight.click({ force: true });
-
-    // ── Tap 3 & 4: keyboard Enter while in-flight ────────────────────────────
+    // Keyboard submits after the loading state appears remain guarded too.
     await passwordInput.press("Enter");
     await passwordInput.press("Enter");
 
     // Wait for the delayed response to resolve
     await page.waitForTimeout(DELAY + 1_000);
 
-    // The ref guard must have blocked taps 2–4: only ONE request sent.
+    // The ref guard must have blocked the same-frame nested click and Enter:
+    // only ONE request reached the mocked API, and the password was cleared.
     expect(counters.submitStep).toBe(1);
+    await expect(passwordInput).toHaveValue("");
   },
 );

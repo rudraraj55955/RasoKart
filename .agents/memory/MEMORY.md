@@ -105,3 +105,4 @@
 - [Pine Labs ONE live authV2 OTP page DOM](pinelabs-one-live-otp-page.md) — live-verified 2026-08-18: mobile logins are always OTP-first (no password page/OTP link); resend is a div[role=button] id$=resend-link; use :text-is to dodge cooldown text.
 - [Pine Labs ONE portal-OTP and resend pattern](pinelabs-one-portal-otp-pattern.md) — portal_otp/resend_otp are credential-free submitStep loginMethods; branches run BEFORE the credential check; both use isolated contexts (newIsolatedContext), never share the main ctx.
 - [Portal connector E2E anchors](portal-connector-e2e-anchors.md) — exercise re-entrant taps at the request boundary and anchor specs to stable controls, not configurable provider names.
+- [Concurrent settings validation collision](concurrent-settings-validation-collision.md) — settings checks mutate shared config; concurrent completion runs can invalidate each other's snapshots, so confirm failures in isolation.
