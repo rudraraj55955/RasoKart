@@ -10,6 +10,7 @@ pnpm --filter @workspace/scripts run verify-demo-credentials
 # not blocked.  Set those vars in ecosystem.config.cjs to enable the full check.
 pnpm --filter @workspace/scripts run verify-alert-email-samples
 pnpm --filter @workspace/scripts run verify-priority-conflict-tests
+pnpm --filter @workspace/scripts run test:github-sync-concurrency
 
 # GitHub mirroring is best-effort. The sync command records its own failure
 # state and sends the configured admin alert, but a missing/expired GitHub

@@ -7,6 +7,7 @@
     "hello": "tsx ./src/hello.ts",
     "db-migrate": "tsx ./src/db-migrate.ts",
     "github-sync": "tsx ./src/github-sync.ts",
+    "test:github-sync-concurrency": "node --import tsx/esm --test ./src/github-sync-git-auth.test.ts",
     "fix-credentials": "tsx ./src/fix-credentials.ts",
     "verify-demo-credentials": "tsx ./src/verify-demo-credentials.ts",
     "verify-settings-persistence": "tsx ./src/verify-settings-persistence.ts",
