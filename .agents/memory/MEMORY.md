@@ -106,3 +106,4 @@
 - [Pine Labs ONE portal-OTP and resend pattern](pinelabs-one-portal-otp-pattern.md) — portal_otp/resend_otp are credential-free submitStep loginMethods; branches run BEFORE the credential check; both use isolated contexts (newIsolatedContext), never share the main ctx.
 - [Portal connector E2E anchors](portal-connector-e2e-anchors.md) — exercise re-entrant taps at the request boundary and anchor specs to stable controls, not configurable provider names.
 - [Concurrent settings validation collision](concurrent-settings-validation-collision.md) — settings checks mutate shared config; concurrent completion runs can invalidate each other's snapshots, so confirm failures in isolation.
+- [Post-merge GitHub sync isolation](post-merge-github-sync-isolation.md) — GitHub mirror failures are reported by the sync job but must never abort dependency, migration, or workflow reconciliation.
