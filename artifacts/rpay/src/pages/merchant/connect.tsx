@@ -1883,6 +1883,13 @@ function PaytmPortalCard({
    * re-renders — making the handler truly non-reentrant on fast double-taps.
    */
   const submittingOtpRef = useRef(false);
+  /**
+   * Ref-based in-flight guard for handleSubmitPassword.
+   * Mirrors submittingOtpRef so fast double-taps on the password submit button
+   * cannot fire duplicate POST requests before React re-renders the button to
+   * disabled.
+   */
+  const submittingPasswordRef = useRef(false);
 
   // Sync UI step when session prop changes (e.g. after query invalidation)
   useEffect(() => {
@@ -2005,8 +2012,13 @@ function PaytmPortalCard({
 
   // ── Step 2b: submit Password (password-mode login) ───────────────────────────
   async function handleSubmitPassword() {
+    // Synchronous ref guard — prevents duplicate POSTs from fast double-taps
+    // that arrive before React re-renders the button to disabled.
+    if (submittingPasswordRef.current) return;
+    submittingPasswordRef.current = true;
     const pw = password.trim();
     if (!pw) {
+      submittingPasswordRef.current = false;
       setErrorMsg("Enter your Paytm Business account password.");
       return;
     }
@@ -2043,6 +2055,7 @@ function PaytmPortalCard({
       setPassword(""); // still wipe on error
       setErrorMsg("Could not submit password. Please try again.");
     } finally {
+      submittingPasswordRef.current = false;
       setSubmitting(false);
     }
   }

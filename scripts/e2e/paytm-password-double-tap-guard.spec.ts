@@ -5,10 +5,9 @@
  * PaytmMerchantPortalCard must not fire two POST requests to
  * /api/merchant/portal-sessions/paytm_merchant/submit-step.
  *
- * The password path uses a React `submitting` state flag rather than a
- * synchronous ref.  This test documents the expected contract: once the first
- * request is in-flight and React has re-rendered the button to "Connecting…"
- * (disabled), no further duplicate requests should be sent.
+ * The password path uses a synchronous ref guard in addition to the React
+ * `submitting` state flag. The ref is checked before React can re-render the
+ * button, so the handler remains non-reentrant on fast double-taps.
  *
  * Strategy
  * ────────
@@ -18,7 +17,7 @@
  *    window the button shows "Connecting…" and is `disabled`.
  * 3. Click "Connect", then immediately click again with `force: true` to
  *    bypass Playwright's built-in actionability checks (simulating a tap that
- *    arrives before React re-renders).  A third attempt via Enter on the
+ *    arrives before React re-renders). A third attempt via Enter on the
  *    password input confirms the keyboard path is also guarded.
  * 4. Assert exactly ONE submit-step request was received.
  *
@@ -170,9 +169,10 @@ test(
     await mockRoutes(page, counters, DELAY);
     await goToConnect(page, merchantToken);
 
-    // Locate the Paytm card
+    // Anchor on the stable Paytm-specific identifier input rather than the
+    // configurable provider display name.
     await expect(
-      page.locator("text=Paytm Business Merchant Connector").first(),
+      page.getByPlaceholder("Mobile or email registered with Paytm Business"),
     ).toBeVisible({ timeout: 15_000 });
 
     // Enter a mobile number and send the initiate request
@@ -209,10 +209,12 @@ test(
     await expect(connectBtnInFlight).toBeVisible({ timeout: 2_000 });
     await expect(connectBtnInFlight).toBeDisabled({ timeout: 2_000 });
 
-    // After the response lands the button reverts to its idle label
-    await expect(connectBtnReady).toBeEnabled({
+    // The password is cleared after submission, so the idle button returns
+    // disabled until the merchant enters a fresh password.
+    await expect(passwordInput).toHaveValue("", {
       timeout: DELAY + 4_000,
     });
+    await expect(connectBtnReady).toBeDisabled();
     await expect(connectBtnInFlight).not.toBeVisible({ timeout: 2_000 });
 
     // Exactly one request must have been sent
@@ -230,7 +232,7 @@ test(
     await goToConnect(page, merchantToken);
 
     await expect(
-      page.locator("text=Paytm Business Merchant Connector").first(),
+      page.getByPlaceholder("Mobile or email registered with Paytm Business"),
     ).toBeVisible({ timeout: 15_000 });
 
     // Enter mobile and initiate
@@ -273,6 +275,95 @@ test(
 
     // React's `submitting` state guard must have blocked taps 2–4:
     // only ONE request should have been sent.
+    expect(counters.submitStep).toBe(1);
+  },
+);
+
+test(
+  "Re-entrant password double-tap in the same render frame sends only one submit-step request",
+  async ({ page }) => {
+    const counters = { initiate: 0, submitStep: 0 };
+    // Keep the first request in flight while the second click is dispatched
+    // from inside its fetch boundary, before React can re-render the button.
+    const DELAY = 2_000;
+
+    // Install before navigation so the app module uses the instrumented request
+    // boundary. It stays inert until the password form has been prepared.
+    await page.addInitScript(() => {
+      const testWindow = window as Window & {
+        __paytmPasswordReentrantEnabled?: boolean;
+        __paytmPasswordReentrantDispatch?: number;
+      };
+      testWindow.__paytmPasswordReentrantEnabled = false;
+      testWindow.__paytmPasswordReentrantDispatch = 0;
+      const originalFetch = window.fetch.bind(window);
+
+      window.fetch = (input, init) => {
+        const url = typeof input === "string"
+          ? input
+          : input instanceof Request
+            ? input.url
+            : String(input);
+        if (
+          testWindow.__paytmPasswordReentrantEnabled &&
+          url.includes("/api/merchant/portal-sessions/paytm_merchant/submit-step") &&
+          testWindow.__paytmPasswordReentrantDispatch === 0
+        ) {
+          const button = Array.from(document.querySelectorAll("button")).find(
+            candidate => candidate.textContent?.trim() === "Connect",
+          );
+          if (!button) throw new Error("Connect button not found in DOM");
+          testWindow.__paytmPasswordReentrantDispatch = 1;
+          button.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+        }
+        return originalFetch(input, init);
+      };
+    });
+
+    await mockRoutes(page, counters, DELAY);
+    await goToConnect(page, merchantToken);
+
+    const mobileInput = page.getByPlaceholder(
+      "Mobile or email registered with Paytm Business",
+    );
+    await expect(mobileInput).toBeVisible({ timeout: 15_000 });
+    await mobileInput.fill("9876543210");
+    await page.getByRole("button", { name: /Connect Paytm Business/ }).click();
+    await expect(
+      page.getByText("Password Required").first(),
+    ).toBeVisible({ timeout: 10_000 });
+
+    const passwordInput = page.getByPlaceholder("Your Paytm Business password");
+    await passwordInput.fill("S3cr3tPass!");
+
+    const connectBtnReady = page.getByRole("button", { name: /^Connect$/i });
+    await expect(connectBtnReady).toBeEnabled({ timeout: 4_000 });
+
+    // Enable the fetch hook so the second click is dispatched while the first
+    // handleSubmitPassword invocation is still executing:
+    //
+    //   first click → submittingPasswordRef=false → set true → fetch()
+    //     └─ second click → submittingPasswordRef=true → return early
+    //
+    // This is stronger than two sequential clicks because React has no chance
+    // to re-render between the two handler invocations.
+    await page.evaluate(() => {
+      const testWindow = window as Window & {
+        __paytmPasswordReentrantEnabled?: boolean;
+        __paytmPasswordReentrantDispatch?: number;
+      };
+      testWindow.__paytmPasswordReentrantDispatch = 0;
+      testWindow.__paytmPasswordReentrantEnabled = true;
+    });
+    await connectBtnReady.click();
+
+    await page.waitForTimeout(DELAY + 1_000);
+
+    expect(
+      await page.evaluate(() => (window as Window & {
+        __paytmPasswordReentrantDispatch?: number;
+      }).__paytmPasswordReentrantDispatch),
+    ).toBe(1);
     expect(counters.submitStep).toBe(1);
   },
 );
