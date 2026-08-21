@@ -48,6 +48,17 @@ const FAKE_INITIATE_AWAITING_OTP = {
   helpUrl: null,
 };
 
+const FAKE_AWAITING_OTP_SESSION = {
+  id: 901,
+  merchantId: 1,
+  providerSlug: "pinelabs_one",
+  status: "AWAITING_OTP",
+  lastErrorCode: null,
+  lastStatusMessage: "OTP sent to your registered mobile.",
+  connectedAt: null,
+  updatedAt: "2026-08-19T00:00:00.000Z",
+};
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 async function goToConnect(page: Page, merchantToken: string): Promise<void> {
@@ -65,6 +76,8 @@ async function mockRoutes(
   counters: { initiate: number; submitStep: number },
   submitStepDelayMs = 0,
 ): Promise<void> {
+  let awaitingOtpSession = false;
+
   await page.route("**/api/providers*", async (route: Route) => {
     if (route.request().method() === "GET") {
       await route.fulfill({
@@ -81,7 +94,9 @@ async function mockRoutes(
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ sessions: [] }),
+      body: JSON.stringify({
+        sessions: awaitingOtpSession ? [FAKE_AWAITING_OTP_SESSION] : [],
+      }),
     });
   });
 
@@ -89,6 +104,7 @@ async function mockRoutes(
     "**/api/merchant/portal-sessions/pinelabs_one/initiate",
     async (route: Route) => {
       counters.initiate += 1;
+      awaitingOtpSession = true;
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -153,6 +169,38 @@ test("OTP-first initiate shows OTP step with a cooldown-locked Resend button", a
   const resendBtn = page.getByRole("button", { name: /Resend OTP \(\d+s\)/ });
   await expect(resendBtn).toBeVisible();
   await expect(resendBtn).toBeDisabled();
+});
+
+test("OTP resend cooldown survives leaving and returning to connect", async ({ page }) => {
+  const counters = { initiate: 0, submitStep: 0 };
+  await mockRoutes(page, counters);
+  await goToConnect(page, merchantToken);
+
+  const idInput = page.getByPlaceholder(
+    "Email ID or 10-digit mobile registered with Pine Labs ONE",
+  );
+  await idInput.fill("9876543210");
+  await page.getByRole("button", { name: /Connect Pine Labs ONE/ }).click();
+
+  const initialResendButton = page.getByRole("button", {
+    name: /Resend OTP \(\d+s\)/,
+  });
+  await expect(initialResendButton).toBeDisabled({ timeout: 10_000 });
+
+  // Unmount the connect card while its initial 60-second timer is still active.
+  await page.goto("/merchant");
+  await page.goto("/merchant/connect");
+  await page.waitForLoadState("networkidle");
+
+  // The server still reports this session as awaiting its OTP. On remount, the
+  // persisted expiry restores both the OTP-first resend control and its gate.
+  await expect(page.getByText("OTP Sent").first()).toBeVisible({ timeout: 10_000 });
+  const returnedResendButton = page.getByRole("button", {
+    name: /Resend OTP \(\d+s\)/,
+  });
+  await expect(returnedResendButton).toBeVisible();
+  await expect(returnedResendButton).toBeDisabled();
+  expect(counters.submitStep).toBe(0);
 });
 
 test("Enter during an in-flight resend does not fire a second submit-step", async ({ page }) => {

@@ -240,6 +240,83 @@ async function portalFetch(path: string, init?: RequestInit): Promise<Response> 
 // paytm_merchant: Registered Mobile + OTP — portal_session_connector (Playwright).
 const PORTAL_PROVIDER_SLUGS = new Set(["pinelabs_one", "razorpay", "paytm_merchant"]);
 
+const PINE_LABS_OTP_COOLDOWN_STORAGE_PREFIX =
+  "rasokart:pinelabs_one:otp-resend-cooldown:";
+const PINE_LABS_OTP_COOLDOWN_PENDING_KEY =
+  `${PINE_LABS_OTP_COOLDOWN_STORAGE_PREFIX}pending`;
+type PineLabsOtpCooldownSource = "portal_link" | "otp_first";
+interface PineLabsOtpCooldownRecord {
+  expiresAt: number;
+  source: PineLabsOtpCooldownSource;
+}
+
+function pineLabsOtpCooldownStorageKey(sessionId: number | null): string {
+  return sessionId === null
+    ? PINE_LABS_OTP_COOLDOWN_PENDING_KEY
+    : `${PINE_LABS_OTP_COOLDOWN_STORAGE_PREFIX}${sessionId}`;
+}
+
+function readPineLabsOtpCooldown(
+  sessionId: number | null,
+): PineLabsOtpCooldownRecord | null {
+  try {
+    const keys = sessionId === null
+      ? [PINE_LABS_OTP_COOLDOWN_PENDING_KEY]
+      : [
+          pineLabsOtpCooldownStorageKey(sessionId),
+          PINE_LABS_OTP_COOLDOWN_PENDING_KEY,
+        ];
+    for (const key of keys) {
+      const raw = sessionStorage.getItem(key);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw) as Partial<PineLabsOtpCooldownRecord>;
+      if (
+        typeof parsed.expiresAt !== "number" ||
+        !Number.isFinite(parsed.expiresAt) ||
+        (parsed.source !== "portal_link" && parsed.source !== "otp_first")
+      ) {
+        sessionStorage.removeItem(key);
+        continue;
+      }
+      if (parsed.expiresAt <= Date.now()) {
+        sessionStorage.removeItem(key);
+        continue;
+      }
+      return parsed as PineLabsOtpCooldownRecord;
+    }
+  } catch {
+    // Storage can be unavailable in privacy-restricted browser contexts.
+  }
+  return null;
+}
+
+function persistPineLabsOtpCooldown(
+  sessionId: number | null,
+  source: PineLabsOtpCooldownSource,
+): number {
+  const expiresAt = Date.now() + 60_000;
+  try {
+    sessionStorage.setItem(pineLabsOtpCooldownStorageKey(sessionId), JSON.stringify({
+      expiresAt,
+      source,
+    } satisfies PineLabsOtpCooldownRecord));
+  } catch {
+    // The in-memory timer still protects the current mounted component.
+  }
+  return expiresAt;
+}
+
+function clearPineLabsOtpCooldown(sessionId: number | null): void {
+  try {
+    sessionStorage.removeItem(pineLabsOtpCooldownStorageKey(sessionId));
+    if (sessionId !== null) {
+      sessionStorage.removeItem(PINE_LABS_OTP_COOLDOWN_PENDING_KEY);
+    }
+  } catch {
+    // Storage can be unavailable in privacy-restricted browser contexts.
+  }
+}
+
 // ── API hooks ─────────────────────────────────────────────────────────────────
 
 const ENROLLMENT_QUERY_KEY = ["merchant", "enrollments"] as const;
@@ -2475,10 +2552,10 @@ function PineLabsOnePortalCard({
   const [errorMsg, setErrorMsg]     = useState<string | null>(null);
   /** Loading state while the adapter clicks the portal's "Login with OTP" link. */
   const [requestingOtp, setRequestingOtp] = useState(false);
-  /** Resend OTP cooldown: remaining seconds (0 = button enabled). */
-  const [resendCooldown, setResendCooldown] = useState(0);
   /** True while a resend_otp submit-step request is in flight. */
   const [resending, setResending] = useState(false);
+  const initialCooldown = readPineLabsOtpCooldown(session?.id ?? null);
+  const resendCooldownExpiresAtRef = useRef<number | null>(initialCooldown?.expiresAt ?? null);
   /**
    * How the current AWAITING_OTP was reached:
    *   "2fa"          — portal triggered 2FA after password submission
@@ -2487,7 +2564,13 @@ function PineLabsOnePortalCard({
    *                    (the live authV2 flow for mobile/email logins — no
    *                    password page is ever shown)
    */
-  const [otpSource, setOtpSource] = useState<"2fa" | "portal_link" | "otp_first">("2fa");
+  const [otpSource, setOtpSource] = useState<"2fa" | PineLabsOtpCooldownSource>(
+    initialCooldown?.source ?? "2fa",
+  );
+  const [resendCooldown, setResendCooldown] = useState(() => {
+    if (!initialCooldown) return 0;
+    return Math.max(0, Math.ceil((initialCooldown.expiresAt - Date.now()) / 1_000));
+  });
   /**
    * Ref-based in-flight guard for handleSubmitOtp.
    * A ref (not state) is used so the check is synchronous — before React
@@ -2509,17 +2592,67 @@ function PineLabsOnePortalCard({
    */
   const resendingRef = useRef(false);
 
+  function startResendCooldown(source: PineLabsOtpCooldownSource) {
+    resendCooldownExpiresAtRef.current = persistPineLabsOtpCooldown(
+      session?.id ?? null,
+      source,
+    );
+    setResendCooldown(60);
+  }
+
+  function resetResendCooldown() {
+    resendCooldownExpiresAtRef.current = null;
+    setResendCooldown(0);
+    clearPineLabsOtpCooldown(session?.id ?? null);
+  }
+
   useEffect(() => {
     setUiStep(deriveStep(session));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.status]);
 
-  // Resend OTP cooldown countdown timer
+  // Restore a cooldown after the card is remounted. The server session ID is
+  // preferred; a pending key bridges the short window between initiating the
+  // session and the portal-sessions query returning its ID.
   useEffect(() => {
-    if (resendCooldown <= 0) return;
-    const t = setTimeout(() => setResendCooldown(c => c - 1), 1_000);
-    return () => clearTimeout(t);
-  }, [resendCooldown]);
+    const cooldown = readPineLabsOtpCooldown(session?.id ?? null);
+    if (!cooldown) return;
+    if (session?.id != null) {
+      try {
+        sessionStorage.setItem(
+          pineLabsOtpCooldownStorageKey(session.id),
+          JSON.stringify(cooldown),
+        );
+        sessionStorage.removeItem(PINE_LABS_OTP_COOLDOWN_PENDING_KEY);
+      } catch {
+        // The in-memory timer still protects the currently mounted card.
+      }
+    }
+    resendCooldownExpiresAtRef.current = cooldown.expiresAt;
+    setResendCooldown(
+      Math.max(0, Math.ceil((cooldown.expiresAt - Date.now()) / 1_000)),
+    );
+    setOtpSource(cooldown.source);
+  }, [session?.id]);
+
+  // Resend OTP cooldown countdown timer. The absolute expiry prevents a
+  // remount/navigation from resetting the full 60 seconds.
+  useEffect(() => {
+    if (!resendCooldownExpiresAtRef.current) return;
+    const updateCooldown = () => {
+      const expiresAt = resendCooldownExpiresAtRef.current;
+      if (!expiresAt) return;
+      const remaining = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1_000));
+      setResendCooldown(remaining);
+      if (remaining === 0) {
+        resendCooldownExpiresAtRef.current = null;
+        clearPineLabsOtpCooldown(session?.id ?? null);
+      }
+    };
+    updateCooldown();
+    const t = setInterval(updateCooldown, 1_000);
+    return () => clearInterval(t);
+  }, [resendCooldown, session?.id]);
 
   const providerName = "Pine Labs ONE";
   const cmeta = CATEGORY_META["pos"] ?? { label: "POS", color: "bg-orange-500/10 text-orange-400 border-orange-500/20" };
@@ -2569,7 +2702,7 @@ function PineLabsOnePortalCard({
         // Resend control, so enable the Resend button with the portal's
         // initial cooldown.
         setOtpSource("otp_first");
-        setResendCooldown(60);
+        startResendCooldown("otp_first");
         setUiStep("otp");
         toast.success("OTP sent to your registered email or mobile. Enter it below.");
       } else if (result.status === "AWAITING_USER_ACTION") {
@@ -2650,7 +2783,7 @@ function PineLabsOnePortalCard({
       if (body.status === "AWAITING_OTP") {
         setOtpSource("portal_link");
         setUiStep("otp");
-        setResendCooldown(60);
+        startResendCooldown("portal_link");
         toast.info(body.message ?? "OTP sent to your registered mobile or email. Enter it below.");
       } else if (body.errorCode === "OTP_NOT_AVAILABLE" || body.status === "AWAITING_PASSWORD") {
         // The portal's OTP login is not available for this account.
@@ -2680,7 +2813,8 @@ function PineLabsOnePortalCard({
     // second call before the button re-renders to disabled.
     if (resendingRef.current || resendCooldown > 0 || resending) return;
     resendingRef.current = true;
-    setResendCooldown(60); // start cooldown immediately to prevent double-click
+    startResendCooldown(otpSource === "portal_link" ? "portal_link" : "otp_first");
+    // Start cooldown immediately to prevent double-click.
     setResending(true);
     setErrorMsg(null);
     try {
@@ -2697,18 +2831,18 @@ function PineLabsOnePortalCard({
       } else if (body.status === "AWAITING_OTP" && body.errorCode) {
         // Resend attempted but button not found or click failed (errorCode = RESEND_NOT_AVAILABLE etc.).
         // The existing OTP session is still alive; show the adapter's message.
-        setResendCooldown(0); // re-enable button so merchant can retry
+        resetResendCooldown(); // re-enable button so merchant can retry
         setErrorMsg(
           body.message ??
             "Could not resend OTP. Your existing OTP may still be valid — " +
             "enter it below or start over.",
         );
       } else {
-        setResendCooldown(0);
+        resetResendCooldown();
         setErrorMsg(body.message ?? "Could not resend OTP. Please start over.");
       }
     } catch {
-      setResendCooldown(0);
+      resetResendCooldown();
       setErrorMsg("Could not reach the server. Please try again.");
     } finally {
       resendingRef.current = false;
@@ -3146,7 +3280,7 @@ function PineLabsOnePortalCard({
                 setOtp("");
                 setErrorMsg(null);
                 setOtpSource("2fa");
-                setResendCooldown(0);
+                resetResendCooldown();
               }}
             >
               Start Over
