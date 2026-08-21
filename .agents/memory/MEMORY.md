@@ -104,3 +104,4 @@
 - [Pine Labs ONE CAPTCHA false-positive fix](pinelabs-one-captcha-false-positive.md) — hasCaptcha() needs count>0 + isVisible + bbox≥10px; React SPAs pre-load hidden CAPTCHA DOM nodes that fire count()>0 without being a real challenge.
 - [Pine Labs ONE live authV2 OTP page DOM](pinelabs-one-live-otp-page.md) — live-verified 2026-08-18: mobile logins are always OTP-first (no password page/OTP link); resend is a div[role=button] id$=resend-link; use :text-is to dodge cooldown text.
 - [Pine Labs ONE portal-OTP and resend pattern](pinelabs-one-portal-otp-pattern.md) — portal_otp/resend_otp are credential-free submitStep loginMethods; branches run BEFORE the credential check; both use isolated contexts (newIsolatedContext), never share the main ctx.
+- [Portal connector E2E anchors](portal-connector-e2e-anchors.md) — exercise re-entrant taps at the request boundary and anchor specs to stable controls, not configurable provider names.

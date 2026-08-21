@@ -18,10 +18,12 @@
  *    the ref guard fires synchronously BEFORE React sets `disabled`,
  *    protecting against cases where the second click lands before the
  *    first re-render.
- * 3. Click "Verify OTP", then immediately click again with `force: true`
- *    to bypass Playwright's built-in actionability checks.  A third
- *    attempt via Enter confirms the keyboard path is also guarded.
- * 4. Assert exactly ONE submit-step request was received.
+ * 3. Instrument the browser's fetch boundary so the first submit synchronously
+ *    dispatches a second click while handleSubmitOtp is still re-entrant,
+ *    before React can process the loading-state update.
+ * 4. Assert exactly ONE submit-step request was received. This proves the
+ *    synchronous ref—not the asynchronous React loading state—blocks the
+ *    second tap.
  *
  * All network calls are fully mocked — no real Paytm portal or
  * Playwright adapter run is involved.
@@ -168,16 +170,12 @@ test(
     await mockRoutes(page, counters, DELAY);
     await goToConnect(page, merchantToken);
 
-    // Locate the Paytm card
-    await expect(
-      page.locator("text=Paytm Business Merchant Connector").first(),
-    ).toBeVisible({ timeout: 15_000 });
-
-    // Enter a mobile number and send the initiate request
+    // The provider display name can be configured, so anchor the card on its
+    // stable Paytm-specific identifier input instead of a marketing label.
     const mobileInput = page.getByPlaceholder(
       "Mobile or email registered with Paytm Business",
     );
-    await expect(mobileInput).toBeVisible();
+    await expect(mobileInput).toBeVisible({ timeout: 15_000 });
     await mobileInput.fill("9876543210");
     await page.getByRole("button", { name: /Connect Paytm Business/ }).click();
 
@@ -206,10 +204,12 @@ test(
     await expect(verifyBtnInFlight).toBeVisible({ timeout: 2_000 });
     await expect(verifyBtnInFlight).toBeDisabled({ timeout: 2_000 });
 
-    // After the response lands the button reverts to its idle label
-    await expect(verifyBtnReady).toBeEnabled({
+    // OTPs are wiped after every submission attempt, so the idle button returns
+    // disabled until the merchant enters a fresh code.
+    await expect(otpInput).toHaveValue("", {
       timeout: DELAY + 4_000,
     });
+    await expect(verifyBtnReady).toBeDisabled();
     await expect(verifyBtnInFlight).not.toBeVisible({ timeout: 2_000 });
 
     // Exactly one request must have been sent
@@ -218,22 +218,51 @@ test(
 );
 
 test(
-  "Fast double-tap and Enter presses while in-flight send only one submit-step request",
+  "Re-entrant double-tap on Verify OTP sends only one submit-step request",
   async ({ page }) => {
     const counters = { initiate: 0, submitStep: 0 };
-    // 2-second delay keeps the request in-flight while we fire the extra taps.
+    // The delayed response keeps the first request in flight while the
+    // re-entrant second click is dispatched at the fetch boundary below.
     const DELAY = 2_000;
+    // Install before navigation so the app module uses the instrumented request
+    // boundary. It stays inert until the OTP form has been prepared.
+    await page.addInitScript(() => {
+      const testWindow = window as Window & {
+        __paytmOtpReentrantEnabled?: boolean;
+        __paytmOtpReentrantDispatch?: number;
+      };
+      testWindow.__paytmOtpReentrantEnabled = false;
+      testWindow.__paytmOtpReentrantDispatch = 0;
+      const originalFetch = window.fetch.bind(window);
+
+      window.fetch = (input, init) => {
+        const url = typeof input === "string"
+          ? input
+          : input instanceof Request
+            ? input.url
+            : String(input);
+        if (
+          testWindow.__paytmOtpReentrantEnabled &&
+          url.includes("/api/merchant/portal-sessions/paytm_merchant/submit-step") &&
+          testWindow.__paytmOtpReentrantDispatch === 0
+        ) {
+          const button = Array.from(document.querySelectorAll("button")).find(
+            candidate => candidate.textContent?.trim() === "Verify OTP",
+          );
+          if (!button) throw new Error("Verify OTP button not found in DOM");
+          testWindow.__paytmOtpReentrantDispatch = 1;
+          button.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+        }
+        return originalFetch(input, init);
+      };
+    });
     await mockRoutes(page, counters, DELAY);
     await goToConnect(page, merchantToken);
 
-    await expect(
-      page.locator("text=Paytm Business Merchant Connector").first(),
-    ).toBeVisible({ timeout: 15_000 });
-
-    // Enter mobile and initiate
     const mobileInput = page.getByPlaceholder(
       "Mobile or email registered with Paytm Business",
     );
+    await expect(mobileInput).toBeVisible({ timeout: 15_000 });
     await mobileInput.fill("9876543210");
     await page.getByRole("button", { name: /Connect Paytm Business/ }).click();
     await expect(
@@ -244,30 +273,37 @@ test(
     const otpInput = page.getByPlaceholder("••••••");
     await otpInput.fill("123456");
 
-    const verifyBtnReady    = page.getByRole("button", { name: /^Verify OTP$/i });
-    const verifyBtnInFlight = page.getByRole("button", { name: /Verifying…/i });
-
+    const verifyBtnReady = page.getByRole("button", { name: /^Verify OTP$/i });
     await expect(verifyBtnReady).toBeEnabled({ timeout: 4_000 });
 
-    // ── Tap 1: normal click — starts the first (and only) submit-step call ───
+    // Enable the pre-navigation fetch hook so the second click is dispatched
+    // from inside the first submit's request boundary. This nests the second
+    // React activation while handleSubmitOtp is still executing:
+    //
+    //   first click → submittingOtpRef=false → set true → fetch()
+    //     └─ second click → submittingOtpRef=true → return early
+    //
+    // Unlike two sequential dispatchEvent calls, this is a genuinely
+    // re-entrant activation that a state-only guard cannot reliably block.
+    await page.evaluate(() => {
+      const testWindow = window as Window & {
+        __paytmOtpReentrantEnabled?: boolean;
+        __paytmOtpReentrantDispatch?: number;
+      };
+      testWindow.__paytmOtpReentrantDispatch = 0;
+      testWindow.__paytmOtpReentrantEnabled = true;
+    });
     await verifyBtnReady.click();
-
-    // Confirm in-flight state before the extra taps
-    await expect(verifyBtnInFlight).toBeVisible({ timeout: 2_000 });
-
-    // ── Tap 2: force-click the disabled in-flight button ────────────────────
-    // `force: true` bypasses Playwright's actionability checks, simulating a
-    // second DOM click that would reach the handler if the ref guard were absent.
-    await verifyBtnInFlight.click({ force: true });
-
-    // ── Tap 3 & 4: keyboard Enter while in-flight ────────────────────────────
-    await otpInput.press("Enter");
-    await otpInput.press("Enter");
 
     // Wait for the delayed response to resolve
     await page.waitForTimeout(DELAY + 1_000);
 
-    // The ref guard must have blocked taps 2–4: only ONE request sent.
+    expect(
+      await page.evaluate(() => (window as Window & {
+        __paytmOtpReentrantDispatch?: number;
+      }).__paytmOtpReentrantDispatch),
+    ).toBe(1);
+    // The ref guard must have blocked the re-entrant second tap.
     expect(counters.submitStep).toBe(1);
   },
 );
