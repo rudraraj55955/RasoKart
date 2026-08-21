@@ -10,4 +10,10 @@ pnpm --filter @workspace/scripts run verify-demo-credentials
 # not blocked.  Set those vars in ecosystem.config.cjs to enable the full check.
 pnpm --filter @workspace/scripts run verify-alert-email-samples
 pnpm --filter @workspace/scripts run verify-priority-conflict-tests
-GITHUB_SYNC_FORCE=true pnpm --filter @workspace/scripts run github-sync
+
+# GitHub mirroring is best-effort. The sync command records its own failure
+# state and sends the configured admin alert, but a missing/expired GitHub
+# credential must not make the application post-merge setup fail.
+if ! GITHUB_SYNC_FORCE=true pnpm --filter @workspace/scripts run github-sync; then
+  echo "POST_MERGE: GitHub sync failed; continuing with post-merge setup."
+fi
