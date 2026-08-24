@@ -107,3 +107,4 @@
 - [Portal connector E2E anchors](portal-connector-e2e-anchors.md) — exercise re-entrant taps at the request boundary and anchor specs to stable controls, not configurable provider names.
 - [Concurrent settings validation collision](concurrent-settings-validation-collision.md) — settings checks mutate shared config; concurrent completion runs can invalidate each other's snapshots, so confirm failures in isolation.
 - [Post-merge GitHub sync isolation](post-merge-github-sync-isolation.md) — GitHub mirror failures are reported by the sync job but must never abort dependency, migration, or workflow reconciliation.
+- [Merchant login OTP lifecycle](merchant-login-otp-lifecycle.md) — serialize identifier challenges with a DB advisory lock; commit/invalidate only around confirmed delivery and keep attempts separate from resends.

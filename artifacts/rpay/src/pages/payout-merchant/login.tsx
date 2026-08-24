@@ -230,6 +230,7 @@ function OtpLoginTab({
   const [resendIn, setResendIn] = useState(0);
   const [resending, setResending] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const sendInFlightRef = useRef(false);
   const queryClient = useQueryClient();
 
   const identifierForm = useForm<OtpIdentifierValues>({
@@ -258,6 +259,8 @@ function OtpLoginTab({
   };
 
   const sendOtp = (data: OtpIdentifierValues) => {
+    if (sendInFlightRef.current) return;
+    sendInFlightRef.current = true;
     requestOtp.mutate(
       { data: { identifier: data.identifier } },
       {
@@ -275,11 +278,10 @@ function OtpLoginTab({
             onRateLimited(headers ? extractRateLimitSeconds(headers) : 60);
             return;
           }
-          setIdentifier(data.identifier);
-          setStage("otp");
-          otpForm.reset();
-          startCooldown();
-          toast.success("If an account matches that email or mobile number, a login code has been sent.");
+          toast.error("We couldn't send a login code right now. Please try again.");
+        },
+        onSettled: () => {
+          sendInFlightRef.current = false;
         },
       }
     );
@@ -299,14 +301,39 @@ function OtpLoginTab({
         toast.error((data as any)?.error ?? "Maximum resend limit reached. Please start a new login.");
         return;
       }
+      if (!r.ok) {
+        toast.error((data as any)?.error ?? "We couldn't send a new code right now. Please try again.");
+        return;
+      }
       otpForm.reset();
       startCooldown();
       toast.success("A new code has been sent.");
     } catch {
-      startCooldown();
-      toast.success("A new code has been sent.");
+      toast.error("We couldn't send a new code right now. Please try again.");
     } finally {
       setResending(false);
+    }
+  };
+
+  const changeIdentifier = () => {
+    const previousIdentifier = identifier;
+    setStage("identifier");
+    setIdentifier("");
+    setResendIn(0);
+    otpForm.reset();
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    if (previousIdentifier) {
+      void fetch(`${apiBase()}/auth/merchant/otp/cancel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identifier: previousIdentifier }),
+      }).catch(() => {
+        // The local state is reset regardless; cancellation is defense in
+        // depth and must not block entering a different identifier.
+      });
     }
   };
 
@@ -405,7 +432,7 @@ function OtpLoginTab({
           <button
             type="button"
             className="text-muted-foreground hover:text-foreground transition-colors"
-            onClick={() => setStage("identifier")}
+            onClick={changeIdentifier}
           >
             Change email/mobile
           </button>

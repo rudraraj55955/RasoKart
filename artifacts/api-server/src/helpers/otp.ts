@@ -4,9 +4,12 @@ import crypto from "crypto";
 const OTP_LENGTH = 6;
 const HMAC_SECRET = process.env["SESSION_SECRET"] || "rasokart-secret-key-change-in-production";
 
-export const OTP_EXPIRY_MS = 10 * 60 * 1000; // 10 minutes
+export const OTP_EXPIRY_MS = 10 * 60 * 1000; // 10 minutes for non-login OTP purposes
+export const MERCHANT_LOGIN_OTP_EXPIRY_MS = 5 * 60 * 1000;
 export const OTP_MAX_ATTEMPTS = 5;
 export const OTP_RESEND_COOLDOWN_MS = 60 * 1000; // 60 seconds
+export const MERCHANT_LOGIN_MAX_RESENDS = 3;
+export const MERCHANT_LOGIN_RESEND_LOCK_MS = 15 * 60 * 1000;
 
 export function generateOtp(): string {
   const n = crypto.randomInt(0, 10 ** OTP_LENGTH);
