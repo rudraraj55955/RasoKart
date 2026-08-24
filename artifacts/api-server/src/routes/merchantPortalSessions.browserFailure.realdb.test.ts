@@ -6,6 +6,9 @@
  *   2. inject a BrowserRuntimeUnavailableError from the registered adapter;
  *   3. verify the sanitized 503 and restored lease/lifecycle state;
  *   4. submit again and verify the session can be reserved again.
+ *
+ * Password sessions follow the same recovery contract and are covered below
+ * with their own session so the OTP lifecycle assertions remain independent.
  */
 import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -69,11 +72,16 @@ function post(
 describe("merchant portal submit-step browser failure recovery (real DB)", () => {
   let server: http.Server;
   let merchantId: number;
+  let passwordMerchantId: number;
   let userId: number;
+  let passwordUserId: number;
   let sessionId: number;
+  let passwordSessionId: number;
   let token: string;
+  let passwordToken: string;
   const providerSlug = "pinelabs_one";
   const email = `portal-browser-failure-${Date.now()}@example.invalid`;
+  const passwordEmail = `portal-browser-failure-password-${Date.now()}@example.invalid`;
   const adapter = getAdapter(providerSlug);
 
   before(async () => {
@@ -109,6 +117,37 @@ describe("merchant portal submit-step browser failure recovery (real DB)", () =>
     }).returning({ id: merchantPortalSessionsTable.id });
     sessionId = session.id;
 
+    const [passwordMerchant] = await db.insert(merchantsTable).values({
+      businessName: "Password browser failure recovery test",
+      contactName: "Password Browser Failure Test",
+      email: passwordEmail,
+      phone: "8888888888",
+      status: "active",
+    }).returning({ id: merchantsTable.id });
+    passwordMerchantId = passwordMerchant.id;
+
+    const [passwordUser] = await db.insert(usersTable).values({
+      email: passwordEmail,
+      name: "Password Browser Failure Test",
+      role: "merchant",
+      merchantId: passwordMerchantId,
+    }).returning({ id: usersTable.id });
+    passwordUserId = passwordUser.id;
+    passwordToken = generateToken({ userId: passwordUserId, role: "merchant" });
+
+    const [passwordSession] = await db.insert(merchantPortalSessionsTable).values({
+      merchantId: passwordMerchantId,
+      providerSlug,
+      status: "AWAITING_PASSWORD",
+      encryptedSession: "enc:test-browser-failure-password-session",
+      stepFailureCount: 1,
+      otpVerificationFailureCount: 2,
+      otpResendCount: 1,
+      otpResendAvailableAt: new Date(Date.now() + 30_000),
+      otpExpiresAt: new Date(Date.now() + 10 * 60 * 1_000),
+    }).returning({ id: merchantPortalSessionsTable.id });
+    passwordSessionId = passwordSession.id;
+
     server = http.createServer(app);
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   });
@@ -118,6 +157,9 @@ describe("merchant portal submit-step browser failure recovery (real DB)", () =>
       adapter.submitStep = originalSubmitStep;
     }
     await db.delete(merchantPortalSessionsTable).where(eq(merchantPortalSessionsTable.id, sessionId));
+    await db.delete(merchantPortalSessionsTable).where(eq(merchantPortalSessionsTable.id, passwordSessionId));
+    await db.delete(usersTable).where(eq(usersTable.id, passwordUserId));
+    await db.delete(merchantsTable).where(eq(merchantsTable.id, passwordMerchantId));
     await db.delete(usersTable).where(eq(usersTable.id, userId));
     await db.delete(merchantsTable).where(eq(merchantsTable.id, merchantId));
     await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -182,6 +224,71 @@ describe("merchant portal submit-step browser failure recovery (real DB)", () =>
       .where(eq(merchantPortalSessionsTable.id, sessionId));
     assert.equal(afterRetry.otpVerificationFailureCount, 2);
     assert.equal(afterRetry.otpResendCount, 2);
+    assert.equal(afterRetry.processingLeaseId, null);
+    assert.equal(afterRetry.processingLeaseExpiresAt, null);
+  });
+
+  it("releases a password lease after browser failure and permits a retry", async () => {
+    assert.ok(adapter);
+    assert.ok(originalSubmitStep);
+
+    let calls = 0;
+    adapter.submitStep = async () => {
+      calls++;
+      if (calls === 1) {
+        throw new BrowserRuntimeUnavailableError();
+      }
+      return {
+        status: "FAILED",
+        failReason: "INVALID_PASSWORD",
+        failDetail: "The password is invalid.",
+      };
+    };
+
+    const path = `/api/merchant/portal-sessions/${providerSlug}/submit-step`;
+    const failed = await post(server, path, passwordToken, { password: "not-the-password" });
+
+    assert.equal(failed.status, 503);
+    assert.deepEqual(failed.body, {
+      status: "FAILED",
+      errorCode: "BROWSER_RUNTIME_UNAVAILABLE",
+      message: "Browser automation is temporarily unavailable. Please try again later or contact support.",
+      nextStep: null,
+    });
+    assert.equal(JSON.stringify(failed.body).includes("BrowserRuntimeUnavailableError"), false);
+    assert.equal(JSON.stringify(failed.body).includes("/"), false);
+
+    const [restored] = await db
+      .select()
+      .from(merchantPortalSessionsTable)
+      .where(and(
+        eq(merchantPortalSessionsTable.id, passwordSessionId),
+        eq(merchantPortalSessionsTable.merchantId, passwordMerchantId),
+      ));
+    assert.equal(restored.status, "AWAITING_PASSWORD");
+    assert.equal(restored.encryptedSession, "enc:test-browser-failure-password-session");
+    assert.equal(restored.stepFailureCount, 1);
+    assert.equal(restored.otpVerificationFailureCount, 2);
+    assert.equal(restored.otpResendCount, 1);
+    assert.ok(restored.otpResendAvailableAt);
+    assert.ok(restored.otpExpiresAt);
+    assert.equal(restored.processingLeaseId, null);
+    assert.equal(restored.processingLeaseExpiresAt, null);
+
+    const retried = await post(server, path, passwordToken, { password: "still-not-the-password" });
+    assert.equal(retried.status, 200);
+    assert.equal(calls, 2);
+    assert.equal(retried.body.status, "AWAITING_PASSWORD");
+    assert.equal(retried.body.errorCode, "INVALID_PASSWORD");
+
+    const [afterRetry] = await db
+      .select()
+      .from(merchantPortalSessionsTable)
+      .where(eq(merchantPortalSessionsTable.id, passwordSessionId));
+    assert.equal(afterRetry.status, "AWAITING_PASSWORD");
+    assert.equal(afterRetry.stepFailureCount, 2);
+    assert.equal(afterRetry.otpVerificationFailureCount, 2);
+    assert.equal(afterRetry.otpResendCount, 1);
     assert.equal(afterRetry.processingLeaseId, null);
     assert.equal(afterRetry.processingLeaseExpiresAt, null);
   });
