@@ -433,6 +433,15 @@ router.post("/:provider/submit-step", submitStepLimit, async (req: any, res) => 
   }
   inFlightSubmits.add(inFlightKey);
 
+  let reservedLeaseId: string | undefined;
+  let reservedSessionId: number | undefined;
+  let reservedLifecycle: {
+    otpVerificationFailureCount: number;
+    otpResendCount: number;
+    otpResendAvailableAt: Date | null;
+    otpExpiresAt: Date | null;
+  } | undefined;
+
   try {
     if (!isPortalProvider(providerSlug)) {
       res.status(404).json({ error: `Provider '${providerSlug}' is not a portal provider` });
@@ -606,6 +615,14 @@ router.post("/:provider/submit-step", submitStepLimit, async (req: any, res) => 
     // limits across multiple API processes and replicas.
     let lifecycleSession = session;
     const leaseId = randomUUID();
+    reservedLeaseId = leaseId;
+    reservedSessionId = session.id;
+    reservedLifecycle = {
+      otpVerificationFailureCount: session.otpVerificationFailureCount ?? 0,
+      otpResendCount: session.otpResendCount ?? 0,
+      otpResendAvailableAt: session.otpResendAvailableAt,
+      otpExpiresAt: session.otpExpiresAt,
+    };
     const leaseNow = new Date();
     const leaseExpiresAt = new Date(leaseNow.getTime() + 3 * 60 * 1000);
     const leaseAvailable = or(
@@ -846,6 +863,28 @@ router.post("/:provider/submit-step", submitStepLimit, async (req: any, res) => 
     });
   } catch (err: any) {
     if (err instanceof BrowserRuntimeUnavailableError) {
+      // A browser worker can fail after PostgreSQL granted the lease. Release
+      // it only if it is still ours, and undo the reservation so a later
+      // request can retry without consuming an OTP attempt or resend slot.
+      if (reservedLeaseId && reservedSessionId && reservedLifecycle) {
+        await db
+          .update(merchantPortalSessionsTable)
+          .set({
+            otpVerificationFailureCount: reservedLifecycle.otpVerificationFailureCount,
+            otpResendCount: reservedLifecycle.otpResendCount,
+            otpResendAvailableAt: reservedLifecycle.otpResendAvailableAt,
+            otpExpiresAt: reservedLifecycle.otpExpiresAt,
+            processingLeaseId: null,
+            processingLeaseExpiresAt: null,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(merchantPortalSessionsTable.id, reservedSessionId),
+              eq(merchantPortalSessionsTable.processingLeaseId, reservedLeaseId),
+            ),
+          );
+      }
       handleBrowserUnavailable(res, merchantId, providerSlug);
       return;
     }

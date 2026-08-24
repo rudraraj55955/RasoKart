@@ -38,6 +38,14 @@ describe("Pine Labs portal-session lifecycle policy", async () => {
     assert.match(routeSource, /if \(!committed\)/);
   });
 
+  it("releases the lease and restores lifecycle counters after browser infrastructure failure", () => {
+    assert.match(routeSource, /err instanceof BrowserRuntimeUnavailableError/);
+    assert.match(routeSource, /reservedLifecycle\.otpVerificationFailureCount/);
+    assert.match(routeSource, /reservedLifecycle\.otpResendCount/);
+    assert.match(routeSource, /processingLeaseId: null/);
+    assert.match(routeSource, /eq\(merchantPortalSessionsTable\.processingLeaseId, reservedLeaseId\)/);
+  });
+
   it("clears the terminal session token and preserves retries below the limit", () => {
     assert.match(routeSource, /encryptedSession: hitMaxAttempts\s*\?\s*null/);
     assert.match(routeSource, /recoverableOtpFailure/);
