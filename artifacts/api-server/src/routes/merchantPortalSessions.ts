@@ -16,10 +16,12 @@
  *     in any error message, audit trail, or telemetry.
  *   - submit-step enforces:
  *       a) Status must be AWAITING_OTP / AWAITING_PASSWORD before adapter call.
- *       b) Maximum 3 consecutive step failures (stepFailureCount >= MAX_OTP_ATTEMPTS)
- *          → hard 429 requiring full re-initiate.
- *       c) OTP session expiry: initiate timestamp (updatedAt) must be < 10 min ago.
- *       d) Parallel submission prevention: a soft in-flight guard per merchant+provider.
+ *       b) Exactly the credential/action required by the current session state.
+ *       c) Maximum 3 OTP verification attempts and 3 explicit resend attempts,
+ *          tracked independently from password failures.
+ *       d) Authoritative 10-minute OTP expiry and 60-second resend cooldown.
+ *       e) A database-owned processing lease plus a soft process-local in-flight
+ *          guard prevent parallel submissions and stale cross-replica writes.
  *
  * CREDENTIAL SECURITY:
  *   - Credentials (API keys, passwords) are accepted over HTTPS in the request body.
@@ -40,7 +42,8 @@
  */
 
 import { Router } from "express";
-import { eq, and, desc, count as drizzleCount, gte, lte, sql } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+import { eq, and, or, isNull, lt, desc, count as drizzleCount, gte, lte, sql } from "drizzle-orm";
 import { db } from "@workspace/db";
 import { merchantPortalSessionsTable, merchantPortalTransactionsTable } from "@workspace/db";
 import { requireAuth } from "../middlewares/auth";
@@ -99,7 +102,7 @@ const initiateLimit = makeRateLimiter({
 
 // submit-step rate limit: 10 per 10 min per IP+merchant.
 // The per-session hard limit (MAX_OTP_ATTEMPTS) is enforced separately via
-// stepFailureCount in the route handler — this limit exists to defend against
+// otpVerificationFailureCount in the route handler — this limit exists to defend against
 // distributed brute-force across multiple sessions.
 const submitStepLimit = makeRateLimiter({
   windowMs: 10 * 60 * 1000,
@@ -123,6 +126,8 @@ const syncLimit = makeRateLimiter({
 
 /** Max consecutive OTP failures before the session is locked and must be re-initiated. */
 const MAX_OTP_ATTEMPTS = 3;
+const MAX_OTP_RESENDS = 3;
+const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
 
 /** Max age of an OTP session (from initiate) before submit-step is rejected. */
 const OTP_SESSION_MAX_AGE_MS = 10 * 60 * 1000; // 10 minutes
@@ -134,13 +139,48 @@ const inFlightSubmits = new Set<string>();
 
 /** Strip encrypted_session from any row before sending to client. */
 function publicSession(row: typeof merchantPortalSessionsTable.$inferSelect) {
-  const { encryptedSession: _stripped, ...safe } = row;
-  return safe;
+  const {
+    encryptedSession: _stripped,
+    processingLeaseId: _leaseId,
+    processingLeaseExpiresAt: _leaseExpiry,
+    ...safe
+  } = row;
+  return { ...safe, ...otpLifecycleMetadata(row) };
 }
 
 function getMerchantId(req: any): number {
   return req.user.merchantId as number;
 }
+
+/** Server-authoritative OTP lifecycle data; timestamps are ISO strings in JSON. */
+function otpLifecycleMetadata(row: Pick<typeof merchantPortalSessionsTable.$inferSelect,
+  "otpVerificationFailureCount" | "otpResendCount" | "otpResendAvailableAt" | "otpExpiresAt">) {
+  const failures = row.otpVerificationFailureCount ?? 0;
+  const resendCount = row.otpResendCount ?? 0;
+  return {
+    attemptsRemaining: Math.max(0, MAX_OTP_ATTEMPTS - failures),
+    resendCount,
+    resendsRemaining: Math.max(0, MAX_OTP_RESENDS - resendCount),
+    resendAvailableAt: row.otpResendAvailableAt?.toISOString() ?? null,
+    otpExpiresAt: row.otpExpiresAt?.toISOString() ?? null,
+  };
+}
+
+function freshOtpLifecycle(now: Date) {
+  return {
+    otpVerificationFailureCount: 0,
+    otpResendCount: 0,
+    otpResendAvailableAt: new Date(now.getTime() + OTP_RESEND_COOLDOWN_MS),
+    otpExpiresAt: new Date(now.getTime() + OTP_SESSION_MAX_AGE_MS),
+  };
+}
+
+const clearedOtpLifecycle = {
+  otpVerificationFailureCount: 0,
+  otpResendCount: 0,
+  otpResendAvailableAt: null,
+  otpExpiresAt: null,
+};
 
 // ── GET /api/merchant/portal-sessions ─────────────────────────────────────────
 
@@ -287,6 +327,10 @@ router.post("/:provider/initiate", initiateLimit, async (req: any, res) => {
     });
 
     const isConnected = result.status === "CONNECTED";
+    const now = new Date();
+    const otpLifecycle = result.status === "AWAITING_OTP"
+      ? freshOtpLifecycle(now)
+      : clearedOtpLifecycle;
     await db
       .insert(merchantPortalSessionsTable)
       .values({
@@ -297,7 +341,10 @@ router.post("/:provider/initiate", initiateLimit, async (req: any, res) => {
         lastStatusMessage: result.failReason ?? result.nextStepPrompt ?? null,
         connectedAt: isConnected ? new Date() : undefined,
         stepFailureCount: 0,   // always reset on fresh initiate
-        updatedAt: new Date(),
+        processingLeaseId: null,
+        processingLeaseExpiresAt: null,
+        ...otpLifecycle,
+        updatedAt: now,
       })
       .onConflictDoUpdate({
         target: [
@@ -310,7 +357,10 @@ router.post("/:provider/initiate", initiateLimit, async (req: any, res) => {
           lastStatusMessage: result.failReason ?? result.nextStepPrompt ?? null,
           connectedAt: isConnected ? new Date() : undefined,
           stepFailureCount: 0,
-          updatedAt: new Date(),
+          processingLeaseId: null,
+          processingLeaseExpiresAt: null,
+          ...otpLifecycle,
+          updatedAt: now,
         },
       });
 
@@ -326,6 +376,7 @@ router.post("/:provider/initiate", initiateLimit, async (req: any, res) => {
       message:   result.nextStepPrompt ?? result.failDetail ?? null,
       nextStep:  result.nextStep ?? null,
       helpUrl:   result.helpUrl ?? null,
+      ...otpLifecycleMetadata(otpLifecycle),
     });
   } catch (err: any) {
     if (err instanceof BrowserRuntimeUnavailableError) {
@@ -383,10 +434,6 @@ router.post("/:provider/submit-step", submitStepLimit, async (req: any, res) => 
   inFlightSubmits.add(inFlightKey);
 
   try {
-    // ── Server-side AES-256-GCM encryption — raw OTP never leaves this scope ─
-    const encryptedOtp      = otp      ? encryptSecret(String(otp))     : undefined;
-    const encryptedPassword = password ? encryptSecret(String(password)) : undefined;
-
     if (!isPortalProvider(providerSlug)) {
       res.status(404).json({ error: `Provider '${providerSlug}' is not a portal provider` });
       return;
@@ -421,27 +468,75 @@ router.post("/:provider/submit-step", submitStepLimit, async (req: any, res) => 
       return;
     }
 
-    // ── Security gate 2: max OTP attempt limit ─────────────────────────────────
-    const failures = session.stepFailureCount ?? 0;
-    if (failures >= MAX_OTP_ATTEMPTS) {
+    const isResend = loginMethod === "resend_otp";
+    const isPortalOtpSwitch = loginMethod === "portal_otp";
+    const isCredentialFreeAction = isResend || isPortalOtpSwitch;
+    if (isCredentialFreeAction && (otp || password)) {
+      res.status(400).json({
+        error: "Credential-free actions must not include an OTP or password.",
+        errorCode: "CREDENTIAL_MISMATCH",
+      });
+      return;
+    }
+    if (
+      (isResend && session.status !== "AWAITING_OTP") ||
+      (isPortalOtpSwitch && session.status !== "AWAITING_PASSWORD")
+    ) {
+      res.status(400).json({
+        error: isResend
+          ? "OTP resend requires an active OTP session."
+          : "OTP login switch requires an active password session.",
+        errorCode: "WRONG_SESSION_STATE",
+        status: session.status,
+      });
+      return;
+    }
+    if (
+      !isCredentialFreeAction &&
+      ((session.status === "AWAITING_OTP" && (!otp || password)) ||
+       (session.status === "AWAITING_PASSWORD" && (!password || otp)))
+    ) {
+      res.status(400).json({
+        error: session.status === "AWAITING_OTP"
+          ? "This session requires exactly one OTP."
+          : "This session requires exactly one password.",
+        errorCode: "CREDENTIAL_MISMATCH",
+      });
+      return;
+    }
+    const isOtpVerification = session.status === "AWAITING_OTP" && !isCredentialFreeAction;
+    const otpFailures = session.otpVerificationFailureCount ?? 0;
+
+    // ── Server-side AES-256-GCM encryption — raw credentials never leave this scope ─
+    const encryptedOtp      = isOtpVerification ? encryptSecret(String(otp)) : undefined;
+    const encryptedPassword =
+      session.status === "AWAITING_PASSWORD" && !isCredentialFreeAction
+        ? encryptSecret(String(password))
+        : undefined;
+
+    // ── Security gate 2: OTP verification limit (password failures excluded) ──
+    if (isOtpVerification && otpFailures >= MAX_OTP_ATTEMPTS) {
       logger.warn(
-        { merchantId, providerSlug, failures },
+        { merchantId, providerSlug, failures: otpFailures },
         "merchant_portal_otp_max_attempts_reached",
       );
       res.status(429).json({
         error:     `Maximum OTP attempts (${MAX_OTP_ATTEMPTS}) reached. Please re-initiate the session.`,
         errorCode: "MAX_ATTEMPTS_REACHED",
         status:    "FAILED",
+        ...otpLifecycleMetadata(session),
       });
       return;
     }
 
-    // ── Security gate 3: OTP session expiry ───────────────────────────────────
-    // updatedAt is set at initiate time. If more than OTP_SESSION_MAX_AGE_MS has
-    // passed, the OTP on the provider's side has expired.
-    if (session.updatedAt) {
-      const ageMs = Date.now() - new Date(session.updatedAt).getTime();
-      if (ageMs > OTP_SESSION_MAX_AGE_MS) {
+    // ── Security gate 3: authoritative OTP expiry ─────────────────────────────
+    if (isOtpVerification || isResend) {
+      // The fallback protects sessions created before the lifecycle columns were
+      // deployed; all new OTP sessions always have otpExpiresAt.
+      const otpExpiresAt = session.otpExpiresAt
+        ?? new Date(new Date(session.updatedAt).getTime() + OTP_SESSION_MAX_AGE_MS);
+      const ageMs = Date.now() - new Date(otpExpiresAt).getTime();
+      if (ageMs > 0) {
         // Update status to EXPIRED and clear the session token
         await db
           .update(merchantPortalSessionsTable)
@@ -449,6 +544,7 @@ router.post("/:provider/submit-step", submitStepLimit, async (req: any, res) => 
             status:           "EXPIRED",
             encryptedSession: null,
             lastStatusMessage: "OTP session expired. Please re-enter your mobile number to receive a new OTP.",
+            ...clearedOtpLifecycle,
             updatedAt:        new Date(),
           })
           .where(
@@ -467,6 +563,30 @@ router.post("/:provider/submit-step", submitStepLimit, async (req: any, res) => 
           error:     "OTP has expired (> 10 min since initiate). Please request a new OTP.",
           errorCode: "OTP_SESSION_EXPIRED",
           status:    "EXPIRED",
+          ...otpLifecycleMetadata(clearedOtpLifecycle),
+        });
+        return;
+      }
+    }
+
+    // ── Security gate 4: explicit resend quota and cooldown ────────────────────
+    if (isResend) {
+      const resendCount = session.otpResendCount ?? 0;
+      if (resendCount >= MAX_OTP_RESENDS) {
+        res.status(429).json({
+          error: "Maximum OTP resends reached. Please re-initiate the session.",
+          errorCode: "MAX_RESENDS_REACHED",
+          status: session.status,
+          ...otpLifecycleMetadata(session),
+        });
+        return;
+      }
+      if (session.otpResendAvailableAt && new Date(session.otpResendAvailableAt).getTime() > Date.now()) {
+        res.status(429).json({
+          error: "OTP resend is not available yet. Please wait for the cooldown.",
+          errorCode: "OTP_RESEND_COOLDOWN",
+          status: session.status,
+          ...otpLifecycleMetadata(session),
         });
         return;
       }
@@ -481,7 +601,112 @@ router.post("/:provider/submit-step", submitStepLimit, async (req: any, res) => 
       return;
     }
 
-    const sessionToken = session.encryptedSession ?? "";
+    // Atomically reserve OTP verification/resend attempts in PostgreSQL. The
+    // process-local in-flight guard improves UX; these predicates enforce the
+    // limits across multiple API processes and replicas.
+    let lifecycleSession = session;
+    const leaseId = randomUUID();
+    const leaseNow = new Date();
+    const leaseExpiresAt = new Date(leaseNow.getTime() + 3 * 60 * 1000);
+    const leaseAvailable = or(
+      isNull(merchantPortalSessionsTable.processingLeaseId),
+      lte(merchantPortalSessionsTable.processingLeaseExpiresAt, leaseNow),
+    );
+    if (isOtpVerification) {
+      const [reserved] = await db
+        .update(merchantPortalSessionsTable)
+        .set({
+          otpVerificationFailureCount: sql`${merchantPortalSessionsTable.otpVerificationFailureCount} + 1`,
+          processingLeaseId: leaseId,
+          processingLeaseExpiresAt: leaseExpiresAt,
+        })
+        .where(
+          and(
+            eq(merchantPortalSessionsTable.id, session.id),
+            eq(merchantPortalSessionsTable.status, "AWAITING_OTP"),
+            lt(merchantPortalSessionsTable.otpVerificationFailureCount, MAX_OTP_ATTEMPTS),
+            or(
+              isNull(merchantPortalSessionsTable.otpExpiresAt),
+              gte(merchantPortalSessionsTable.otpExpiresAt, new Date()),
+            ),
+            leaseAvailable,
+          ),
+        )
+        .returning();
+      if (!reserved) {
+        res.status(429).json({
+          error: `Maximum OTP attempts (${MAX_OTP_ATTEMPTS}) reached or the OTP expired.`,
+          errorCode: "MAX_ATTEMPTS_REACHED",
+          status: "FAILED",
+          ...otpLifecycleMetadata(session),
+        });
+        return;
+      }
+      lifecycleSession = reserved;
+    } else if (isResend) {
+      const reserveTime = new Date();
+      const [reserved] = await db
+        .update(merchantPortalSessionsTable)
+        .set({
+          otpResendCount: sql`${merchantPortalSessionsTable.otpResendCount} + 1`,
+          otpResendAvailableAt: new Date(reserveTime.getTime() + OTP_RESEND_COOLDOWN_MS),
+          processingLeaseId: leaseId,
+          processingLeaseExpiresAt: leaseExpiresAt,
+        })
+        .where(
+          and(
+            eq(merchantPortalSessionsTable.id, session.id),
+            eq(merchantPortalSessionsTable.status, "AWAITING_OTP"),
+            lt(merchantPortalSessionsTable.otpResendCount, MAX_OTP_RESENDS),
+            or(
+              isNull(merchantPortalSessionsTable.otpResendAvailableAt),
+              lte(merchantPortalSessionsTable.otpResendAvailableAt, reserveTime),
+            ),
+            or(
+              isNull(merchantPortalSessionsTable.otpExpiresAt),
+              gte(merchantPortalSessionsTable.otpExpiresAt, reserveTime),
+            ),
+            leaseAvailable,
+          ),
+        )
+        .returning();
+      if (!reserved) {
+        res.status(429).json({
+          error: "OTP resend is not available. Check the cooldown and resend limit.",
+          errorCode: "OTP_RESEND_NOT_AVAILABLE",
+          status: session.status,
+          ...otpLifecycleMetadata(session),
+        });
+        return;
+      }
+      lifecycleSession = reserved;
+    } else {
+      const [reserved] = await db
+        .update(merchantPortalSessionsTable)
+        .set({
+          processingLeaseId: leaseId,
+          processingLeaseExpiresAt: leaseExpiresAt,
+        })
+        .where(
+          and(
+            eq(merchantPortalSessionsTable.id, session.id),
+            eq(merchantPortalSessionsTable.status, session.status),
+            leaseAvailable,
+          ),
+        )
+        .returning();
+      if (!reserved) {
+        res.status(409).json({
+          error: "Another credential submission is already in progress.",
+          errorCode: "SUBMISSION_IN_PROGRESS",
+          status: session.status,
+        });
+        return;
+      }
+      lifecycleSession = reserved;
+    }
+
+    const sessionToken = lifecycleSession.encryptedSession ?? "";
     const result = await adapter.submitStep({
       encryptedSessionToken: sessionToken,
       encryptedOtp:          encryptedOtp ?? undefined,
@@ -490,53 +715,134 @@ router.post("/:provider/submit-step", submitStepLimit, async (req: any, res) => 
     });
     // encryptedOtp / encryptedPassword go out of scope here — GC eligible
 
-    const isConnected     = result.status === "CONNECTED";
-    const isFailed        = result.status === "FAILED";
-    const newFailureCount = isFailed ? failures + 1 : 0;
+    const isConnected = result.status === "CONNECTED";
+    const isFailed = result.status === "FAILED";
+    const now = new Date();
+    const infrastructureFailure =
+      result.failReason === "BROWSER_ERROR" ||
+      result.failReason === "BROWSER_RUNTIME_UNAVAILABLE";
+    const reservedOtpAttemptCount = lifecycleSession.otpVerificationFailureCount ?? 0;
+    const newOtpFailureCount = isOtpVerification
+      ? (isConnected ? 0 : infrastructureFailure ? otpFailures : reservedOtpAttemptCount)
+      : (lifecycleSession.otpVerificationFailureCount ?? 0);
+    const hitMaxAttempts =
+      isOtpVerification &&
+      !isConnected &&
+      !infrastructureFailure &&
+      reservedOtpAttemptCount >= MAX_OTP_ATTEMPTS;
+    const recoverableOtpFailure =
+      isOtpVerification &&
+      isFailed &&
+      !hitMaxAttempts &&
+      !["OTP_EXPIRED", "OTP_SESSION_NOT_FOUND", "ACCOUNT_BLOCKED"].includes(result.failReason ?? "");
+    const recoverablePasswordFailure =
+      lifecycleSession.status === "AWAITING_PASSWORD" &&
+      Boolean(password) &&
+      isFailed &&
+      !["SESSION_RESTART_REQUIRED", "CAPTCHA_REQUIRED", "MANUAL_ACTION_REQUIRED", "ACCOUNT_BLOCKED"].includes(
+        result.failReason ?? "",
+      );
+    const recoverableFailure = recoverableOtpFailure || recoverablePasswordFailure;
+    const newStepFailureCount = isFailed ? (lifecycleSession.stepFailureCount ?? 0) + 1 : 0;
+    const resendSucceeded = isResend && result.status === "AWAITING_OTP" && !result.failReason;
+    const enteredOtpState =
+      result.status === "AWAITING_OTP" &&
+      (isPortalOtpSwitch || !lifecycleSession.otpExpiresAt);
+    const lifecycle = infrastructureFailure
+      ? {
+          otpVerificationFailureCount: session.otpVerificationFailureCount ?? 0,
+          otpResendCount: session.otpResendCount ?? 0,
+          otpResendAvailableAt: session.otpResendAvailableAt,
+          otpExpiresAt: session.otpExpiresAt,
+        }
+      : hitMaxAttempts
+      ? {
+          otpVerificationFailureCount: reservedOtpAttemptCount,
+          otpResendCount: lifecycleSession.otpResendCount ?? 0,
+          otpResendAvailableAt: null,
+          otpExpiresAt: null,
+        }
+      : isConnected
+        ? clearedOtpLifecycle
+      : resendSucceeded
+        ? {
+            otpVerificationFailureCount: 0,
+            otpResendCount: lifecycleSession.otpResendCount ?? 0,
+            otpResendAvailableAt: lifecycleSession.otpResendAvailableAt,
+            otpExpiresAt: new Date(now.getTime() + OTP_SESSION_MAX_AGE_MS),
+          }
+        : enteredOtpState
+          ? freshOtpLifecycle(now)
+          : {
+              otpVerificationFailureCount: newOtpFailureCount,
+              otpResendCount: lifecycleSession.otpResendCount ?? 0,
+              otpResendAvailableAt: lifecycleSession.otpResendAvailableAt,
+              otpExpiresAt: lifecycleSession.otpExpiresAt,
+            };
+    const persistedStatus = hitMaxAttempts
+      ? "FAILED"
+      : recoverableFailure
+        ? lifecycleSession.status
+        : result.status;
+    const preserveSession =
+      isConnected ||
+      ["AWAITING_OTP", "AWAITING_PASSWORD", "AWAITING_MPIN"].includes(persistedStatus);
 
-    await db
+    const [committed] = await db
       .update(merchantPortalSessionsTable)
       .set({
-        status:           result.status,
-        encryptedSession: isConnected
-          ? (result.encryptedSessionToken ?? session.encryptedSession)
-          : (result.encryptedSessionToken ?? null),   // wipe on failure/expired
+        status:           persistedStatus,
+        encryptedSession: hitMaxAttempts
+          ? null
+          : preserveSession
+            ? (result.encryptedSessionToken ?? lifecycleSession.encryptedSession)
+          : (result.encryptedSessionToken ?? null),
         lastStatusMessage: result.failReason ?? result.nextStepPrompt ?? null,
-        stepFailureCount:  newFailureCount,
-        connectedAt:       isConnected ? new Date() : session.connectedAt,
-        updatedAt:         new Date(),
+        stepFailureCount:  newStepFailureCount,
+        ...lifecycle,
+        connectedAt:       isConnected ? new Date() : lifecycleSession.connectedAt,
+        processingLeaseId: null,
+        processingLeaseExpiresAt: null,
+        updatedAt:         now,
       })
       .where(
         and(
-          eq(merchantPortalSessionsTable.merchantId, merchantId),
-          eq(merchantPortalSessionsTable.providerSlug, providerSlug),
+          eq(merchantPortalSessionsTable.id, lifecycleSession.id),
+          eq(merchantPortalSessionsTable.processingLeaseId, leaseId),
         ),
-      );
+      )
+      .returning({ id: merchantPortalSessionsTable.id });
+
+    if (!committed) {
+      res.status(409).json({
+        status: "FAILED",
+        errorCode: "SESSION_STATE_CHANGED",
+        message: "The portal session changed while this submission was in progress. Refresh and try again.",
+      });
+      return;
+    }
 
     // Log: status, providerSlug, merchantId only. No OTP value.
     logger.info(
       {
         merchantId,
         providerSlug,
-        status:       result.status,
-        failures:     newFailureCount,
+        status:       persistedStatus,
+        failures:     newOtpFailureCount,
         // failReason is safe — it's an error code like "INVALID_OTP", not the OTP itself
         failReason:   result.failReason ?? null,
       },
       "merchant_portal_submit_step",
     );
 
-    // If max failures now reached, add a hint to the response
-    const hitMaxAttempts = isFailed && newFailureCount >= MAX_OTP_ATTEMPTS;
-
     res.json({
-      status:    result.status,
+      status:    persistedStatus,
       errorCode: result.failReason ?? null,
       message:   hitMaxAttempts
         ? `Maximum OTP attempts reached. Please re-initiate the session.`
         : (result.nextStepPrompt ?? result.failDetail ?? null),
       nextStep:  result.nextStep ?? null,
-      attemptsRemaining: hitMaxAttempts ? 0 : MAX_OTP_ATTEMPTS - newFailureCount,
+      ...otpLifecycleMetadata(lifecycle),
     });
   } catch (err: any) {
     if (err instanceof BrowserRuntimeUnavailableError) {

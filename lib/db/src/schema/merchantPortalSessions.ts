@@ -66,6 +66,20 @@ export const merchantPortalSessionsTable = pgTable(
      * Resets to 0 on each successful step.
      */
     stepFailureCount: integer("step_failure_count").notNull().default(0),
+    /** Failed OTP verifications only. Password failures never affect this limit. */
+    otpVerificationFailureCount: integer("otp_verification_failure_count")
+      .notNull()
+      .default(0),
+    /** Successful explicit OTP resend requests (the initial send is not a resend). */
+    otpResendCount: integer("otp_resend_count").notNull().default(0),
+    /** Authoritative server time at which another explicit resend is permitted. */
+    otpResendAvailableAt: timestamp("otp_resend_available_at", { withTimezone: true }),
+    /** Authoritative provider OTP expiry time. */
+    otpExpiresAt: timestamp("otp_expires_at", { withTimezone: true }),
+    /** Cross-process compare-and-set lease for an in-flight credential transition. */
+    processingLeaseId: text("processing_lease_id"),
+    /** Stale leases expire automatically so a crashed worker cannot strand the session. */
+    processingLeaseExpiresAt: timestamp("processing_lease_expires_at", { withTimezone: true }),
 
     /**
      * Provider-returned error code on the last failure (e.g. "INVALID_OTP").

@@ -112,12 +112,26 @@ export interface MockServerConfig {
    *   resend_otp (expired)  → AWAITING_OTP (button found and clicked).
    */
   resendCooldownThenActive?: boolean;
+  /** Render the password control in a same-origin iframe. */
+  passwordInIframe?: boolean;
+  /** Render the OTP control in a same-origin iframe. */
+  otpInIframe?: boolean;
+  /** Delay rendering the password form after identifier submission, like React hydration. */
+  delayedPasswordRenderMs?: number;
+  /**
+   * Deliberately unusual post-identifier screens used to verify classifier
+   * ordering and fail-closed handling.
+   */
+  postIdentifierFixture?: "unknown" | "dashboard_with_otp" | "otp_with_password";
+  /** Add blocked/error copy to the identifier page for classifier-priority tests. */
+  showBlockedAndErrorAtLogin?: boolean;
 }
 
 export interface MockServer {
   url:   string;
   port:  number;
   close(): Promise<void>;
+  getRequestCount(pathname: string): number;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -250,10 +264,16 @@ function manualActionHtml(): string {
 </div>`;
 }
 
-function identifierFormHtml(showCaptcha: boolean, showManualAction: boolean, showHiddenCaptcha?: boolean): string {
+function identifierFormHtml(
+  showCaptcha: boolean,
+  showManualAction: boolean,
+  showHiddenCaptcha?: boolean,
+  showBlockedAndError?: boolean,
+): string {
   if (showManualAction) {
     return `<!DOCTYPE html><html><head><title>Pine Labs ONE - Login</title></head><body>
 ${manualActionHtml()}
+${showCaptcha ? captchaHtml() : ""}
 </body></html>`;
   }
   return `<!DOCTYPE html><html><head><title>Pine Labs ONE - Sign In</title></head><body>
@@ -261,12 +281,45 @@ ${manualActionHtml()}
   <h1>Sign In to Pine Labs ONE</h1>
   ${showCaptcha ? captchaHtml() : ""}
   ${showHiddenCaptcha ? hiddenCaptchaHtml() : ""}
+  ${showBlockedAndError ? `<div class="blocked-container"><p>Account has been blocked</p></div><p role="alert">Unexpected sign-in error</p>` : ""}
   <form action="/login/user" method="POST" id="login-form">
     <label for="mobile">Registered Email ID or Mobile Number</label>
     <input type="text" id="mobile" name="mobile" placeholder="Registered email ID or 10-digit mobile" required />
     <button type="submit" id="next-btn">Next</button>
   </form>
 </div>
+</body></html>`;
+}
+
+function delayedPasswordPageHtml(delayMs: number): string {
+  const form = passwordFormHtml(false).replace(/<\/?html[^>]*>|<\/?head[^>]*>|<\/?body[^>]*>/g, "");
+  return `<!DOCTYPE html><html><head><title>Pine Labs ONE - Loading</title></head><body>
+<div id="react-root" aria-busy="true">Loading secure sign-in…</div>
+<script>
+  window.setTimeout(() => {
+    document.getElementById("react-root").innerHTML = ${JSON.stringify(form)};
+    document.getElementById("react-root").setAttribute("aria-busy", "false");
+  }, ${delayMs});
+</script>
+</body></html>`;
+}
+
+function iframeShellHtml(src: string, title: string): string {
+  return `<!DOCTYPE html><html><head><title>Pine Labs ONE - ${title}</title></head><body>
+<div id="${title.toLowerCase()}-container"><iframe src="${src}" title="${title}" id="${title.toLowerCase()}-frame" style="width:500px;height:300px;border:0"></iframe></div>
+</body></html>`;
+}
+
+function classifierFixtureHtml(kind: "unknown" | "otp_with_password"): string {
+  if (kind === "unknown") {
+    return `<!DOCTYPE html><html><head><title>Pine Labs ONE - Continue</title></head><body>
+<main id="unrecognised-post-submit"><h1>Continue securely</h1><p>Preparing your account.</p></main>
+</body></html>`;
+  }
+  return `<!DOCTYPE html><html><head><title>Pine Labs ONE - Verification</title></head><body>
+<div id="otp-container"><p>An OTP has been sent.</p><form action="/login/verify-otp" method="POST">
+<input name="otp" placeholder="Enter OTP" autocomplete="one-time-code" /><button type="submit">Verify</button></form></div>
+<div id="password-container"><input type="password" name="password" placeholder="Enter your password" /></div>
 </body></html>`;
 }
 
@@ -451,10 +504,13 @@ export async function startMockPineLabsOneServer(
   // Tracks how many times the OTP page has been fetched (per-server lifetime).
   // Used by resendCooldownThenActive: first visit → cooldown, later → active div.
   let otpPageVisitCount = 0;
+  const requestCounts = new Map<string, number>();
 
   const server = http.createServer(async (req, res) => {
     const url    = req.url ?? "/";
     const method = req.method ?? "GET";
+    const pathname = url.split("?")[0] ?? url;
+    requestCounts.set(pathname, (requestCounts.get(pathname) ?? 0) + 1);
     const cookies = parseCookies(req.headers["cookie"]);
 
     const isAuth        = !!cookies["auth_session"];
@@ -476,7 +532,11 @@ export async function startMockPineLabsOneServer(
         return;
       }
       res.writeHead(200, { "Content-Type": "text/html" });
-      res.end(dashboardHtml());
+      res.end(
+        config.postIdentifierFixture === "dashboard_with_otp"
+          ? dashboardHtml().replace("</main>", `</main><iframe src="/fixture/otp-frame" title="OTP challenge" style="width:500px;height:180px;border:0"></iframe>`)
+          : dashboardHtml(),
+      );
       return;
     }
 
@@ -540,6 +600,31 @@ export async function startMockPineLabsOneServer(
       if (hasUserSession) { res.writeHead(302, { Location: "/login/password" });  res.end(); return; }
       res.writeHead(200, { "Content-Type": "text/html" });
       res.end(verifyUserFormHtml(config.showCaptcha ?? false, config.hiddenCaptcha ?? false));
+      return;
+    }
+
+    // Same-origin frame documents. Forms target the top-level page so a real
+    // browser follows the normal server redirects after iframe interaction.
+    if (url === "/fixture/password-frame" && method === "GET") {
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end(passwordFormHtml(false).replace("<head>", "<head><base target=\"_top\">"));
+      return;
+    }
+    if (url === "/fixture/otp-frame" && method === "GET") {
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end(otpFormHtml(undefined, undefined, config).replace("<head>", "<head><base target=\"_top\">"));
+      return;
+    }
+
+    if (url === "/login/delayed-password" && method === "GET") {
+      if (!hasUserSession) { res.writeHead(302, { Location: "/login/user" }); res.end(); return; }
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end(delayedPasswordPageHtml(config.delayedPasswordRenderMs ?? 1_800));
+      return;
+    }
+    if (url === "/login/post-submit-unknown" && method === "GET") {
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end(classifierFixtureHtml("unknown"));
       return;
     }
 
@@ -631,7 +716,12 @@ ${verifyUserFormHtml(false)}</body></html>`);
         return;
       }
       res.writeHead(200, { "Content-Type": "text/html" });
-      res.end(identifierFormHtml(config.showCaptcha ?? false, config.showManualAction ?? false, config.hiddenCaptcha ?? false));
+      res.end(identifierFormHtml(
+        config.showCaptcha ?? false,
+        config.showManualAction ?? false,
+        config.hiddenCaptcha ?? false,
+        config.showBlockedAndErrorAtLogin ?? false,
+      ));
       return;
     }
 
@@ -660,10 +750,35 @@ ${identifierFormHtml(false, false)}</body></html>`);
         return;
       }
 
+      if (config.postIdentifierFixture === "dashboard_with_otp") {
+        res.writeHead(302, {
+          Location: "/home",
+          "Set-Cookie": "auth_session=1; Path=/; HttpOnly; SameSite=Lax",
+        });
+        res.end();
+        return;
+      }
+      if (config.postIdentifierFixture === "otp_with_password") {
+        res.writeHead(302, {
+          Location: "/login/verify-otp",
+          "Set-Cookie": "otp_session=1; Path=/; HttpOnly; SameSite=Lax",
+        });
+        res.end();
+        return;
+      }
+      if (config.postIdentifierFixture === "unknown") {
+        res.writeHead(302, {
+          Location: "/login/post-submit-unknown",
+          "Set-Cookie": "user_session=1; Path=/; HttpOnly; SameSite=Lax",
+        });
+        res.end();
+        return;
+      }
+
       // ── Legacy password-first flow ───────────────────────────────────────
       // Valid identifier → set user_session, redirect to password
       res.writeHead(302, {
-        Location: "/login/password",
+        Location: config.delayedPasswordRenderMs ? "/login/delayed-password" : "/login/password",
         "Set-Cookie": "user_session=1; Path=/; HttpOnly; SameSite=Lax",
       });
       res.end();
@@ -681,11 +796,13 @@ ${identifierFormHtml(false, false)}</body></html>`);
       if (isAuth) { res.writeHead(302, { Location: "/home" }); res.end(); return; }
       if (!hasUserSession) { res.writeHead(302, { Location: "/login/user" }); res.end(); return; }
       res.writeHead(200, { "Content-Type": "text/html" });
-      res.end(passwordFormHtml(
-        config.showCaptcha ?? false,
-        config.otpLink ?? false,
-        config.forgotPasswordLinkOnly ?? false,
-      ));
+      res.end(config.passwordInIframe
+        ? iframeShellHtml("/fixture/password-frame", "Password")
+        : passwordFormHtml(
+          config.showCaptcha ?? false,
+          config.otpLink ?? false,
+          config.forgotPasswordLinkOnly ?? false,
+        ));
       return;
     }
 
@@ -765,7 +882,11 @@ ${identifierFormHtml(false, false)}</body></html>`);
         return;
       }
       res.writeHead(200, { "Content-Type": "text/html" });
-      res.end(otpFormHtml(undefined, undefined, config));
+      res.end(config.otpInIframe
+        ? iframeShellHtml("/fixture/otp-frame", "OTP")
+        : config.postIdentifierFixture === "otp_with_password"
+          ? classifierFixtureHtml("otp_with_password")
+          : otpFormHtml(undefined, undefined, config));
       return;
     }
 
@@ -866,6 +987,9 @@ ${identifierFormHtml(false, false)}</body></html>`);
   return {
     url,
     port,
+    getRequestCount(pathname: string): number {
+      return requestCounts.get(pathname) ?? 0;
+    },
     close(): Promise<void> {
       return new Promise((resolve, reject) => {
         server.close(err => (err ? reject(err) : resolve()));

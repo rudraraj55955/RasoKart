@@ -42,7 +42,7 @@
  * NO CAPTCHA BYPASS: Detection returns AWAITING_USER_ACTION; no solving/evasion.
  */
 
-import type { Page, FrameLocator } from "playwright";
+import type { Page, Frame, Locator, BrowserContext } from "playwright";
 import type {
   ProviderAdapter,
   InitiateParams,
@@ -174,9 +174,16 @@ const SEL = {
   // Password input
   PASSWORD_INPUT: [
     'input[type="password"]',
+    'input[autocomplete="current-password"]',
     'input[name="password"]',
+    'input[name*="password" i]',
+    'input[name*="passcode" i]',
+    'input[id*="password" i]',
+    'input[id*="passcode" i]',
     'input[placeholder*="password" i]',
     'input[placeholder*="pass" i]',
+    'label:has-text("Password") input',
+    'label:has-text("Passcode") input',
   ],
 
   // OTP input — single field.
@@ -185,6 +192,8 @@ const SEL = {
   // keyboard trigger rather than type="text" or name="otp".
   OTP_INPUT_SINGLE: [
     'input[name="otp"]',
+    'input[name*="otp" i]',
+    'input[id*="otp" i]',
     'input[placeholder*="otp" i]',
     'input[placeholder*="enter otp" i]',
     'input[placeholder*="verification" i]',
@@ -425,6 +434,16 @@ interface PineLabsOneAdapterData {
   connectedAt?: string;
 }
 
+type PortalAuthState =
+  | "authenticated_dashboard"
+  | "otp"
+  | "password"
+  | "device_approval"
+  | "captcha"
+  | "blocked"
+  | "error"
+  | "unknown";
+
 // ── Utility functions ─────────────────────────────────────────────────────────
 
 /**
@@ -527,8 +546,8 @@ async function handleLanguageInterstitial(page: Page): Promise<boolean> {
   let selected = false;
   try {
     // Playwright text= selector matches by visible text content
-    const engEl = page.locator("text=English").first();
-    if (await engEl.count() > 0 && await engEl.isVisible()) {
+    const engEl = await tryLocator(page, ["text=English"]);
+    if (engEl) {
       await engEl.click({ timeout: ACTION_TIMEOUT_MS });
       selected = true;
     }
@@ -537,8 +556,8 @@ async function handleLanguageInterstitial(page: Page): Promise<boolean> {
   if (!selected) {
     // Fallback: click the first radio button — English is always listed first
     try {
-      const firstRadio = page.locator('input[type="radio"]').first();
-      if (await firstRadio.count() > 0) {
+      const firstRadio = await tryLocator(page, ['input[type="radio"]']);
+      if (firstRadio) {
         await firstRadio.click({ timeout: ACTION_TIMEOUT_MS });
       }
     } catch { /* continue even if click fails */ }
@@ -561,27 +580,80 @@ async function handleLanguageInterstitial(page: Page): Promise<boolean> {
   return true;
 }
 
-/** Try each selector in an array; return the first visible locator found. */
-async function tryLocator(page: Page, selectors: string[]): Promise<import("playwright").Locator | null> {
-  for (const sel of selectors) {
-    try {
-      const el = page.locator(sel).first();
-      if (await el.count() > 0 && await el.isVisible()) return el;
-    } catch { /* continue */ }
+function allFrames(page: Page): Frame[] {
+  const main = page.mainFrame();
+  return [main, ...page.frames().filter((frame) => frame !== main)];
+}
+
+function safeUrlPath(rawUrl: string): string {
+  try {
+    return new URL(rawUrl).pathname;
+  } catch {
+    return "?";
+  }
+}
+
+function sanitizeStructuralText(value: string | null | undefined): string {
+  return (value ?? "")
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[redacted-email]")
+    .replace(/\+?\d[\d\s()-]{8,}\d/g, "[redacted-number]")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120);
+}
+
+interface VisibleLocatorMatch {
+  locator: Locator;
+  selector: string;
+  framePath: string;
+}
+
+/** Try each selector in every frame; return the first visible locator found. */
+async function tryLocatorMatch(page: Page, selectors: string[]): Promise<VisibleLocatorMatch | null> {
+  for (const frame of allFrames(page)) {
+    for (const selector of selectors) {
+      try {
+        const locator = frame.locator(selector).first();
+        if (await locator.count() > 0 && await locator.isVisible()) {
+          return { locator, selector, framePath: safeUrlPath(frame.url()) };
+        }
+      } catch { /* detached/cross-origin frame — continue */ }
+    }
   }
   return null;
 }
 
-/** Wait for any selector in the list to become visible; return the first one. */
+async function tryLocator(page: Page, selectors: string[]): Promise<Locator | null> {
+  return (await tryLocatorMatch(page, selectors))?.locator ?? null;
+}
+
+async function countVisibleAcrossFrames(page: Page, selector: string): Promise<number> {
+  let count = 0;
+  for (const frame of allFrames(page)) {
+    try {
+      const locators = frame.locator(selector);
+      const frameCount = await locators.count();
+      for (let index = 0; index < frameCount; index++) {
+        if (await locators.nth(index).isVisible().catch(() => false)) count += 1;
+      }
+    } catch { /* detached/cross-origin frame — continue */ }
+  }
+  return count;
+}
+
+/** Wait for any selector in any frame to become visible; return the first one. */
 async function waitForAny(
   page: Page,
   selectors: string[],
   timeout: number,
-): Promise<import("playwright").Locator | null> {
-  try {
-    await page.waitForSelector(selectors.join(", "), { state: "visible", timeout });
-    return tryLocator(page, selectors);
-  } catch { return null; }
+): Promise<Locator | null> {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const match = await tryLocator(page, selectors);
+    if (match) return match;
+    await page.waitForTimeout(100);
+  }
+  return null;
 }
 
 /**
@@ -598,56 +670,222 @@ async function waitForAny(
  * cause a false-positive that prevents the real OTP flow from proceeding.
  */
 async function hasCaptcha(page: Page): Promise<boolean> {
-  for (const sel of SEL.CAPTCHA) {
-    try {
-      const el = page.locator(sel).first();
-      if (await el.count() === 0) continue;
-      if (!await el.isVisible()) continue;
-      const bbox = await el.boundingBox();
-      // Reject zero-size / tiny placeholders — a real challenge is always rendered
-      if (!bbox || bbox.width < 10 || bbox.height < 10) continue;
-      logger.warn({ slug: "pinelabs_one", captchaSelector: sel }, "pinelabs_one_captcha_visible_detected");
-      return true;
-    } catch { /* continue */ }
+  for (const frame of allFrames(page)) {
+    for (const selector of SEL.CAPTCHA) {
+      try {
+        const locator = frame.locator(selector).first();
+        if (await locator.count() === 0 || !await locator.isVisible()) continue;
+        const bbox = await locator.boundingBox();
+        // Reject zero-size / tiny placeholders — a real challenge is always rendered
+        if (!bbox || bbox.width < 10 || bbox.height < 10) continue;
+        logger.warn(
+          { slug: "pinelabs_one", captchaSelector: selector, framePath: safeUrlPath(frame.url()) },
+          "pinelabs_one_captcha_visible_detected",
+        );
+        return true;
+      } catch { /* continue */ }
+    }
   }
   return false;
 }
 
 /** Detect visible QR/device-binding/manual-action prompt. */
 async function hasManualActionRequired(page: Page): Promise<boolean> {
-  for (const sel of SEL.MANUAL_ACTION) {
-    try {
-      const el = page.locator(sel).first();
-      if (await el.count() > 0 && await el.isVisible()) return true;
-    } catch { /* continue */ }
-  }
-  return false;
+  return !!await tryLocator(page, SEL.MANUAL_ACTION);
 }
 
 /** Detect account blocked message. */
 async function isBlocked(page: Page): Promise<boolean> {
-  for (const sel of SEL.BLOCKED) {
-    try {
-      const el = page.locator(sel).first();
-      if (await el.count() > 0 && await el.isVisible()) return true;
-    } catch { /* continue */ }
-  }
-  return false;
+  return !!await tryLocator(page, SEL.BLOCKED);
 }
 
-/** Safe page diagnostics (no secrets). */
+/** Safe structural diagnostics. Values, query strings, cookies, and storage are excluded. */
 async function collectDiagnostics(page: Page): Promise<{
-  urlPath: string; title: string; frameCount: number; visibleInputCount: number;
+  urlPath: string;
+  framePaths: string[];
+  frameCount: number;
+  visibleInputs: Array<{
+    framePath: string;
+    type: string;
+    autocomplete: string;
+    name: string;
+    id: string;
+    placeholder: string;
+    label: string;
+  }>;
+  visibleButtons: string[];
 }> {
   try {
-    const url      = page.url();
-    const title    = await page.title().catch(() => "");
-    const frames   = page.frames().length;
-    const inputs   = await page.locator("input:visible").count().catch(() => 0);
-    return { urlPath: new URL(url).pathname, title, frameCount: frames, visibleInputCount: inputs };
+    const frames = allFrames(page);
+    const visibleInputs: Array<{
+      framePath: string;
+      type: string;
+      autocomplete: string;
+      name: string;
+      id: string;
+      placeholder: string;
+      label: string;
+    }> = [];
+    const visibleButtons: string[] = [];
+
+    for (const frame of frames) {
+      const framePath = safeUrlPath(frame.url());
+      const inputs = frame.locator("input");
+      const inputCount = Math.min(await inputs.count().catch(() => 0), 20);
+      for (let index = 0; index < inputCount; index++) {
+        const input = inputs.nth(index);
+        if (!await input.isVisible().catch(() => false)) continue;
+        const id = sanitizeStructuralText(await input.getAttribute("id"));
+        let label = "";
+        if (id) {
+          label = sanitizeStructuralText(
+            await frame.locator(`label[for=${JSON.stringify(id)}]`).first().textContent().catch(() => ""),
+          );
+        }
+        if (!label) {
+          label = sanitizeStructuralText(
+            await input.locator("xpath=ancestor::label[1]").textContent().catch(() => ""),
+          );
+        }
+        visibleInputs.push({
+          framePath,
+          type: sanitizeStructuralText(await input.getAttribute("type")),
+          autocomplete: sanitizeStructuralText(await input.getAttribute("autocomplete")),
+          name: sanitizeStructuralText(await input.getAttribute("name")),
+          id,
+          placeholder: sanitizeStructuralText(await input.getAttribute("placeholder")),
+          label,
+        });
+      }
+
+      const buttons = frame.locator('button, [role="button"], input[type="submit"]');
+      const buttonCount = Math.min(await buttons.count().catch(() => 0), 20);
+      for (let index = 0; index < buttonCount; index++) {
+        const button = buttons.nth(index);
+        if (!await button.isVisible().catch(() => false)) continue;
+        const text = sanitizeStructuralText(
+          (await button.textContent().catch(() => "")) ||
+          (await button.getAttribute("value").catch(() => "")),
+        );
+        if (text && !visibleButtons.includes(text)) visibleButtons.push(text);
+      }
+    }
+
+    return {
+      urlPath: safeUrlPath(page.url()),
+      framePaths: frames.map((frame) => safeUrlPath(frame.url())),
+      frameCount: frames.length,
+      visibleInputs,
+      visibleButtons: visibleButtons.slice(0, 20),
+    };
   } catch {
-    return { urlPath: "?", title: "", frameCount: 0, visibleInputCount: 0 };
+    return {
+      urlPath: "?",
+      framePaths: [],
+      frameCount: 0,
+      visibleInputs: [],
+      visibleButtons: [],
+    };
   }
+}
+
+async function hasOtpControl(page: Page): Promise<boolean> {
+  if (allFrames(page).some((frame) => isOtpUrl(frame.url()))) return true;
+  if (await tryLocator(page, SEL.OTP_INPUT_SINGLE)) return true;
+  return (await countVisibleAcrossFrames(page, 'input[maxlength="1"]')) >= 4;
+}
+
+/**
+ * Classify the live authentication state in a strict, security-first order.
+ * This is the only post-identifier state detector used by initiate and submit.
+ */
+async function classifyAuthState(page: Page, timeout = 0): Promise<PortalAuthState> {
+  const deadline = Date.now() + timeout;
+  do {
+    const url = page.url();
+    const dashboardCandidate =
+      isDashboardUrl(url) ||
+      (!isLoginUrl(url) && !!await tryLocator(page, SEL.DASHBOARD_LANDMARK));
+    if (dashboardCandidate && (await verifyDashboardAuthenticated(page)).verified) {
+      return "authenticated_dashboard";
+    }
+    if (await hasOtpControl(page)) return "otp";
+    if (await tryLocator(page, SEL.PASSWORD_INPUT)) return "password";
+    if (await hasManualActionRequired(page)) return "device_approval";
+    if (await hasCaptcha(page)) return "captcha";
+    if (await isBlocked(page)) return "blocked";
+    if (await tryLocator(page, SEL.ERROR_MSG)) return "error";
+    if (Date.now() < deadline) await page.waitForTimeout(100);
+  } while (Date.now() < deadline);
+  return "unknown";
+}
+
+async function readVisiblePortalError(page: Page): Promise<string> {
+  const error = await tryLocator(page, SEL.ERROR_MSG);
+  if (!error) return "";
+  return sanitizeStructuralText(await error.textContent().catch(() => ""));
+}
+
+async function buildEncryptedStepToken(
+  context: BrowserContext,
+  currentData: PineLabsOneAdapterData,
+  step: PineLabsOneAdapterData["step"],
+): Promise<string | null> {
+  const storageState = await extractStorageState(context);
+  const payload = makeSessionPayload(
+    "pinelabs_one",
+    0,
+    { ...currentData, storageState, step } as unknown as Record<string, unknown>,
+  );
+  const encrypted = encryptSessionPayload(payload);
+  return encrypted.ok ? encrypted.token : null;
+}
+
+async function buildInitialAwaitingResult(
+  context: BrowserContext,
+  identifier: string,
+  step: "AWAITING_OTP" | "AWAITING_PASSWORD",
+): Promise<InitiateResult> {
+  const maskedIdentifier = maskIdentifier(identifier);
+  const token = await buildEncryptedStepToken(
+    context,
+    {
+      storageState: { cookies: [], origins: [] },
+      maskedIdentifier,
+      step,
+      loginMode: "password",
+      storedIdentifier: identifier,
+    },
+    step,
+  );
+  if (!token) {
+    return {
+      status: "FAILED",
+      failReason: "SESSION_ENCRYPT_FAILED",
+      failDetail: "Internal error.",
+    };
+  }
+  if (step === "AWAITING_PASSWORD") {
+    return {
+      status: "AWAITING_PASSWORD",
+      encryptedSessionToken: token,
+      nextStep: "ENTER_PASSWORD",
+      nextStepPrompt:
+        `Enter your Pine Labs ONE account password for ${maskedIdentifier}, ` +
+        "or choose Login with OTP if Pine Labs offers that option. " +
+        "Your password is encrypted in transit and never stored.",
+    };
+  }
+  const destination = identifier.includes("@") ? "email inbox" : "registered mobile";
+  return {
+    status: "AWAITING_OTP",
+    encryptedSessionToken: token,
+    nextStep: "ENTER_OTP",
+    nextStepPrompt:
+      `An OTP has been sent to your ${destination} (${maskedIdentifier}). ` +
+      "Enter it below to connect your Pine Labs ONE account. " +
+      "The OTP is used once and discarded immediately.",
+  };
 }
 
 /**
@@ -658,18 +896,12 @@ async function fillIdentifier(page: Page, identifier: string): Promise<boolean> 
   // Wait for any identifier field to appear
   await waitForAny(page, SEL.IDENTIFIER_INPUT, NAV_TIMEOUT_MS);
 
-  for (const sel of SEL.IDENTIFIER_INPUT) {
-    try {
-      const el = page.locator(sel).first();
-      if (await el.count() > 0 && await el.isVisible()) {
-        await el.click({ timeout: ACTION_TIMEOUT_MS });
-        await el.fill("", { timeout: ACTION_TIMEOUT_MS });
-        await el.fill(identifier, { timeout: ACTION_TIMEOUT_MS });
-        return true;
-      }
-    } catch { /* continue */ }
-  }
-  return false;
+  const input = await tryLocator(page, SEL.IDENTIFIER_INPUT);
+  if (!input) return false;
+  await input.click({ timeout: ACTION_TIMEOUT_MS });
+  await input.fill("", { timeout: ACTION_TIMEOUT_MS });
+  await input.fill(identifier, { timeout: ACTION_TIMEOUT_MS });
+  return true;
 }
 
 /**
@@ -679,18 +911,12 @@ async function fillIdentifier(page: Page, identifier: string): Promise<boolean> 
 async function fillPassword(page: Page, password: string): Promise<boolean> {
   await waitForAny(page, SEL.PASSWORD_INPUT, NAV_TIMEOUT_MS);
 
-  for (const sel of SEL.PASSWORD_INPUT) {
-    try {
-      const el = page.locator(sel).first();
-      if (await el.count() > 0 && await el.isVisible()) {
-        await el.click({ timeout: ACTION_TIMEOUT_MS });
-        await el.fill("", { timeout: ACTION_TIMEOUT_MS });
-        await el.fill(password, { timeout: ACTION_TIMEOUT_MS });
-        return true;
-      }
-    } catch { /* continue */ }
-  }
-  return false;
+  const input = await tryLocator(page, SEL.PASSWORD_INPUT);
+  if (!input) return false;
+  await input.click({ timeout: ACTION_TIMEOUT_MS });
+  await input.fill("", { timeout: ACTION_TIMEOUT_MS });
+  await input.fill(password, { timeout: ACTION_TIMEOUT_MS });
+  return true;
 }
 
 /**
@@ -703,29 +929,25 @@ async function fillOtp(page: Page, otp: string): Promise<boolean> {
   await waitForAny(page, allOtpSels, NAV_TIMEOUT_MS);
 
   // Try single-field first
-  for (const sel of SEL.OTP_INPUT_SINGLE) {
-    try {
-      const el = page.locator(sel).first();
-      if (await el.count() > 0 && await el.isVisible()) {
-        await el.click({ timeout: ACTION_TIMEOUT_MS });
-        await el.fill(otp, { timeout: ACTION_TIMEOUT_MS });
-        return true;
-      }
-    } catch { /* continue */ }
+  const singleInput = await tryLocator(page, SEL.OTP_INPUT_SINGLE);
+  if (singleInput) {
+    await singleInput.click({ timeout: ACTION_TIMEOUT_MS });
+    await singleInput.fill(otp, { timeout: ACTION_TIMEOUT_MS });
+    return true;
   }
 
   // Try digit boxes (maxlength="1") — fill each digit
-  const digitBoxes = page.locator('input[maxlength="1"]');
-  const boxCount = await digitBoxes.count().catch(() => 0);
-  if (boxCount >= 4 && otp.length >= 4) {
-    const digits = otp.replace(/\D/g, "");
-    for (let i = 0; i < Math.min(boxCount, digits.length); i++) {
-      try {
+  for (const frame of allFrames(page)) {
+    const digitBoxes = frame.locator('input[maxlength="1"]');
+    const boxCount = await digitBoxes.count().catch(() => 0);
+    if (boxCount >= 4 && otp.length >= 4) {
+      const digits = otp.replace(/\D/g, "");
+      for (let i = 0; i < Math.min(boxCount, digits.length); i++) {
         await digitBoxes.nth(i).click({ timeout: ACTION_TIMEOUT_MS });
-        await digitBoxes.nth(i).fill(digits[i], { timeout: ACTION_TIMEOUT_MS });
-      } catch { /* continue */ }
+        await digitBoxes.nth(i).fill(digits[i]!, { timeout: ACTION_TIMEOUT_MS });
+      }
+      return true;
     }
-    return true;
   }
 
   return false;
@@ -736,14 +958,10 @@ async function fillOtp(page: Page, otp: string): Promise<boolean> {
  * Falls back to pressing Enter.
  */
 async function clickSubmit(page: Page, selectors: string[]): Promise<void> {
-  for (const sel of selectors) {
-    try {
-      const el = page.locator(sel).first();
-      if (await el.count() > 0 && await el.isVisible()) {
-        await el.click({ timeout: ACTION_TIMEOUT_MS * 2 });
-        return;
-      }
-    } catch { /* continue */ }
+  const button = await tryLocator(page, selectors);
+  if (button) {
+    await button.click({ timeout: ACTION_TIMEOUT_MS * 2 });
+    return;
   }
   // Fallback: press Enter
   await page.keyboard.press("Enter");
@@ -765,7 +983,7 @@ async function verifyDashboardAuthenticated(
 
   // (a) URL check
   if (isLoginUrl(url) && !isDashboardUrl(url)) {
-    return { verified: false, reason: `STILL_ON_LOGIN_PAGE: ${url}` };
+    return { verified: false, reason: `STILL_ON_LOGIN_PAGE: ${safeUrlPath(url)}` };
   }
 
   // (b) Dashboard landmark
@@ -775,21 +993,19 @@ async function verifyDashboardAuthenticated(
   }
 
   // (c) Login form must not be visible
-  for (const sel of SEL.IDENTIFIER_INPUT) {
-    try {
-      const el = page.locator(sel).first();
-      if (await el.count() > 0 && await el.isVisible()) {
-        return { verified: false, reason: `LOGIN_FORM_STILL_VISIBLE: ${sel}` };
-      }
-    } catch { /* continue */ }
+  const identifierMatch = await tryLocatorMatch(page, SEL.IDENTIFIER_INPUT);
+  if (identifierMatch) {
+    return {
+      verified: false,
+      reason: `LOGIN_FORM_STILL_VISIBLE: ${identifierMatch.selector}@${identifierMatch.framePath}`,
+    };
   }
-  for (const sel of SEL.PASSWORD_INPUT) {
-    try {
-      const el = page.locator(sel).first();
-      if (await el.count() > 0 && await el.isVisible()) {
-        return { verified: false, reason: `PASSWORD_FORM_STILL_VISIBLE: ${sel}` };
-      }
-    } catch { /* continue */ }
+  const passwordMatch = await tryLocatorMatch(page, SEL.PASSWORD_INPUT);
+  if (passwordMatch) {
+    return {
+      verified: false,
+      reason: `PASSWORD_FORM_STILL_VISIBLE: ${passwordMatch.selector}@${passwordMatch.framePath}`,
+    };
   }
 
   return { verified: true };
@@ -837,8 +1053,8 @@ async function verifyOwnershipFromPortal(
   const merchantId = await (async () => {
     for (const sel of SEL.MID) {
       try {
-        const el = page.locator(sel).first();
-        if (await el.count() > 0) {
+        const el = await tryLocator(page, [sel]);
+        if (el) {
           const text = await el.textContent();
           // Match numeric MID (8–20 digits) or alphanumeric merchant code
           const match = text?.match(/\b([A-Z0-9]{8,20}|\d{8,20})\b/);
@@ -858,8 +1074,8 @@ async function verifyOwnershipFromPortal(
   const storeId = await (async () => {
     for (const sel of SEL.STORE_ID) {
       try {
-        const el = page.locator(sel).first();
-        if (await el.count() > 0) {
+        const el = await tryLocator(page, [sel]);
+        if (el) {
           const text = await el.textContent();
           const match = text?.match(/:\s*([A-Z0-9\-]+)/);
           if (match) return match[1];
@@ -873,8 +1089,8 @@ async function verifyOwnershipFromPortal(
   const businessName = await (async () => {
     for (const sel of SEL.BUSINESS_NAME) {
       try {
-        const el = page.locator(sel).first();
-        if (await el.count() > 0 && await el.isVisible()) {
+        const el = await tryLocator(page, [sel]);
+        if (el) {
           const text = (await el.textContent())?.trim();
           if (text && text.length > 2) return text;
         }
@@ -944,34 +1160,12 @@ async function navigateToLogin(page: Page): Promise<LoginPageState | null> {
     await page.waitForTimeout(1_500);
   }
 
-  const url = page.url();
-
-  // ── OTP URL (Pine Labs ONE authV2 OTP-first flow) ─────────────────────────
-  // The portal may navigate directly to the OTP page if a session was cached,
-  // or because the /authV2 flow skips the password step entirely.
-  if (isOtpUrl(url)) return "otp_form";
-
-  // Already on dashboard
-  if (!isLoginUrl(url) || isDashboardUrl(url)) {
-    const check = await verifyDashboardAuthenticated(page);
-    if (check.verified) return "dashboard";
-  }
-
-  // CAPTCHA
-  if (await hasCaptcha(page)) return "captcha";
-
-  // QR / manual action
-  if (await hasManualActionRequired(page)) return "manual_action";
-
-  // OTP form visible — check URL first (most reliable), then DOM
-  const otpField = await tryLocator(page, SEL.OTP_INPUT_SINGLE);
-  if (otpField) return "otp_form";
-  const digitBoxCount = await page.locator('input[maxlength="1"]').count().catch(() => 0);
-  if (digitBoxCount >= 4) return "otp_form";
-
-  // Password form visible (session restored to password step)
-  const pwdField = await tryLocator(page, SEL.PASSWORD_INPUT);
-  if (pwdField) return "password_form";
+  const authState = await classifyAuthState(page, 1_500);
+  if (authState === "authenticated_dashboard") return "dashboard";
+  if (authState === "otp") return "otp_form";
+  if (authState === "password") return "password_form";
+  if (authState === "device_approval") return "manual_action";
+  if (authState === "captcha") return "captcha";
 
   // Identifier form (expected happy path)
   const idField = await tryLocator(page, SEL.IDENTIFIER_INPUT);
@@ -989,8 +1183,12 @@ async function navigateToLogin(page: Page): Promise<LoginPageState | null> {
     // Handle language page if it re-appears on direct navigation
     await handleLanguageInterstitial(page);
     await page.waitForTimeout(1_000);
-    const urlAlt = page.url();
-    if (isOtpUrl(urlAlt)) return "otp_form";
+    const altState = await classifyAuthState(page, 1_500);
+    if (altState === "authenticated_dashboard") return "dashboard";
+    if (altState === "otp") return "otp_form";
+    if (altState === "password") return "password_form";
+    if (altState === "device_approval") return "manual_action";
+    if (altState === "captcha") return "captcha";
     const idField2 = await tryLocator(page, SEL.IDENTIFIER_INPUT);
     if (idField2) return "identifier_form";
   } catch { /* continue */ }
@@ -1101,6 +1299,13 @@ export const pineLabsOneAdapter: ProviderAdapter = {
       if (loginState === "dashboard") {
         // Already authenticated (unexpected in a fresh isolated context)
         const ownership = await verifyOwnershipFromPortal(page, { maskedIdentifier: maskIdentifier(identifier) } as any);
+        if (!ownership.verified) {
+          return {
+            status: "FAILED",
+            failReason: "OWNERSHIP_UNVERIFIABLE",
+            failDetail: "Could not verify merchant ownership on the Pine Labs ONE portal. Please reconnect.",
+          };
+        }
         const storageState = await extractStorageState(ctx.context);
         const adData: PineLabsOneAdapterData = {
           storageState,
@@ -1122,16 +1327,15 @@ export const pineLabsOneAdapter: ProviderAdapter = {
         };
       }
 
+      if (loginState === "otp_form") {
+        return await buildInitialAwaitingResult(ctx.context, identifier, "AWAITING_OTP");
+      }
+      if (loginState === "password_form") {
+        return await buildInitialAwaitingResult(ctx.context, identifier, "AWAITING_PASSWORD");
+      }
+
       // ── identifier_form state — expected happy path ───────────────────────
-      if (loginState === "identifier_form" || loginState === "password_form") {
-
-        // If already on password form (session restored to password step),
-        // go back to identifier entry so we have a clean flow.
-        if (loginState === "password_form") {
-          try { await page.goBack({ waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS }); } catch {}
-          await page.waitForTimeout(1_000);
-        }
-
+      if (loginState === "identifier_form") {
         // Fill identifier
         const filled = await fillIdentifier(page, identifier);
         if (!filled) {
@@ -1142,8 +1346,7 @@ export const pineLabsOneAdapter: ProviderAdapter = {
             failReason: "LOGIN_UI_CHANGED",
             failDetail:
               `Could not locate the identifier input on the Pine Labs ONE login page ` +
-              `(path=${diag.urlPath}, title="${diag.title}", frames=${diag.frameCount}, ` +
-              `inputs=${diag.visibleInputCount}). ` +
+              `(path=${diag.urlPath}, frames=${diag.frameCount}, inputs=${diag.visibleInputs.length}). ` +
               "The portal UI may have changed — please contact RasoKart support.",
             helpUrl: HELP_URL,
           };
@@ -1153,182 +1356,50 @@ export const pineLabsOneAdapter: ProviderAdapter = {
         await page.waitForTimeout(300);
         await clickSubmit(page, SEL.NEXT_BTN);
 
-        // ── Parallel wait: OTP URL navigation OR DOM outcome ────────────────
-        // Pine Labs ONE /authV2 OTP-first flow: the portal navigates to the OTP
-        // URL BEFORE rendering the OTP input elements. Running both waits in
-        // parallel ensures we detect the OTP URL even in the window between
-        // navigation completion and first DOM paint.
-        const outcomes = [
-          ...SEL.PASSWORD_INPUT,
-          ...SEL.OTP_INPUT_SINGLE,
-          ...SEL.OTP_DIGIT_BOX,
-          ...SEL.ERROR_MSG,
-          ...SEL.CAPTCHA,
-          ...SEL.MANUAL_ACTION,
-        ];
-        await Promise.race([
-          waitForAny(page, outcomes, NAV_TIMEOUT_MS).catch(() => {}),
-          // waitForURL runs server-side; resolves as soon as the page URL
-          // matches any OTP URL pattern (catches navigation before DOM paint).
-          page.waitForURL(
-            (url: URL) => OTP_URL_PATTERNS.some(p => url.href.toLowerCase().includes(p)),
-            { timeout: NAV_TIMEOUT_MS },
-          ).catch(() => {}),
-        ]);
+        const postSubmitState = await classifyAuthState(page, NAV_TIMEOUT_MS);
+        const diag = await collectDiagnostics(page);
+        logger.info(
+          { slug: "pinelabs_one", selectedState: postSubmitState, diag },
+          "pinelabs_one_post_identifier_state",
+        );
 
-        // ── URL-first OTP detection ─────────────────────────────────────────
-        // Always check URL before DOM; SPA route changes complete first.
-        const urlAfterSubmit = page.url();
-        if (isOtpUrl(urlAfterSubmit)) {
-          const storageState = await extractStorageState(ctx.context);
-          const adData: PineLabsOneAdapterData = {
-            storageState,
-            maskedIdentifier: maskIdentifier(identifier),
-            step: "AWAITING_OTP",
-            loginMode: "password",
-            storedIdentifier: identifier,
-          };
-          const payload = makeSessionPayload(
-            "pinelabs_one", 0, adData as unknown as Record<string, unknown>,
+        if (postSubmitState === "authenticated_dashboard") {
+          const ownership = await verifyOwnershipFromPortal(
+            page,
+            { maskedIdentifier: maskIdentifier(identifier) } as PineLabsOneAdapterData,
           );
-          const enc = encryptSessionPayload(payload);
-          if (!enc.ok) {
-            return { status: "FAILED", failReason: "SESSION_ENCRYPT_FAILED", failDetail: "Internal error." };
-          }
-          logger.info(
-            { slug: "pinelabs_one", maskedIdentifier: maskIdentifier(identifier), urlPath: new URL(urlAfterSubmit).pathname },
-            "pinelabs_one_initiate_otp_url_detected",
-          );
-          // Build a prompt that reflects whether the identifier is an email
-          // or a mobile number, so the merchant knows where to look for the OTP.
-          const isEmail = identifier.includes("@");
-          const otpDestination = isEmail ? "email inbox" : "registered mobile";
-          return {
-            status: "AWAITING_OTP",
-            encryptedSessionToken: enc.token,
-            nextStep: "ENTER_OTP",
-            nextStepPrompt:
-              `An OTP has been sent to your ${otpDestination} (${maskIdentifier(identifier)}). ` +
-              "Enter it below to connect your Pine Labs ONE account. " +
-              "The OTP is used once and discarded immediately.",
-          };
-        }
-
-        // ── OTP DOM fallback ──────────────────────────────────────────────────
-        // Run BEFORE the captcha check. The portal may navigate to an OTP page
-        // at a URL we haven't yet catalogued in OTP_URL_PATTERNS. Only scan
-        // the DOM when the URL has moved away from the identifier-entry form —
-        // this prevents input[inputmode="numeric"] on the phone field itself
-        // from triggering a false AWAITING_OTP.
-        //
-        // Safe diagnostic: logs the URL *path* only — never the identifier or
-        // any credential — so production logs can reveal new OTP URL slugs
-        // without exposing merchant data.
-        const diagUrlPath = (() => { try { return new URL(urlAfterSubmit).pathname; } catch { return "?"; } })();
-        logger.info({ slug: "pinelabs_one", urlPath: diagUrlPath }, "pinelabs_one_post_submit_url");
-
-        const urlIsOnOtpOrPost = !urlAfterSubmit.toLowerCase().includes("/login/user") &&
-                                 !urlAfterSubmit.toLowerCase().includes("/user-details");
-        if (urlIsOnOtpOrPost) {
-          const otpDomVisible = await tryLocator(page, SEL.OTP_INPUT_SINGLE);
-          const digitBoxCount  = await page.locator('input[maxlength="1"]').count().catch(() => 0);
-          if (otpDomVisible || digitBoxCount >= 4) {
-            const storageState = await extractStorageState(ctx.context);
-            const adData: PineLabsOneAdapterData = {
-              storageState,
-              maskedIdentifier: maskIdentifier(identifier),
-              step: "AWAITING_OTP",
-              loginMode: "password",
-              storedIdentifier: identifier,
-            };
-            const payload = makeSessionPayload(
-              "pinelabs_one", 0, adData as unknown as Record<string, unknown>,
-            );
-            const enc = encryptSessionPayload(payload);
-            if (!enc.ok) {
-              return { status: "FAILED", failReason: "SESSION_ENCRYPT_FAILED", failDetail: "Internal error." };
-            }
-            const isEmailDom = identifier.includes("@");
-            const otpDestDom  = isEmailDom ? "email inbox" : "registered mobile";
-            logger.info(
-              { slug: "pinelabs_one", maskedIdentifier: maskIdentifier(identifier), via: "dom_fallback", urlPath: diagUrlPath },
-              "pinelabs_one_initiate_awaiting_otp",
-            );
+          if (!ownership.verified) {
             return {
-              status: "AWAITING_OTP",
-              encryptedSessionToken: enc.token,
-              nextStep: "ENTER_OTP",
-              nextStepPrompt:
-                `An OTP has been sent to your ${otpDestDom} (${maskIdentifier(identifier)}). ` +
-                "Enter it below to connect your Pine Labs ONE account. " +
-                "The OTP is used once and discarded immediately.",
+              status: "FAILED",
+              failReason: "OWNERSHIP_UNVERIFIABLE",
+              failDetail: "Could not verify merchant ownership on the Pine Labs ONE portal. Please reconnect.",
             };
           }
-        }
-
-        // Password field appeared — may occur on password-first portals
-        const pwdVisible = await tryLocator(page, SEL.PASSWORD_INPUT);
-        if (pwdVisible) {
-          const storageState = await extractStorageState(ctx.context);
-          const adData: PineLabsOneAdapterData = {
-            storageState,
-            maskedIdentifier: maskIdentifier(identifier),
-            step: "AWAITING_PASSWORD",
-            loginMode: "password",
-            storedIdentifier: identifier,  // stored encrypted inside session token
-          };
-          const payload = makeSessionPayload(
-            "pinelabs_one", 0, adData as unknown as Record<string, unknown>,
-          );
-          const enc = encryptSessionPayload(payload);
-          if (!enc.ok) {
-            return { status: "FAILED", failReason: "SESSION_ENCRYPT_FAILED", failDetail: "Internal error." };
-          }
-          logger.info(
-            { slug: "pinelabs_one", maskedIdentifier: maskIdentifier(identifier) },
-            "pinelabs_one_initiate_awaiting_password",
+          const token = await buildEncryptedStepToken(
+            ctx.context,
+            {
+              storageState: { cookies: [], origins: [] },
+              maskedIdentifier: maskIdentifier(identifier),
+              step: "CONNECTED",
+              loginMode: "password",
+              connectedAt: new Date().toISOString(),
+              ...ownership,
+            },
+            "CONNECTED",
           );
           return {
-            status: "AWAITING_PASSWORD",
-            encryptedSessionToken: enc.token,
-            nextStep: "ENTER_PASSWORD",
-            nextStepPrompt:
-              `Enter your Pine Labs ONE account password for ${maskIdentifier(identifier)}. ` +
-              "Your password is AES-256 encrypted in transit and never stored.",
+            status: "CONNECTED",
+            encryptedSessionToken: token ?? undefined,
+            nextStep: "COMPLETE",
           };
         }
-
-        // Error message (e.g. user not found, unregistered identifier)
-        for (const errSel of SEL.ERROR_MSG) {
-          try {
-            const el = page.locator(errSel).first();
-            if (await el.count() > 0 && await el.isVisible()) {
-              const errText = (await el.textContent())?.trim() ?? "";
-              if (errText) {
-                return {
-                  status: "FAILED",
-                  failReason: "INVALID_IDENTIFIER",
-                  failDetail: `Pine Labs ONE returned an error: "${errText}". ` +
-                    "Verify this email address or mobile number is registered with Pine Labs ONE.",
-                };
-              }
-            }
-          } catch { /* continue */ }
+        if (postSubmitState === "otp") {
+          return await buildInitialAwaitingResult(ctx.context, identifier, "AWAITING_OTP");
         }
-
-        // CAPTCHA — only triggers when a challenge is VISIBLE with a non-zero
-        // bounding box. Hidden / pre-loaded CAPTCHA DOM nodes do NOT count.
-        if (await hasCaptcha(page)) {
-          return {
-            status: "AWAITING_USER_ACTION" as any,
-            failReason: "CAPTCHA_REQUIRED",
-            failDetail: "Pine Labs ONE is showing a CAPTCHA after identifier entry. Please wait and try again.",
-            helpUrl: HELP_URL,
-          };
+        if (postSubmitState === "password") {
+          return await buildInitialAwaitingResult(ctx.context, identifier, "AWAITING_PASSWORD");
         }
-
-        // QR code / device approval
-        if (await hasManualActionRequired(page)) {
+        if (postSubmitState === "device_approval") {
           return {
             status: "AWAITING_USER_ACTION" as any,
             failReason: "MANUAL_ACTION_REQUIRED",
@@ -1338,16 +1409,41 @@ export const pineLabsOneAdapter: ProviderAdapter = {
             helpUrl: HELP_URL,
           };
         }
+        if (postSubmitState === "captcha") {
+          return {
+            status: "AWAITING_USER_ACTION" as any,
+            failReason: "CAPTCHA_REQUIRED",
+            failDetail: "Pine Labs ONE is showing a CAPTCHA after identifier entry. Please wait and try again.",
+            helpUrl: HELP_URL,
+          };
+        }
+        if (postSubmitState === "blocked") {
+          return {
+            status: "BLOCKED" as any,
+            failReason: "ACCOUNT_BLOCKED",
+            failDetail: "Pine Labs ONE reports that this account is blocked or suspended.",
+          };
+        }
+        if (postSubmitState === "error") {
+          return {
+            status: "FAILED",
+            failReason: "INVALID_IDENTIFIER",
+            failDetail:
+              "Pine Labs ONE rejected the identifier. " +
+              "Verify that it is registered with Pine Labs ONE.",
+          };
+        }
 
-        // Unexpected state — safe diagnostics for support triage (no credentials)
-        const diag2 = await collectDiagnostics(page);
-        logger.warn({ slug: "pinelabs_one", diag: diag2 }, "pinelabs_one_initiate_unexpected_state");
+        logger.warn(
+          { slug: "pinelabs_one", selectedState: "unknown", diag },
+          "pinelabs_one_initiate_unexpected_state",
+        );
         return {
           status: "FAILED",
           failReason: "PORTAL_UI_CHANGED",
           failDetail:
-            `Pine Labs ONE did not show a recognisable OTP, password, or error screen after ` +
-            `identifier entry (path=${diag2.urlPath}, title="${diag2.title}"). ` +
+            `Pine Labs ONE did not show a recognisable authentication state after ` +
+            `identifier entry (path=${diag.urlPath}, frames=${diag.frameCount}). ` +
             "Verify your registered email or mobile is correct and try again. " +
             "If the issue persists, contact RasoKart support.",
           helpUrl: HELP_URL,
@@ -1437,15 +1533,25 @@ export const pineLabsOneAdapter: ProviderAdapter = {
           // Navigate to OTP page (browser context should have otp_session cookie)
           try {
             await otpPage.goto(otpUrl, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
-            await otpPage.waitForTimeout(1_500);
           } catch { /* try alternate URL */ }
 
-          const otpPresent = await tryLocator(otpPage, SEL.OTP_INPUT_SINGLE);
-          if (!otpPresent) {
+          let resendPageState = await classifyAuthState(otpPage, 1_500);
+          if (resendPageState !== "otp") {
             try {
               await otpPage.goto(altOtpUrl, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
-              await otpPage.waitForTimeout(1_500);
+              resendPageState = await classifyAuthState(otpPage, NAV_TIMEOUT_MS);
             } catch { /* continue */ }
+          }
+          if (resendPageState !== "otp") {
+            return {
+              status: "AWAITING_OTP",
+              encryptedSessionToken: params.encryptedSessionToken,
+              nextStep: "ENTER_OTP",
+              failReason: "OTP_SESSION_NOT_FOUND",
+              failDetail:
+                "The active OTP screen could not be restored. No resend was attempted; " +
+                "your existing OTP may still be valid.",
+            };
           }
 
           const resendBtn = await tryLocator(otpPage, SEL.RESEND_OTP_BTN);
@@ -1574,25 +1680,14 @@ export const pineLabsOneAdapter: ProviderAdapter = {
             };
           }
 
-          // Wait for navigation to an OTP page (URL-first, then DOM fallback)
-          await Promise.race([
-            otpPage.waitForURL(
-              (url: URL) => OTP_URL_PATTERNS.some(p => url.href.toLowerCase().includes(p)),
-              { timeout: NAV_TIMEOUT_MS },
-            ).catch(() => {}),
-            waitForAny(otpPage, SEL.OTP_INPUT_SINGLE, NAV_TIMEOUT_MS).catch(() => {}),
-          ]);
-          await otpPage.waitForTimeout(1_500);
-
-          const urlAfterClick = otpPage.url();
-          const otpInputVisible = await tryLocator(otpPage, SEL.OTP_INPUT_SINGLE);
-          const digitBoxCount   = await otpPage.locator('input[maxlength="1"]').count().catch(() => 0);
-
-          if (!isOtpUrl(urlAfterClick) && !otpInputVisible && digitBoxCount < 4) {
+          const switchedState = await classifyAuthState(otpPage, NAV_TIMEOUT_MS);
+          if (switchedState !== "otp") {
+            const diag = await collectDiagnostics(otpPage);
             logger.warn(
               {
                 slug: "pinelabs_one",
-                urlPath: (() => { try { return new URL(urlAfterClick).pathname; } catch { return "?"; } })(),
+                selectedState: switchedState,
+                diag,
               },
               "pinelabs_one_portal_otp_link_no_otp_page",
             );
@@ -1626,7 +1721,7 @@ export const pineLabsOneAdapter: ProviderAdapter = {
           const otpDest   = isEmailId ? "email inbox" : "registered mobile";
 
           logger.info(
-            { slug: "pinelabs_one", maskedIdentifier: adData.maskedIdentifier },
+            { slug: "pinelabs_one" },
             "pinelabs_one_portal_otp_switch_success",
           );
           return {
@@ -1760,23 +1855,40 @@ export const pineLabsOneAdapter: ProviderAdapter = {
       }
 
       // ── OTP step submission ──────────────────────────────────────────────
+      let outcomeState: PortalAuthState;
       if (isOtpStep) {
-        // Navigate to OTP page if not already there
+        // Navigate to an OTP route only to restore the already-created challenge.
+        // This never clicks a resend control.
         const otpUrl = `${getPortalOrigin()}/login/verify-otp`;
         const altOtpUrl = `${getPortalOrigin()}/authV2/sign-in/verify-otp`;
-        const onOtp = await tryLocator(page, SEL.OTP_INPUT_SINGLE);
-        const digitCount = await page.locator('input[maxlength="1"]').count().catch(() => 0);
-        if (!onOtp && digitCount < 4) {
-          // Navigate to OTP URL
+        let restoredState = await classifyAuthState(page, 1_500);
+        if (restoredState !== "otp") {
           try {
             await page.goto(otpUrl, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
-            await page.waitForTimeout(1_000);
-          } catch {
+            restoredState = await classifyAuthState(page, 1_500);
+          } catch { /* try current authV2 route */ }
+          if (restoredState !== "otp") {
             try {
               await page.goto(altOtpUrl, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
-              await page.waitForTimeout(1_000);
+              restoredState = await classifyAuthState(page, NAV_TIMEOUT_MS);
             } catch { /* continue */ }
           }
+        }
+
+        if (restoredState !== "otp") {
+          const diag = await collectDiagnostics(page);
+          logger.warn(
+            { slug: "pinelabs_one", selectedState: restoredState, diag },
+            "pinelabs_one_otp_restore_unexpected_state",
+          );
+          return {
+            status: "FAILED",
+            failReason: restoredState === "captcha" ? "CAPTCHA_REQUIRED"
+              : restoredState === "device_approval" ? "MANUAL_ACTION_REQUIRED"
+              : restoredState === "blocked" ? "ACCOUNT_BLOCKED"
+              : "OTP_SESSION_NOT_FOUND",
+            failDetail: "The active Pine Labs OTP screen could not be restored. Please restart the connection.",
+          };
         }
 
         const otpFilled = await fillOtp(page, credential);
@@ -1790,135 +1902,130 @@ export const pineLabsOneAdapter: ProviderAdapter = {
 
         await page.waitForTimeout(300);
         await clickSubmit(page, SEL.OTP_SUBMIT_BTN);
-
-        // Wait for outcome
-        const outcomes = [...SEL.DASHBOARD_LANDMARK, ...SEL.ERROR_MSG, ...SEL.CAPTCHA, ...SEL.BLOCKED];
-        await waitForAny(page, outcomes, NAV_TIMEOUT_MS);
+        outcomeState = await classifyAuthState(page, NAV_TIMEOUT_MS);
 
       } else {
         // ── Password step submission ─────────────────────────────────────
-        //
-        // Portal flow confirmed Aug 2026:
-        //   /authV2/language (language picker, cookie-less sessions only)
-        //   → /authV2/verify-user  (identifier entry, "Sign in securely" button)
-        //   → /authV2/password     (password entry, "Verify" button)
-        //   → /home                (dashboard)
-        //
-        // Restoring the storageState preserves lang_selected + auth cookies,
-        // but the SPA does NOT restore to /authV2/password because React
-        // in-memory state is not persisted between contexts.  We must always
-        // re-drive the identifier → password form navigation.
-
-        // 1. Handle language interstitial if the session restore left us there.
         await handleLanguageInterstitial(page);
-        await page.waitForTimeout(500);
+        let restoredState = await classifyAuthState(page, 1_500);
+        if (restoredState !== "password" && restoredState !== "authenticated_dashboard") {
+          try {
+            await page.goto(`${getPortalOrigin()}/authV2/password`, {
+              waitUntil: "domcontentloaded",
+              timeout: NAV_TIMEOUT_MS,
+            });
+            await handleLanguageInterstitial(page);
+            restoredState = await classifyAuthState(page, NAV_TIMEOUT_MS);
+          } catch { /* classify the current state below */ }
+        }
 
-        // 2. Check if session already restored to a full dashboard state.
-        //    Mid-login sessions should never be here, but a cached CONNECTED
-        //    session would skip the password step entirely.
-        const urlAfterRestore = page.url();
-        const restoredToDashboard =
-          (!isLoginUrl(urlAfterRestore) || isDashboardUrl(urlAfterRestore)) &&
-          (await verifyDashboardAuthenticated(page)).verified;
+        if (restoredState === "otp") {
+          const token = await buildEncryptedStepToken(ctx.context, adData, "AWAITING_OTP");
+          return {
+            status: "AWAITING_OTP",
+            encryptedSessionToken: token ?? undefined,
+            nextStep: "ENTER_OTP",
+            nextStepPrompt: "Pine Labs ONE is waiting for an OTP. Enter the current OTP; no new OTP was requested.",
+          };
+        }
+        if (restoredState !== "password" && restoredState !== "authenticated_dashboard") {
+          const diag = await collectDiagnostics(page);
+          logger.warn(
+            { slug: "pinelabs_one", selectedState: restoredState, diag },
+            "pinelabs_one_password_restore_unexpected_state",
+          );
+          return {
+            status: "FAILED",
+            failReason: restoredState === "captcha" ? "CAPTCHA_REQUIRED"
+              : restoredState === "device_approval" ? "MANUAL_ACTION_REQUIRED"
+              : restoredState === "blocked" ? "ACCOUNT_BLOCKED"
+              : "SESSION_RESTART_REQUIRED",
+            failDetail:
+              "The saved password step could not be restored safely. " +
+              "Restart the connection; RasoKart did not re-submit your identifier or request another OTP.",
+          };
+        }
 
-        if (!restoredToDashboard) {
-          // 3. If session is already on the password page, skip re-entry.
-          let pwdOnPage = await tryLocator(page, SEL.PASSWORD_INPUT);
-
-          if (!pwdOnPage) {
-            // 4. Try navigating directly to /authV2/password.
-            //    The SPA + restored localStorage may render the password form
-            //    without requiring identifier re-entry.
-            try {
-              await page.goto(`${getPortalOrigin()}/authV2/password`, {
-                waitUntil: "domcontentloaded",
-                timeout: NAV_TIMEOUT_MS,
-              });
-              await page.waitForTimeout(1_500);
-              // Handle language interstitial in case it appears on direct nav.
-              await handleLanguageInterstitial(page);
-              await page.waitForTimeout(500);
-              pwdOnPage = await tryLocator(page, SEL.PASSWORD_INPUT);
-            } catch { /* continue to full re-entry */ }
-          }
-
-          if (!pwdOnPage) {
-            // 5. Full re-entry: navigate to identifier form, re-submit the
-            //    stored identifier, then wait for /authV2/password to render.
-            //    This is the reliable fallback — SPA in-memory state is not
-            //    preserved across isolated browser contexts.
-            const loginState = await navigateToLogin(page);
-            if (!loginState || loginState === "captcha" || loginState === "manual_action") {
-              return {
-                status: "FAILED",
-                failReason: loginState === "captcha" ? "CAPTCHA_REQUIRED"
-                  : loginState === "manual_action" ? "MANUAL_ACTION_REQUIRED"
-                  : "PORTAL_UNREACHABLE",
-                failDetail: "Could not reach the Pine Labs ONE password step. Please try again.",
-              };
-            }
-
-            if (loginState === "identifier_form" && adData.storedIdentifier) {
-              const filled = await fillIdentifier(page, adData.storedIdentifier);
-              if (filled) {
-                await page.waitForTimeout(300);
-                await clickSubmit(page, SEL.NEXT_BTN);
-                // Wait for /authV2/password URL OR password input visible —
-                // whichever comes first (SPA navigation completes before render).
-                await Promise.race([
-                  waitForAny(page, SEL.PASSWORD_INPUT, NAV_TIMEOUT_MS).catch(() => {}),
-                  page.waitForURL(
-                    (u: URL) => u.pathname.toLowerCase().includes("/authv2/password"),
-                    { timeout: NAV_TIMEOUT_MS },
-                  ).catch(() => {}),
-                ]);
-                await page.waitForTimeout(500);
-                pwdOnPage = await tryLocator(page, SEL.PASSWORD_INPUT);
-              }
-            } else if (loginState === "password_form") {
-              // navigateToLogin() detected the password page directly.
-              pwdOnPage = await tryLocator(page, SEL.PASSWORD_INPUT);
-            }
-          }
-
-          // 6. Fill password
+        if (restoredState === "authenticated_dashboard") {
+          outcomeState = restoredState;
+        } else {
           const pwdFilled = await fillPassword(page, credential);
-          // credential (password) goes out of scope after this — never stored
           if (!pwdFilled) {
             const diag = await collectDiagnostics(page);
+            logger.warn(
+              { slug: "pinelabs_one", selectedState: "password", diag },
+              "pinelabs_one_password_input_not_found",
+            );
             return {
               status: "FAILED",
-              failReason: "PASSWORD_FIELD_NOT_FOUND",
+              failReason: "LOGIN_UI_CHANGED",
               failDetail:
-                `Could not locate the password field on the Pine Labs ONE portal ` +
-                `(path=${diag.urlPath}, inputs=${diag.visibleInputCount}). ` +
-                "The portal UI may have changed — please contact RasoKart support.",
+                `The Pine Labs password screen was detected, but its input could not be filled ` +
+                `(path=${diag.urlPath}, frames=${diag.frameCount}).`,
             };
           }
-
-          // 7. Submit password — "Verify" button on /authV2/password (Aug 2026)
           await page.waitForTimeout(400);
           await clickSubmit(page, SEL.SIGN_IN_BTN);
-
-          // 8. Wait for outcome: dashboard, OTP (portal may offer OTP switch),
-          //    error, CAPTCHA, or account block
-          const allOutcomes = [
-            ...SEL.DASHBOARD_LANDMARK,
-            ...SEL.OTP_INPUT_SINGLE,
-            ...SEL.OTP_DIGIT_BOX,
-            ...SEL.ERROR_MSG,
-            ...SEL.CAPTCHA,
-            ...SEL.BLOCKED,
-            ...SEL.MANUAL_ACTION,
-          ];
-          await waitForAny(page, allOutcomes, NAV_TIMEOUT_MS);
+          outcomeState = await classifyAuthState(page, NAV_TIMEOUT_MS);
         }
       }
 
       // ── Shared outcome checks ─────────────────────────────────────────────
+      const outcomeDiagnostics = await collectDiagnostics(page);
+      logger.info(
+        { slug: "pinelabs_one", selectedState: outcomeState, diag: outcomeDiagnostics },
+        "pinelabs_one_submit_step_state",
+      );
 
-      // Account blocked
-      if (await isBlocked(page)) {
+      if (outcomeState === "otp") {
+        const errorText = await readVisiblePortalError(page);
+        if (isOtpStep) {
+          const expired = /expired/i.test(errorText);
+          return {
+            status: "FAILED",
+            failReason: expired ? "OTP_EXPIRED" : "INVALID_OTP",
+            failDetail: expired
+              ? "The Pine Labs ONE OTP has expired. Restart the connection to request a new OTP."
+              : "Pine Labs ONE did not accept that OTP. Check it and try again.",
+          };
+        }
+        const token = await buildEncryptedStepToken(ctx.context, adData, "AWAITING_OTP");
+        return {
+          status: "AWAITING_OTP",
+          encryptedSessionToken: token ?? undefined,
+          nextStep: "ENTER_OTP",
+          nextStepPrompt:
+            "Pine Labs ONE requires an OTP after password verification. Enter the current OTP; RasoKart will not resend automatically.",
+        };
+      }
+
+      if (outcomeState === "password") {
+        return {
+          status: "FAILED",
+          failReason: "INVALID_PASSWORD",
+          failDetail: "Pine Labs ONE did not accept that password. Check it and try again.",
+        };
+      }
+
+      if (outcomeState === "device_approval") {
+        return {
+          status: "AWAITING_USER_ACTION" as any,
+          failReason: "MANUAL_ACTION_REQUIRED",
+          failDetail:
+            "Pine Labs ONE requires QR code scan or device approval. " +
+            "Complete it on your registered device, then reconnect.",
+        };
+      }
+
+      if (outcomeState === "captcha") {
+        return {
+          status: "AWAITING_USER_ACTION" as any,
+          failReason: "CAPTCHA_REQUIRED",
+          failDetail: "Pine Labs ONE is showing a CAPTCHA. Please wait and try again.",
+        };
+      }
+
+      if (outcomeState === "blocked") {
         logger.warn({ slug: "pinelabs_one" }, "pinelabs_one_submitstep_blocked");
         return {
           status: "BLOCKED" as any,
@@ -1929,95 +2036,28 @@ export const pineLabsOneAdapter: ProviderAdapter = {
         };
       }
 
-      // CAPTCHA
-      if (await hasCaptcha(page)) {
+      if (outcomeState === "error") {
+        const errorText = await readVisiblePortalError(page);
         return {
-          status: "AWAITING_USER_ACTION" as any,
-          failReason: "CAPTCHA_REQUIRED",
-          failDetail: "Pine Labs ONE is showing a CAPTCHA. Please wait and try again.",
+          status: "FAILED",
+          failReason: isOtpStep ? (/expired/i.test(errorText) ? "OTP_EXPIRED" : "INVALID_OTP") : "INVALID_PASSWORD",
+          failDetail: isOtpStep
+            ? "Pine Labs ONE rejected the OTP. Check it and try again."
+            : "Pine Labs ONE rejected the password. Check it and try again.",
         };
       }
 
-      // Manual action (QR / device approval)
-      if (await hasManualActionRequired(page)) {
-        return {
-          status: "AWAITING_USER_ACTION" as any,
-          failReason: "MANUAL_ACTION_REQUIRED",
-          failDetail:
-            "Pine Labs ONE requires QR code scan or device approval. " +
-            "Complete the verification on your registered device, then try reconnecting.",
-        };
-      }
-
-      // OTP 2FA appeared after password (expected for accounts with 2FA enabled)
-      if (!isOtpStep) {
-        const otpField = await tryLocator(page, SEL.OTP_INPUT_SINGLE);
-        const digitBoxCount = await page.locator('input[maxlength="1"]').count().catch(() => 0);
-        if (otpField || digitBoxCount >= 4) {
-          const newStorageState = await extractStorageState(ctx.context);
-          const newData: PineLabsOneAdapterData = {
-            ...adData, storageState: newStorageState, step: "AWAITING_OTP",
-          };
-          const payload = makeSessionPayload(
-            "pinelabs_one", 0, newData as unknown as Record<string, unknown>,
-          );
-          const enc = encryptSessionPayload(payload);
-          if (!enc.ok) {
-            return { status: "FAILED", failReason: "SESSION_ENCRYPT_FAILED", failDetail: "Internal error." };
-          }
-          logger.info({ slug: "pinelabs_one" }, "pinelabs_one_submitstep_2fa_otp_required");
-          return {
-            status: "AWAITING_OTP",
-            encryptedSessionToken: enc.token,
-            nextStep: "ENTER_OTP",
-            nextStepPrompt:
-              "Pine Labs ONE sent an OTP to your registered mobile for 2-step verification. Enter it below.",
-          };
-        }
-      }
-
-      // Error messages (wrong password / invalid OTP)
-      for (const errSel of SEL.ERROR_MSG) {
-        try {
-          const el = page.locator(errSel).first();
-          if (await el.count() > 0 && await el.isVisible()) {
-            const errText = (await el.textContent())?.trim() ?? "";
-            if (errText) {
-              const isExpired = /expired/i.test(errText);
-              const isInvalid = /invalid|incorrect|wrong/i.test(errText);
-              return {
-                status: "FAILED",
-                failReason: isExpired ? "OTP_EXPIRED"
-                  : isInvalid ? (isOtpStep ? "INVALID_OTP" : "INVALID_PASSWORD")
-                  : (isOtpStep ? "OTP_ERROR" : "LOGIN_ERROR"),
-                failDetail: isOtpStep
-                  ? `OTP error: "${errText}". ` + (isExpired
-                      ? "Please restart the connection to receive a new OTP."
-                      : "Check the OTP and try again, or restart for a new OTP.")
-                  : `Login error: "${errText}". Check your Pine Labs ONE password and try again.`,
-              };
-            }
-          }
-        } catch { /* continue */ }
-      }
-
-      // ── CONNECTED gate ───────────────────────────────────────────────────
-      await page.waitForLoadState("domcontentloaded", { timeout: NAV_TIMEOUT_MS }).catch(() => {});
-
-      const connectedCheck = await verifyDashboardAuthenticated(page);
-      if (!connectedCheck.verified) {
+      if (outcomeState !== "authenticated_dashboard") {
         logger.warn(
-          { slug: "pinelabs_one", reason: connectedCheck.reason },
-          "pinelabs_one_submitstep_connected_gate_failed",
+          { slug: "pinelabs_one", selectedState: outcomeState, diag: outcomeDiagnostics },
+          "pinelabs_one_submit_step_unknown_state",
         );
         return {
           status: "FAILED",
-          failReason: "LOGIN_NOT_CONFIRMED",
-          failDetail: isOtpStep
-            ? "OTP was submitted but the session could not be verified as authenticated. " +
-              "The OTP may be incorrect or expired. Please try again or restart the connection."
-            : "Password was submitted but the session could not be verified as authenticated. " +
-              "Check your Pine Labs ONE password and try again.",
+          failReason: "PORTAL_UI_CHANGED",
+          failDetail:
+            `Pine Labs ONE returned an unrecognised authentication screen ` +
+            `(path=${outcomeDiagnostics.urlPath}, frames=${outcomeDiagnostics.frameCount}).`,
         };
       }
 
@@ -2062,7 +2102,7 @@ export const pineLabsOneAdapter: ProviderAdapter = {
       }
 
       logger.info(
-        { slug: "pinelabs_one", maskedIdentifier: adData.maskedIdentifier },
+        { slug: "pinelabs_one" },
         "pinelabs_one_submitstep_connected",
       );
 

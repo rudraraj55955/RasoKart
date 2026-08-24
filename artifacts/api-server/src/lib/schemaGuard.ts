@@ -2961,6 +2961,12 @@ async function runGuard(executor: GuardExecutor = db): Promise<void> {
         status               TEXT NOT NULL DEFAULT 'PENDING',
         encrypted_session    TEXT,
         step_failure_count   INTEGER NOT NULL DEFAULT 0,
+        otp_verification_failure_count INTEGER NOT NULL DEFAULT 0,
+        otp_resend_count     INTEGER NOT NULL DEFAULT 0,
+        otp_resend_available_at TIMESTAMPTZ,
+        otp_expires_at       TIMESTAMPTZ,
+        processing_lease_id  TEXT,
+        processing_lease_expires_at TIMESTAMPTZ,
         last_error_code      TEXT,
         last_status_message  TEXT,
         expires_at           TIMESTAMPTZ,
@@ -2973,6 +2979,12 @@ async function runGuard(executor: GuardExecutor = db): Promise<void> {
         UNIQUE (merchant_id, provider_slug)
       )
     `);
+    await exec.execute(sql`ALTER TABLE merchant_portal_sessions ADD COLUMN IF NOT EXISTS otp_verification_failure_count INTEGER NOT NULL DEFAULT 0`);
+    await exec.execute(sql`ALTER TABLE merchant_portal_sessions ADD COLUMN IF NOT EXISTS otp_resend_count INTEGER NOT NULL DEFAULT 0`);
+    await exec.execute(sql`ALTER TABLE merchant_portal_sessions ADD COLUMN IF NOT EXISTS otp_resend_available_at TIMESTAMPTZ`);
+    await exec.execute(sql`ALTER TABLE merchant_portal_sessions ADD COLUMN IF NOT EXISTS otp_expires_at TIMESTAMPTZ`);
+    await exec.execute(sql`ALTER TABLE merchant_portal_sessions ADD COLUMN IF NOT EXISTS processing_lease_id TEXT`);
+    await exec.execute(sql`ALTER TABLE merchant_portal_sessions ADD COLUMN IF NOT EXISTS processing_lease_expires_at TIMESTAMPTZ`);
     await exec.execute(sql`CREATE INDEX IF NOT EXISTS merchant_portal_sessions_merchant_idx ON merchant_portal_sessions(merchant_id)`);
     await exec.execute(sql`CREATE INDEX IF NOT EXISTS merchant_portal_sessions_provider_status_idx ON merchant_portal_sessions(provider_slug, status)`);
     logger.info({ table: "merchant_portal_sessions" }, "schema_guard_table_created");

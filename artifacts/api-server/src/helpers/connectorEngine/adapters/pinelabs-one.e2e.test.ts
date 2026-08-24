@@ -1875,3 +1875,159 @@ describe("PineLabsOne E2E — portal unreachable", () => {
     assert.ok(result.failReason, "must provide failReason for unreachable portal");
   });
 });
+
+// ── Task #2758: frame, delayed-render, and classifier regressions ────────────
+
+describe("PineLabsOne E2E — task #2758 focused portal regressions", () => {
+  const MOBILE = "9555555555";
+
+  async function withServer(
+    config: Parameters<typeof startMockPineLabsOneServer>[0],
+    run: (server: MockServer) => Promise<void>,
+  ): Promise<void> {
+    const ready = await checkBrowser();
+    if (!ready) return;
+    const server = await startMockPineLabsOneServer(config);
+    process.env["PINELABS_ONE_PORTAL_OVERRIDE"] = server.url;
+    try {
+      await run(server);
+    } finally {
+      delete process.env["PINELABS_ONE_PORTAL_OVERRIDE"];
+      await server.close();
+    }
+  }
+
+  it("fills a password input hosted in a same-origin iframe", async () => {
+    await withServer({
+      passwordInIframe: true, validPassword: "FramePassword!", merchantId: "PLFRAMEPASS01",
+    }, async () => {
+      const init = await pineLabsOneAdapter.initiateSession({
+        loginMethod: "mobile_password", encryptedIdentifier: enc(MOBILE),
+      });
+      assert.equal(init.status, "AWAITING_PASSWORD", `Got: ${init.status} — ${init.failDetail}`);
+      assert.ok(init.encryptedSessionToken);
+      const result = await pineLabsOneAdapter.submitStep({
+        encryptedSessionToken: init.encryptedSessionToken, encryptedOtp: enc("FramePassword!"),
+      });
+      assert.equal(result.status, "CONNECTED", `Got: ${result.status} — ${result.failDetail}`);
+    });
+  });
+
+  it("fills an OTP input hosted in a same-origin iframe", async () => {
+    await withServer({
+      otpFirst: true, otpInIframe: true, validOtp: "816234", merchantId: "PLFRAMEOTP01",
+    }, async () => {
+      const init = await pineLabsOneAdapter.initiateSession({
+        loginMethod: "mobile_password", encryptedIdentifier: enc(MOBILE),
+      });
+      assert.equal(init.status, "AWAITING_OTP", `Got: ${init.status} — ${init.failDetail}`);
+      assert.ok(init.encryptedSessionToken);
+      const result = await pineLabsOneAdapter.submitStep({
+        encryptedSessionToken: init.encryptedSessionToken, encryptedOtp: enc("816234"),
+      });
+      assert.equal(result.status, "CONNECTED", `Got: ${result.status} — ${result.failDetail}`);
+    });
+  });
+
+  it("waits for React-style delayed password rendering after identifier submit", async () => {
+    await withServer({
+      delayedPasswordRenderMs: 1_800, validPassword: "DelayedPass!", merchantId: "PLDELAYED01",
+    }, async () => {
+      const init = await pineLabsOneAdapter.initiateSession({
+        loginMethod: "mobile_password", encryptedIdentifier: enc(MOBILE),
+      });
+      assert.equal(init.status, "AWAITING_PASSWORD", `Got: ${init.status} — ${init.failDetail}`);
+      assert.ok(init.encryptedSessionToken);
+      const result = await pineLabsOneAdapter.submitStep({
+        encryptedSessionToken: init.encryptedSessionToken, encryptedOtp: enc("DelayedPass!"),
+      });
+      assert.equal(result.status, "CONNECTED", `Got: ${result.status} — ${result.failDetail}`);
+    });
+  });
+
+  it("returns PORTAL_UI_CHANGED for an unknown post-submit screen", async () => {
+    await withServer({ postIdentifierFixture: "unknown" }, async () => {
+      const result = await pineLabsOneAdapter.initiateSession({
+        loginMethod: "mobile_password", encryptedIdentifier: enc(MOBILE),
+      });
+      assert.equal(result.status, "FAILED");
+      assert.equal(result.failReason, "PORTAL_UI_CHANGED", `Got: ${result.failReason} — ${result.failDetail}`);
+      assert.notEqual(result.failReason, "PASSWORD_FIELD_NOT_FOUND");
+    });
+  });
+
+  it("prioritizes a verified dashboard over a concurrently visible OTP challenge", async () => {
+    await withServer({
+      postIdentifierFixture: "dashboard_with_otp", merchantId: "PLDASHOTP01",
+    }, async () => {
+      const result = await pineLabsOneAdapter.initiateSession({
+        loginMethod: "mobile_password", encryptedIdentifier: enc(MOBILE),
+      });
+      assert.equal(result.status, "CONNECTED", `Got: ${result.status} — ${result.failDetail}`);
+    });
+  });
+
+  it("prioritizes OTP over a concurrently visible password input", async () => {
+    await withServer({ postIdentifierFixture: "otp_with_password" }, async () => {
+      const result = await pineLabsOneAdapter.initiateSession({
+        loginMethod: "mobile_password", encryptedIdentifier: enc(MOBILE),
+      });
+      assert.equal(result.status, "AWAITING_OTP", `Got: ${result.status} — ${result.failDetail}`);
+    });
+  });
+
+  it("prioritizes device approval over CAPTCHA", async () => {
+    await withServer({ showManualAction: true, showCaptcha: true }, async () => {
+      const result = await pineLabsOneAdapter.initiateSession({
+        loginMethod: "mobile_password", encryptedIdentifier: enc(MOBILE),
+      });
+      assert.equal(result.status, "AWAITING_USER_ACTION", `Got: ${result.status} — ${result.failDetail}`);
+      assert.equal(result.failReason, "MANUAL_ACTION_REQUIRED");
+    });
+  });
+
+  it("prioritizes CAPTCHA over blocked and error copy", async () => {
+    await withServer({ showCaptcha: true, showBlockedAndErrorAtLogin: true }, async () => {
+      const result = await pineLabsOneAdapter.initiateSession({
+        loginMethod: "mobile_password", encryptedIdentifier: enc(MOBILE),
+      });
+      assert.equal(result.status, "AWAITING_USER_ACTION", `Got: ${result.status} — ${result.failDetail}`);
+      assert.equal(result.failReason, "CAPTCHA_REQUIRED");
+    });
+  });
+
+  it("returns OTP after password and never resends it automatically", async () => {
+    await withServer({
+      requireOtp: true, validPassword: "TwoFactorPass!", validOtp: "719203", merchantId: "PLPWOTP01",
+    }, async (server) => {
+      const init = await pineLabsOneAdapter.initiateSession({
+        loginMethod: "mobile_password", encryptedIdentifier: enc(MOBILE),
+      });
+      assert.equal(init.status, "AWAITING_PASSWORD");
+      assert.ok(init.encryptedSessionToken);
+      const passwordResult = await pineLabsOneAdapter.submitStep({
+        encryptedSessionToken: init.encryptedSessionToken, encryptedOtp: enc("TwoFactorPass!"),
+      });
+      assert.equal(passwordResult.status, "AWAITING_OTP", `Got: ${passwordResult.status} — ${passwordResult.failDetail}`);
+      assert.equal(server.getRequestCount("/login/resend-otp"), 0, "adapter must never resend OTP implicitly");
+    });
+  });
+
+  it("uses portal OTP only after the merchant explicitly chooses it", async () => {
+    await withServer({ otpLink: true, validOtp: "719204", merchantId: "PLPORTALOTP01" }, async (server) => {
+      const init = await pineLabsOneAdapter.initiateSession({
+        loginMethod: "mobile_password", encryptedIdentifier: enc(MOBILE),
+      });
+      assert.equal(init.status, "AWAITING_PASSWORD");
+      assert.ok(init.encryptedSessionToken);
+      assert.equal(server.getRequestCount("/login/resend-otp"), 0, "initiation must not resend OTP");
+      assert.equal(server.getRequestCount("/login/otp-request"), 0, "initiation must not request portal OTP");
+      const switched = await pineLabsOneAdapter.submitStep({
+        encryptedSessionToken: init.encryptedSessionToken, loginMethod: "portal_otp",
+      });
+      assert.equal(switched.status, "AWAITING_OTP", `Got: ${switched.status} — ${switched.failDetail}`);
+      assert.equal(server.getRequestCount("/login/otp-request"), 1, "portal OTP must be requested only by explicit choice");
+      assert.equal(server.getRequestCount("/login/resend-otp"), 0, "choosing portal OTP is not a resend");
+    });
+  });
+});

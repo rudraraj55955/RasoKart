@@ -1806,6 +1806,42 @@ async function migrate() {
       ON merchant_provider_enrollments(merchant_id);
   `);
 
+  // ── Section O: merchant portal OTP lifecycle ──────────────────────────────
+  // Matches merchantPortalSessions Drizzle schema. All limits/timestamps are
+  // server-authoritative; this migration also upgrades pre-existing tables.
+  await runSection("merchant_portal_sessions_otp_lifecycle", sql`
+    CREATE TABLE IF NOT EXISTS merchant_portal_sessions (
+      id                           SERIAL PRIMARY KEY,
+      merchant_id                  INTEGER NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
+      provider_slug                TEXT NOT NULL,
+      status                       TEXT NOT NULL DEFAULT 'PENDING',
+      encrypted_session            TEXT,
+      step_failure_count           INTEGER NOT NULL DEFAULT 0,
+      otp_verification_failure_count INTEGER NOT NULL DEFAULT 0,
+      otp_resend_count             INTEGER NOT NULL DEFAULT 0,
+      otp_resend_available_at      TIMESTAMPTZ,
+      otp_expires_at               TIMESTAMPTZ,
+      processing_lease_id           TEXT,
+      processing_lease_expires_at   TIMESTAMPTZ,
+      last_error_code              TEXT,
+      last_status_message          TEXT,
+      expires_at                   TIMESTAMPTZ,
+      connected_at                 TIMESTAMPTZ,
+      ended_at                     TIMESTAMPTZ,
+      end_reason                   TEXT,
+      dry_run                      BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (merchant_id, provider_slug)
+    );
+    ALTER TABLE merchant_portal_sessions ADD COLUMN IF NOT EXISTS otp_verification_failure_count INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE merchant_portal_sessions ADD COLUMN IF NOT EXISTS otp_resend_count INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE merchant_portal_sessions ADD COLUMN IF NOT EXISTS otp_resend_available_at TIMESTAMPTZ;
+    ALTER TABLE merchant_portal_sessions ADD COLUMN IF NOT EXISTS otp_expires_at TIMESTAMPTZ;
+    ALTER TABLE merchant_portal_sessions ADD COLUMN IF NOT EXISTS processing_lease_id TEXT;
+    ALTER TABLE merchant_portal_sessions ADD COLUMN IF NOT EXISTS processing_lease_expires_at TIMESTAMPTZ;
+  `);
+
   console.log("DB migrations complete.");
   process.exit(0);
 }

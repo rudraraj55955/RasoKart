@@ -130,6 +130,15 @@ export interface SubmitStepResult {
   helpUrl?: string;
 }
 
+/** Server-owned OTP lifecycle metadata returned by portal-session routes. */
+export interface OtpLifecycleMetadata {
+  attemptsRemaining: number;
+  resendCount: number;
+  resendsRemaining: number;
+  resendAvailableAt: string | null;
+  otpExpiresAt: string | null;
+}
+
 // ── Session validation ────────────────────────────────────────────────────────
 
 export interface ValidateResult {
