@@ -2183,13 +2183,18 @@ export const pineLabsOneAdapter: ProviderAdapter = {
       ctx = await newIsolatedContext(adData.storageState);
       const page = await ctx.context.newPage();
 
-      await page.goto(`${getPortalOrigin()}/profile`, {
+      await page.goto(`${getPortalOrigin()}/home`, {
         waitUntil: "domcontentloaded",
         timeout: NAV_TIMEOUT_MS,
       });
 
       const check = await verifyDashboardAuthenticated(page);
       if (!check.verified) return { entities: [] };
+
+      await page.goto(`${getPortalOrigin()}/profile`, {
+        waitUntil: "domcontentloaded",
+        timeout: NAV_TIMEOUT_MS,
+      });
 
       const ownership = await verifyOwnershipFromPortal(page, adData);
       const entities = [];

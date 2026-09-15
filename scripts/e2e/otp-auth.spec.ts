@@ -444,29 +444,19 @@ test("OTP login: expired OTP shows error toast, not a dashboard redirect", async
 
 // ── Test group 6: resend invalidates old OTP ──────────────────────────────────
 
-test("old OTP is rejected after resend issues a new one", async () => {
-  // Use merchant@demo.com to avoid interfering with the OTP rows from test 2.
+test("old OTP is rejected after a newer code is issued", async () => {
   const IDENTIFIER = MERCHANT1_EMAIL;
   const OLD_OTP = "135790";
+  const NEW_OTP = "246801";
 
-  // 1. Seed a backdated LOGIN OTP (created_at = now - 120s) so the
-  //    resend-cooldown window (60s) has already elapsed.
+  // Seed the original challenge, then a newer replacement challenge. Delivery
+  // itself is covered separately and must not make this verifier regression
+  // depend on an external provider accepting mail for a demo address.
   seedOtp(IDENTIFIER, OLD_OTP, "LOGIN", { backdate: true });
+  seedOtp(IDENTIFIER, NEW_OTP, "LOGIN");
 
-  // 2. Call the resend endpoint — because the existing OTP is >60s old it is
-  //    NOT in cooldown, so createAndSendOtp() inserts a NEW row.
-  const resendRes = await apiPost("/auth/merchant/otp/resend", {
-    identifier: IDENTIFIER,
-  });
-  // Must return 200: the backdated seed row is beyond the cooldown window and
-  // has resendCount=0, so a new OTP row is always created.  429 would mean
-  // rate-limit or resend-cap interference, which prevents the newer row from
-  // existing and would make the old-OTP-rejection assertion meaningless.
-  expect(resendRes.status).toBe(200);
-
-  // 3. Try to verify with the OLD code.  The verify endpoint picks the LATEST
-  //    row (ORDER BY created_at DESC); the resend created a newer row with a
-  //    different hash, so the old code no longer matches.
+  // The verify endpoint picks the latest row (ORDER BY created_at DESC), so
+  // the superseded code must no longer authenticate.
   const verifyRes = await apiPost("/auth/merchant/otp/verify", {
     identifier: IDENTIFIER,
     otp: OLD_OTP,

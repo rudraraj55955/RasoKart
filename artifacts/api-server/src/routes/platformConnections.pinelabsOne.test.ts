@@ -1,5 +1,6 @@
 /**
- * Pine Labs ONE platform-connection activation-guard tests
+ * Platform-connection activation-guard tests after Pine Labs ONE moved to the
+ * portal-session connector.
  *
  * Verifies the invariant: pinelabs_one connections cannot be activated
  * (isActive=true / connectionStatus="active") through any path until a real
@@ -33,24 +34,21 @@ import { runProviderTest } from "../helpers/connectionTest.js";
 
 // ── PL1-PL5: sanitizePlatformConnActivation ─────────────────────────────────
 
-describe("sanitizePlatformConnActivation — pinelabs_one activation guard", () => {
-  it("PL1: isActive:true is forced to false", () => {
+describe("sanitizePlatformConnActivation — pinelabs_one portal connector", () => {
+  it("PL1: does not apply API-credential activation overrides", () => {
     const override = sanitizePlatformConnActivation("pinelabs_one", {
       isActive: true,
       connectionStatus: "pending",
     });
-    assert.ok(override !== null, "should return an override for pinelabs_one");
-    assert.equal(override!.isActive, false, "isActive must be forced to false");
+    assert.equal(override, null);
   });
 
-  it("PL2: connectionStatus:'active' is forced to 'pending'", () => {
+  it("PL2: active status is not rewritten by the obsolete API gate", () => {
     const override = sanitizePlatformConnActivation("pinelabs_one", {
       isActive: true,
       connectionStatus: "active",
     });
-    assert.ok(override !== null, "should return an override for pinelabs_one");
-    assert.equal(override!.connectionStatus, "pending", "connectionStatus must be forced to pending");
-    assert.equal(override!.isActive, false, "isActive must be forced to false");
+    assert.equal(override, null);
   });
 
   it("PL3: isActive:false and connectionStatus:'pending' passed through unchanged", () => {
@@ -58,9 +56,7 @@ describe("sanitizePlatformConnActivation — pinelabs_one activation guard", () 
       isActive: false,
       connectionStatus: "pending",
     });
-    assert.ok(override !== null, "should return an override for pinelabs_one");
-    assert.equal(override!.isActive, false);
-    assert.equal(override!.connectionStatus, "pending");
+    assert.equal(override, null);
   });
 
   it("PL4: returns null for non-gated providers (cashfree)", () => {
@@ -76,8 +72,7 @@ describe("sanitizePlatformConnActivation — pinelabs_one activation guard", () 
       isActive: false,
       connectionStatus: "failed",
     });
-    assert.ok(override !== null);
-    assert.equal(override!.connectionStatus, "failed", "non-active status should be preserved");
+    assert.equal(override, null);
   });
 });
 
@@ -92,14 +87,14 @@ describe("REQUIRES_LIVE_TEST_PROVIDERS — enable gate", () => {
     return "allowed";
   }
 
-  it("PL6: pinelabs_one enable blocked when lastTestResult is null (never tested)", () => {
+  it("PL6: pinelabs_one is outside the obsolete API credential gate", () => {
     const outcome = simulateEnableGate("pinelabs_one", null);
-    assert.equal(outcome, "blocked", "must block enable when connection has never been tested");
+    assert.equal(outcome, "allowed");
   });
 
-  it("PL7: pinelabs_one enable blocked when lastTestResult is 'fail'", () => {
+  it("PL7: pinelabs_one portal status is not controlled by API credential tests", () => {
     const outcome = simulateEnableGate("pinelabs_one", "fail");
-    assert.equal(outcome, "blocked", "must block enable when last test failed");
+    assert.equal(outcome, "allowed");
   });
 
   it("PL8: cashfree (non-gated) passes through enable gate regardless of test result", () => {

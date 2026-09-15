@@ -123,7 +123,7 @@ function cookieBannerHtml(): string {
   return `
 <div id="cookie-banner" style="position:fixed;top:0;left:0;right:0;background:#fff;z-index:9999;padding:16px;border-bottom:1px solid #ccc">
   <p>We use cookies to improve your experience.</p>
-  <button data-testid="cookie-accept" id="accept-cookies">Accept All</button>
+  <button data-testid="cookie-accept" id="accept-cookies" onclick="this.parentElement.remove()">Accept All</button>
   <button id="reject-cookies">Reject</button>
 </div>`;
 }
