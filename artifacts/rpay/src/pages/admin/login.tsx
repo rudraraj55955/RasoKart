@@ -439,16 +439,17 @@ function ForgotPasswordTab({ onBack }: { onBack: () => void }) {
         toast.error("Too many requests. Please wait before trying again.");
         return;
       }
+      if (!r.ok) {
+        toast.error("Password reset service is unavailable. Please try again.");
+        return;
+      }
       setEmail(data.email);
       setStage("reset");
       resetForm.reset();
       startCooldown();
       toast.success("If this admin account exists, a password reset code has been sent.");
     } catch {
-      setEmail(data.email);
-      setStage("reset");
-      startCooldown();
-      toast.success("If this admin account exists, a password reset code has been sent.");
+      toast.error("Network error. Please check your connection and try again.");
     } finally {
       setSending(false);
     }
@@ -467,11 +468,15 @@ function ForgotPasswordTab({ onBack }: { onBack: () => void }) {
         toast.error("Too many requests. Please wait.");
         return;
       }
+      if (!r.ok) {
+        toast.error("Password reset service is unavailable. Please try again.");
+        return;
+      }
       resetForm.setValue("otp", "");
       startCooldown();
       toast.success("A new code has been sent.");
     } catch {
-      startCooldown();
+      toast.error("Network error. Please check your connection and try again.");
     } finally {
       setResending(false);
     }
