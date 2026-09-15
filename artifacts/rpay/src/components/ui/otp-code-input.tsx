@@ -1,5 +1,10 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import {
+  InputOTP,
+  InputOTPGroup,
+  InputOTPSlot,
+} from "@/components/ui/input-otp";
 
 /**
  * OtpCodeInput — six visual digit boxes backed by a SINGLE real <input>.
@@ -73,110 +78,42 @@ const OtpCodeInput = React.forwardRef<HTMLInputElement, OtpCodeInputProps>(
     { value = "", onChange, onBlur, name, autoFocus, disabled, className, id },
     ref,
   ) => {
-    const [focused, setFocused] = React.useState(false);
-
-    // Derive per-slot display values from the controlled string.
-    const digits = Array.from({ length: SLOTS }, (_, i) => value[i] ?? "");
-
-    // Which box should show the "active" (next-to-fill) ring.
-    const activeBox = focused && !disabled
-      ? Math.min(value.length, SLOTS - 1)
-      : -1;
-
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const stripped = e.target.value.replace(/\D/g, "").slice(0, SLOTS);
-      onChange?.(stripped);
-    };
-
-    const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
-      e.preventDefault();
-      const pasted = e.clipboardData
-        .getData("text")
-        .replace(/\D/g, "")
-        .slice(0, SLOTS);
-      if (pasted) onChange?.(pasted);
-    };
-
-    const handleFocus = () => setFocused(true);
-    const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
-      setFocused(false);
-      onBlur?.(e);
-    };
+    const safeValue = value.replace(/\D/g, "").slice(0, SLOTS);
 
     return (
-      <div
-        role="group"
-        aria-label="One-time password"
-        className={cn(
-          "relative flex gap-2 w-full justify-center h-12",
-          className,
-        )}
-      >
-        {/* ── 6 visual-only digit boxes ─────────────────────────────────────── */}
-        {Array.from({ length: SLOTS }, (_, i) => (
-          <div
-            key={i}
-            aria-hidden="true"
-            data-active={i === activeBox ? "true" : undefined}
-            className={cn(
-              "flex-1 min-w-0 max-w-12 h-12",
-              "rounded-md border border-input bg-transparent",
-              "flex items-center justify-center",
-              "text-base font-mono shadow-sm",
-              "transition-colors select-none pointer-events-none",
-              // Active-box ring mirrors a real focus ring
-              i === activeBox && "ring-1 ring-ring border-ring",
-              // Dim empty slots slightly
-              !digits[i] && "text-muted-foreground",
-              // Disabled appearance
-              disabled && "opacity-50",
-            )}
-          >
-            {digits[i]}
-          </div>
-        ))}
-
-        {/* ── Single real <input> overlaid transparently across all 6 boxes ── */}
-        {/*                                                                      */}
-        {/* `color:transparent` hides the typed text visually — the boxes above  */}
-        {/* display individual digits.  `caret-color:transparent` hides the      */}
-        {/* cursor (the active-box ring serves as the focus indicator instead).  */}
-        {/*                                                                      */}
-        {/* Playwright visibility: `color:transparent` ≠ `opacity:0`.  The      */}
-        {/* element has non-zero dimensions, opacity=1, display=block — so       */}
-        {/* toBeVisible() passes, fill() works, and toHaveValue() works.         */}
-        <input
+      <InputOTP
+          containerClassName={cn("w-full justify-center", className)}
+          className="disabled:cursor-not-allowed"
           ref={ref}
           id={id}
           name={name}
-          type="text"
+          maxLength={SLOTS}
+          pattern="[0-9]*"
           inputMode="numeric"
           autoComplete="one-time-code"
-          pattern="[0-9]*"
-          maxLength={SLOTS}
-          value={value}
+          value={safeValue}
+          onChange={(nextValue) => onChange?.(nextValue.replace(/\D/g, "").slice(0, SLOTS))}
+          pasteTransformer={(pasted) => pasted.replace(/\D/g, "").slice(0, SLOTS)}
+          onBlur={onBlur}
           autoFocus={autoFocus}
           disabled={disabled}
-          onChange={handleChange}
-          onPaste={handlePaste}
-          onFocus={handleFocus}
-          onBlur={handleBlur}
           aria-label="Enter 6-digit OTP code"
-          className={cn(
-            // Overlay: span the entire container box
-            "absolute inset-0 w-full h-full",
-            // Transparent text + caret so the visual boxes are the display
-            "[color:transparent] [caret-color:transparent]",
-            // No visible background/border on this layer
-            "bg-transparent border-none outline-none ring-0 focus:ring-0 focus:outline-none",
-            // Spread characters evenly — letter-spacing is decorative only since text is transparent
-            "font-mono tracking-[1.5rem]",
-            // Input should be interactive (not pointer-events-none)
-            "cursor-text",
-            disabled && "cursor-not-allowed",
-          )}
-        />
-      </div>
+        >
+          <InputOTPGroup
+            role="group"
+            aria-label="One-time password"
+            className="w-full justify-center gap-2"
+          >
+            {Array.from({ length: SLOTS }, (_, index) => (
+              <InputOTPSlot
+                key={index}
+                index={index}
+                data-otp-slot={index}
+                className="h-12 min-w-0 max-w-12 flex-1 rounded-md border"
+              />
+            ))}
+          </InputOTPGroup>
+        </InputOTP>
     );
   },
 );

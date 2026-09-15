@@ -47,10 +47,11 @@ describe("PineLabsOne adapter — structure", () => {
   it("declares mobile_password login method with correct fields", () => {
     const m = pineLabsOneAdapter.supportedLoginMethods.find(x => x.key === "mobile_password");
     assert.ok(m, "mobile_password login method not found");
-    assert.equal(m.requiresPassword, true);
+    assert.equal(m.requiresPassword, false);
+    assert.equal(m.requiresOtp, true);
     assert.ok(
-      m.identifierType === "mobile" || m.identifierType === "username",
-      `identifierType should be 'mobile' or 'username', got '${m.identifierType}'`,
+      m.identifierType === "email_or_mobile",
+      `identifierType should be 'email_or_mobile', got '${m.identifierType}'`,
     );
   });
 

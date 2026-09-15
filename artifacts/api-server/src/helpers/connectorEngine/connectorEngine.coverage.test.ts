@@ -3,7 +3,7 @@
  *
  * Verifies:
  *   1. All registered adapters implement the ProviderAdapter interface
- *   2. Pine Labs ONE is correctly fail-closed on all methods
+ *   2. Pine Labs ONE rejects invalid authentication inputs fail-closed
  *   3. The engine correctly handles missing adapters (BLOCKED)
  *   4. Session crypto round-trips correctly
  *   5. No adapter returns CONNECTED, MONITORING, or AUTO_DEPOSIT without auth
@@ -61,29 +61,29 @@ describe("Adapter interface compliance", () => {
 });
 
 // ── 2. Pine Labs ONE fail-closed invariants ────────────────────────────────────
-describe("Pine Labs ONE: fail-closed on every method", () => {
+describe("Pine Labs ONE: implemented portal connector safety", () => {
   const BLOCKED_STATUSES = ["PARTNER_API_REQUIRED", "BLOCKED", "FAILED", "EXPIRED"] as const;
 
-  it("initiateSession returns PARTNER_API_REQUIRED", async () => {
+  it("initiateSession rejects an unsupported login method without a token", async () => {
     const result = await pineLabsOneAdapter.initiateSession({
       loginMethod: "mobile_otp",
       encryptedIdentifier: "enc:v1:aaa:bbb:ccc",
     });
     assert.ok(BLOCKED_STATUSES.includes(result.status as any),
       `Expected blocked status, got "${result.status}"`);
-    assert.equal(result.status, "PARTNER_API_REQUIRED");
+    assert.equal(result.status, "FAILED");
     assert.ok(result.failReason, "Must include failReason");
     assert.ok(result.failDetail, "Must include failDetail");
-    assert.ok(result.helpUrl?.includes("developer.pinelabs.com"), "helpUrl must reference developer.pinelabs.com");
     assert.equal(result.encryptedSessionToken, undefined, "Must NOT produce a session token");
   });
 
-  it("initiateSession: missing credentials still returns PARTNER_API_REQUIRED (not an error throw)", async () => {
+  it("initiateSession rejects a missing identifier without throwing", async () => {
     const result = await pineLabsOneAdapter.initiateSession({
-      loginMethod: "mobile_otp",
+      loginMethod: "mobile_password",
       encryptedIdentifier: "",
     });
-    assert.equal(result.status, "PARTNER_API_REQUIRED");
+    assert.equal(result.status, "FAILED");
+    assert.equal(result.encryptedSessionToken, undefined);
   });
 
   it("submitStep returns PARTNER_API_REQUIRED", async () => {
@@ -116,13 +116,6 @@ describe("Pine Labs ONE: fail-closed on every method", () => {
     assert.equal(result.hasMore, false);
   });
 
-  it("healthCheck returns healthy=false with PARTNER_API_REQUIRED status", async () => {
-    const result = await pineLabsOneAdapter.healthCheck();
-    assert.equal(result.healthy, false, "healthCheck must return healthy=false");
-    assert.equal(result.status, "PARTNER_API_REQUIRED");
-    assert.ok(result.detail?.includes("developer.pinelabs.com"));
-  });
-
   it("logout resolves without throwing (no session to clear)", async () => {
     await assert.doesNotReject(
       () => pineLabsOneAdapter.logout("enc:v1:aaa:bbb:ccc"),
@@ -130,9 +123,11 @@ describe("Pine Labs ONE: fail-closed on every method", () => {
     );
   });
 
-  it("supportedLoginMethods is empty (no automation path)", () => {
-    assert.deepEqual(pineLabsOneAdapter.supportedLoginMethods, [],
-      "Pine Labs ONE must have no supported login methods until official API is granted");
+  it("declares the OTP-first portal login method", () => {
+    const method = pineLabsOneAdapter.supportedLoginMethods.find((item) => item.key === "mobile_password");
+    assert.ok(method, "mobile_password login method must be present");
+    assert.equal(method.requiresOtp, true);
+    assert.equal(method.requiresPassword, false);
   });
 });
 

@@ -342,11 +342,9 @@ describe("Paytm E2E — CAPTCHA detection", { timeout: 120_000 }, () => {
   it("CAPTCHA on OTP page → AWAITING_USER_ACTION (not CONNECTED)", async () => {
     const { initiateResult, submitResult } = await runFullConnectFlow(mock);
 
-    assert.equal(initiateResult.status, "AWAITING_OTP");
-    assert.ok(submitResult);
-    // CAPTCHA → AWAITING_USER_ACTION, never CONNECTED
-    assert.notEqual(submitResult!.status, "CONNECTED",
-      "CAPTCHA-showing page must not produce CONNECTED");
+    assert.equal(initiateResult.status, "AWAITING_USER_ACTION");
+    assert.equal(initiateResult.failReason, "CAPTCHA_REQUIRED");
+    assert.equal(submitResult, null);
   });
 });
 
@@ -369,14 +367,14 @@ describe("Paytm E2E — Account blocked detection", { timeout: 120_000 }, () => 
     await mock.close();
   });
 
-  it("blocked account page → FAILED (not CONNECTED)", async () => {
+  it("blocked account page → BLOCKED (not CONNECTED)", async () => {
     const { initiateResult, submitResult } = await runFullConnectFlow(mock);
 
     assert.equal(initiateResult.status, "AWAITING_OTP");
     assert.ok(submitResult);
     assert.notEqual(submitResult!.status, "CONNECTED",
       "Blocked account must never reach CONNECTED");
-    assert.equal(submitResult!.status, "FAILED");
+    assert.equal(submitResult!.status, "BLOCKED");
   });
 });
 
@@ -574,13 +572,13 @@ describe("Paytm E2E — Fail-closed guard (no browser)", () => {
     assert.notEqual(result.status, "CONNECTED");
   });
 
-  it("submitStep with malformed OTP length (too short) returns FAILED INVALID_OTP", async () => {
+  it("submitStep validates the session token before inspecting the OTP", async () => {
     const result = await paytmMerchantAdapter.submitStep({
       encryptedSessionToken: "enc:v1:fake:fake:fake",
       encryptedOtp: encryptedOtp("123"), // only 3 digits
     });
     assert.equal(result.status, "FAILED");
-    assert.equal((result as any).failReason, "INVALID_OTP");
+    assert.equal((result as any).failReason, "INVALID_SESSION_TOKEN");
   });
 
   it("initiateSession with email_password method returns UNSUPPORTED_LOGIN_METHOD", async () => {

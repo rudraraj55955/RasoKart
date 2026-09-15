@@ -513,20 +513,49 @@ async function waitForAny(
   selectors: string[],
   timeout: number,
 ): Promise<string | null> {
-  const controller = new AbortController();
-
-  const promises = selectors.map(async (sel) => {
-    try {
-      await page.waitForSelector(sel, { state: "visible", timeout });
-      return sel;
-    } catch {
-      return null;
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    for (const sel of selectors) {
+      try {
+        const candidate = page.locator(sel).first();
+        if (
+          (await candidate.count().catch(() => 0)) > 0 &&
+          (await candidate.isVisible().catch(() => false))
+        ) {
+          return sel;
+        }
+      } catch {
+        // The page may be navigating between checks; retry until the deadline.
+      }
     }
-  });
+    await page.waitForTimeout(100);
+  }
+  return null;
+}
 
-  const results = await Promise.allSettled(promises);
-  for (const r of results) {
-    if (r.status === "fulfilled" && r.value) return r.value;
+async function waitForAnyIncludingFrames(
+  page: Page,
+  selectors: string[],
+  timeout: number,
+): Promise<string | null> {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    for (const frame of page.frames()) {
+      for (const sel of selectors) {
+        try {
+          const candidate = frame.locator(sel).first();
+          if (
+            (await candidate.count().catch(() => 0)) > 0 &&
+            (await candidate.isVisible().catch(() => false))
+          ) {
+            return sel;
+          }
+        } catch {
+          // A frame may detach during navigation; retry until the deadline.
+        }
+      }
+    }
+    await page.waitForTimeout(100);
   }
   return null;
 }
@@ -784,12 +813,18 @@ async function selectMobileLoginMode(page: Page): Promise<boolean> {
 async function detectWaf(page: Page): Promise<string | null> {
   for (const sel of SEL.WAF_MARKERS) {
     try {
-      if ((await page.locator(sel).count()) > 0) return "WAF_OR_DEVICE_VERIFICATION";
+      const marker = page.locator(sel).first();
+      if (
+        (await marker.count()) > 0 &&
+        (await marker.isVisible().catch(() => false))
+      ) {
+        return "WAF_OR_DEVICE_VERIFICATION";
+      }
     } catch {}
   }
   try {
     const title = await page.title();
-    if (/checking your browser|verif(y|ying)|challenge|access denied/i.test(title)) {
+    if (/checking your browser|device verification|security challenge|access denied/i.test(title)) {
       return "WAF_OR_DEVICE_VERIFICATION";
     }
   } catch {}
@@ -857,7 +892,9 @@ async function fillMobileInPage(page: Page, mobile: string): Promise<boolean> {
   // (0) accounts.paytm.com OAuth SDK iframe — new Paytm Business portal.
   //     This is a cross-origin iframe but Playwright CDP can access it directly.
   //     Check it FIRST because the new portal has zero inputs in the main frame.
-  const accFrame = await waitForAccountsFrame(page, 5_000);
+  const accFrame = process.env["PAYTM_PORTAL_ROOT_OVERRIDE"]
+    ? null
+    : await waitForAccountsFrame(page, 5_000);
   if (accFrame) {
     const loc = await tryFrameLocator(accFrame, SEL.MOBILE_INPUT);
     if (loc) {
@@ -911,7 +948,9 @@ async function fillMobileInPage(page: Page, mobile: string): Promise<boolean> {
 async function fillOtp(page: Page, otp: string): Promise<boolean> {
   // (0) accounts.paytm.com iframe — new portal structure. OTP field may be
   //     inside the cross-origin accounts.paytm.com frame after OTP link click.
-  const accFrame = await waitForAccountsFrame(page, 5_000);
+  const accFrame = process.env["PAYTM_PORTAL_ROOT_OVERRIDE"]
+    ? null
+    : await waitForAccountsFrame(page, 5_000);
   if (accFrame) {
     const singleInFrame = await tryFrameLocator(accFrame, SEL.OTP_INPUT_SINGLE);
     if (singleInFrame) {
@@ -996,6 +1035,7 @@ type LoginPageState =
  *   If no URL candidate yields a recognisable state → false
  */
 async function navigateToLoginPage(page: Page): Promise<LoginPageState> {
+  const isMockPortal = !!process.env["PAYTM_PORTAL_ROOT_OVERRIDE"];
   for (const url of getLoginUrlCandidates()) {
     try {
       await page.goto(url, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
@@ -1029,7 +1069,10 @@ async function navigateToLoginPage(page: Page): Promise<LoginPageState> {
       //     (dashboard.paytm.com) has zero inputs in the main frame — all
       //     inputs are inside a cross-origin accounts.paytm.com iframe.
       //     Allow up to 10 s for the iframe to load (it is fetched asynchronously).
-      const accFrame = await waitForAccountsFrame(page, 10_000);
+      // Local mock fixtures never host the production accounts.paytm.com SDK.
+      // Skipping this production-only poll keeps the real-browser E2E suite
+      // deterministic without changing live portal behavior.
+      const accFrame = isMockPortal ? null : await waitForAccountsFrame(page, 10_000);
       if (accFrame) {
         const mobileInFrame = await tryFrameLocator(accFrame, SEL.MOBILE_INPUT);
         if (mobileInFrame) return "mobile_form_iframe";
@@ -1543,7 +1586,11 @@ export const paytmMerchantAdapter: ProviderAdapter = {
         ...SEL.ERROR_MSG,
         ...SEL.CAPTCHA,
       ];
-      const postClickResult = await waitForAny(page, allOtpAndErrorSels, NAV_TIMEOUT_MS);
+      const postClickResult = await waitForAnyIncludingFrames(
+        page,
+        allOtpAndErrorSels,
+        NAV_TIMEOUT_MS,
+      );
 
       if (!postClickResult) {
         return {
@@ -1892,6 +1939,11 @@ export const paytmMerchantAdapter: ProviderAdapter = {
         };
       } else if (loginState !== "otp_form") {
         // Unexpected state
+        const diag = await collectPageDiagnostics(page);
+        logger.warn(
+          { slug: "paytm_merchant", loginState, diag },
+          "paytm_submitstep_unexpected_login_state",
+        );
         return {
           status: "FAILED",
           failReason: "PORTAL_UNREACHABLE",
@@ -1932,7 +1984,9 @@ export const paytmMerchantAdapter: ProviderAdapter = {
           await submitBtn.click({ timeout: ACTION_TIMEOUT_MS });
         } else {
           // Try accounts iframe submit button
-          const accFrame = await waitForAccountsFrame(page, 3_000);
+          const accFrame = process.env["PAYTM_PORTAL_ROOT_OVERRIDE"]
+            ? null
+            : await waitForAccountsFrame(page, 3_000);
           const iframeSubmitBtn = accFrame
             ? await tryFrameLocator(accFrame, SEL.ACCOUNTS_SUBMIT_BTN)
             : null;
