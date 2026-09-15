@@ -3008,25 +3008,48 @@ router.post("/admin/password/forgot", adminPasswordForgotLimiter, adminPasswordF
     const otpHash = await hashOtp(otp);
     const resendCount = existing ? existing.resendCount + 1 : 0;
 
-    await db.insert(merchantAuthOtpsTable).values({
-      merchantId: null,
-      identifierHash,
-      otpHash,
-      purpose: "ADMIN_PASSWORD_RESET",
-      expiresAt: new Date(Date.now() + OTP_EXPIRY_MS),
-      attempts: 0,
-      resendCount,
-      ipHash,
-    });
+    const [createdOtp] = await db
+      .insert(merchantAuthOtpsTable)
+      .values({
+        merchantId: null,
+        identifierHash,
+        otpHash,
+        purpose: "ADMIN_PASSWORD_RESET",
+        expiresAt: new Date(Date.now() + OTP_EXPIRY_MS),
+        attempts: 0,
+        resendCount,
+        ipHash,
+      })
+      .returning({ id: merchantAuthOtpsTable.id });
 
     req.log.info({ purpose: "ADMIN_PASSWORD_RESET", userId: adminUser.id }, "admin_pwd_reset_otp_created");
 
-    // Fire-and-forget: decouple email delivery latency from response time.
-    sendMerchantOtpEmail({ to: normalizedEmail, otp, purpose: "ADMIN_PASSWORD_RESET" }).then(sent => {
-      req.log.info({ purpose: "ADMIN_PASSWORD_RESET", sent }, "admin_pwd_reset_otp_sent");
+    // Wait for the provider result so the request log captures the complete
+    // delivery attempt. Keep the public response opaque to avoid revealing
+    // whether an admin account exists.
+    const sent = await sendMerchantOtpEmail({
+      to: normalizedEmail,
+      otp,
+      purpose: "ADMIN_PASSWORD_RESET",
     }).catch((err: unknown) => {
       req.log.warn({ err, purpose: "ADMIN_PASSWORD_RESET" }, "admin_pwd_reset_email_error");
+      return false;
     });
+
+    req.log.info({ purpose: "ADMIN_PASSWORD_RESET", sent }, "admin_pwd_reset_otp_sent");
+
+    if (!sent) {
+      // An undelivered code must never remain usable. Mark only the row created
+      // by this request as consumed while preserving the opaque public response.
+      await db
+        .update(merchantAuthOtpsTable)
+        .set({ consumedAt: new Date() })
+        .where(and(
+          eq(merchantAuthOtpsTable.id, createdOtp.id),
+          isNull(merchantAuthOtpsTable.consumedAt),
+        ));
+      req.log.warn({ purpose: "ADMIN_PASSWORD_RESET", userId: adminUser.id }, "admin_pwd_reset_otp_invalidated_after_delivery_failure");
+    }
 
     await padToMinResponseTime(_tOtpStart);
     res.json({ message: SAFE_ADMIN_PASSWORD_RESET_MESSAGE });
