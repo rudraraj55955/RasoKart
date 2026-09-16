@@ -69,28 +69,171 @@ export type OtpCodeInputProps = {
   /** Accepted for API compatibility; not rendered. */
   placeholder?: string;
   id?: string;
+  /** Makes the full visual group a native-input touch target on Android. */
+  androidTouchTarget?: boolean;
 };
 
 const SLOTS = 6;
 
 const OtpCodeInput = React.forwardRef<HTMLInputElement, OtpCodeInputProps>(
   (
-    { value = "", onChange, onBlur, name, autoFocus, disabled, className, id },
+    {
+      value = "",
+      onChange,
+      onBlur,
+      name,
+      autoFocus,
+      disabled,
+      className,
+      id,
+      androidTouchTarget = false,
+    },
     ref,
   ) => {
     const safeValue = value.replace(/\D/g, "").slice(0, SLOTS);
+    const [touchValue, setTouchValue] = React.useState(safeValue);
+    const lastEmittedTouchValue = React.useRef(safeValue);
+    const inputRef = React.useRef<HTMLInputElement | null>(null);
+    const slotRefs = React.useRef<Array<HTMLInputElement | null>>([]);
+    const setInputRef = React.useCallback(
+      (node: HTMLInputElement | null) => {
+        inputRef.current = node;
+        if (typeof ref === "function") ref(node);
+        else if (ref) ref.current = node;
+      },
+      [ref],
+    );
+
+    const focusNativeInput = React.useCallback(() => {
+      if (disabled) return;
+      const input = inputRef.current;
+      if (!input) return;
+      input.focus({ preventScroll: true });
+      const end = input.value.length;
+      input.setSelectionRange(end, end);
+    }, [disabled]);
+
+    React.useEffect(() => {
+      if (
+        androidTouchTarget &&
+        safeValue !== lastEmittedTouchValue.current
+      ) {
+        lastEmittedTouchValue.current = safeValue;
+        setTouchValue(safeValue);
+      }
+    }, [androidTouchTarget, safeValue]);
+
+    if (androidTouchTarget) {
+      const emitTouchValue = (next: string) => {
+        lastEmittedTouchValue.current = next;
+        setTouchValue(next);
+        onChange?.(next);
+      };
+      const setSlotRef = (index: number, node: HTMLInputElement | null) => {
+        slotRefs.current[index] = node;
+        if (index === 0) setInputRef(node);
+      };
+      const focusSlot = (index: number) => {
+        const target = slotRefs.current[Math.max(0, Math.min(index, SLOTS - 1))];
+        target?.focus({ preventScroll: true });
+        target?.select();
+      };
+      const replaceDigit = (index: number, raw: string) => {
+        const digits = raw.replace(/\D/g, "");
+        if (!digits) return;
+        if (digits.length > 1) {
+          const next = digits.slice(0, SLOTS);
+          emitTouchValue(next);
+          focusSlot(Math.min(next.length, SLOTS - 1));
+          return;
+        }
+        const chars = touchValue.padEnd(SLOTS, " ").split("");
+        chars[index] = digits;
+        const next = chars.join("").trimEnd().replace(/ /g, "");
+        emitTouchValue(next);
+        focusSlot(index + 1);
+      };
+
+      return (
+        <div
+          className={cn("flex w-full justify-center gap-2", className)}
+          role="group"
+          aria-label="One-time password"
+          data-admin-reset-otp-touch-target
+        >
+          {Array.from({ length: SLOTS }, (_, index) => (
+            <input
+              key={index}
+              ref={(node) => setSlotRef(index, node)}
+              id={index === 0 ? id : undefined}
+              name={index === 0 ? name : undefined}
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              autoComplete={index === 0 ? "one-time-code" : "off"}
+              enterKeyHint={index === SLOTS - 1 ? "done" : "next"}
+              maxLength={index === 0 ? SLOTS : 1}
+              value={touchValue[index] ?? ""}
+              autoFocus={index === 0 ? autoFocus : undefined}
+              disabled={disabled}
+              aria-label={`OTP digit ${index + 1}`}
+              data-otp-slot={index}
+              className="h-12 min-w-0 max-w-12 flex-1 touch-manipulation rounded-md border border-input bg-background text-center text-lg outline-none focus:border-ring focus:ring-2 focus:ring-ring"
+              onFocus={(event) => event.currentTarget.select()}
+              onBlur={index === 0 ? onBlur : undefined}
+              onInput={(event) => replaceDigit(index, event.currentTarget.value)}
+              onKeyDown={(event) => {
+                if (event.key !== "Backspace") return;
+                event.preventDefault();
+                if (touchValue[index]) {
+                  emitTouchValue(
+                    `${touchValue.slice(0, index)}${touchValue.slice(index + 1)}`,
+                  );
+                  return;
+                }
+                if (index > 0) {
+                  emitTouchValue(
+                    `${touchValue.slice(0, index - 1)}${touchValue.slice(index)}`,
+                  );
+                  focusSlot(index - 1);
+                }
+              }}
+              onPaste={(event) => {
+                event.preventDefault();
+                const next = event.clipboardData
+                  .getData("text")
+                  .replace(/\D/g, "")
+                  .slice(0, SLOTS);
+                if (!next) return;
+                emitTouchValue(next);
+                focusSlot(Math.min(next.length, SLOTS - 1));
+              }}
+            />
+          ))}
+        </div>
+      );
+    }
 
     return (
-      <InputOTP
-          containerClassName={cn("w-full justify-center", className)}
+      <div
+        className="w-full"
+        onPointerDown={focusNativeInput}
+        onClick={focusNativeInput}
+      >
+        <InputOTP
+          containerClassName={cn(
+            "w-full justify-center",
+            className,
+          )}
           className="disabled:cursor-not-allowed"
-          ref={ref}
+          ref={setInputRef}
           id={id}
           name={name}
           maxLength={SLOTS}
           pattern="[0-9]*"
           inputMode="numeric"
           autoComplete="one-time-code"
+          enterKeyHint="done"
           value={safeValue}
           onChange={(nextValue) => onChange?.(nextValue.replace(/\D/g, "").slice(0, SLOTS))}
           pasteTransformer={(pasted) => pasted.replace(/\D/g, "").slice(0, SLOTS)}
@@ -114,6 +257,7 @@ const OtpCodeInput = React.forwardRef<HTMLInputElement, OtpCodeInputProps>(
             ))}
           </InputOTPGroup>
         </InputOTP>
+      </div>
     );
   },
 );

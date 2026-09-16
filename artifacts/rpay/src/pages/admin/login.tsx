@@ -564,8 +564,15 @@ function ForgotPasswordTab({ onBack }: { onBack: () => void }) {
                 <OtpCodeInput
                   placeholder="------"
                   autoFocus
+                  androidTouchTarget
                   value={field.value}
-                  onChange={field.onChange}
+                  onChange={(otp) =>
+                    resetForm.setValue("otp", otp, {
+                      shouldDirty: true,
+                      shouldTouch: true,
+                      shouldValidate: otp.length === 6,
+                    })
+                  }
                   onBlur={field.onBlur}
                   name={field.name}
                   ref={field.ref}
