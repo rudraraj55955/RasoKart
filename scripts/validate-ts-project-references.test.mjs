@@ -23,7 +23,7 @@ function writeFile(repositoryRoot, relativePath, contents) {
   fs.writeFileSync(filePath, contents);
 }
 
-function createRepository({ rootReferences, libraries }) {
+function createRepository({ rootReferences, libraries, fileOverrides = {} }) {
   const repositoryRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), "ts-project-references-"),
   );
@@ -64,6 +64,10 @@ function createRepository({ rootReferences, libraries }) {
         "references": ${JSON.stringify(library.references ?? [])},
       }\n`,
     );
+  }
+
+  for (const [relativePath, contents] of Object.entries(fileOverrides)) {
+    writeFile(repositoryRoot, relativePath, contents);
   }
 
   return repositoryRoot;
@@ -185,4 +189,38 @@ test("rejects a workspace library dependency missing from library references", (
     result.stderr,
     /@fixture\/consumer: lib\/consumer\/tsconfig\.json is missing a reference to workspace dependency @fixture\/base/,
   );
+});
+
+test("rejects a malformed library package.json and names the affected file", () => {
+  const repositoryRoot = createRepository({
+    rootReferences: [{ path: "./lib/base" }],
+    libraries: [{ directory: "base", name: "@fixture/base" }],
+    fileOverrides: {
+      "lib/base/package.json": '{"name":"@fixture/base",',
+    },
+  });
+
+  const result = runFailingValidator(repositoryRoot);
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /TypeScript project reference validation failed:/);
+  assert.match(result.stderr, /Could not read lib\/base\/package\.json:/);
+  assert.doesNotMatch(result.stderr, /\n\s+at /);
+});
+
+test("rejects a malformed library tsconfig.json and names the affected file", () => {
+  const repositoryRoot = createRepository({
+    rootReferences: [{ path: "./lib/base" }],
+    libraries: [{ directory: "base", name: "@fixture/base" }],
+    fileOverrides: {
+      "lib/base/tsconfig.json": '{"compilerOptions":{"composite":true},',
+    },
+  });
+
+  const result = runFailingValidator(repositoryRoot);
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /TypeScript project reference validation failed:/);
+  assert.match(result.stderr, /Could not read lib\/base\/tsconfig\.json:/);
+  assert.doesNotMatch(result.stderr, /\n\s+at /);
 });
