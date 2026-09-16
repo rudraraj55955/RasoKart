@@ -113,6 +113,41 @@ test("accepts comments, both reference path forms, and every workspace dependenc
   assert.match(output, /aligned for 5 buildable shared packages/);
 });
 
+test("does not require references for non-workspace dependencies in any dependency section", () => {
+  const repositoryRoot = createRepository({
+    rootReferences: [{ path: "./lib/base" }, { path: "./lib/consumer" }],
+    libraries: [
+      { directory: "base", name: "@fixture/base" },
+      {
+        directory: "consumer",
+        name: "@fixture/consumer",
+        dependencySections: {
+          dependencies: {
+            "@fixture/base": "^1.2.3",
+            "registry-package": "1.0.0",
+          },
+          devDependencies: {
+            "@fixture/base": "catalog:",
+            "catalog-package": "catalog:testing",
+          },
+          optionalDependencies: {
+            "@fixture/base": "file:../base",
+            "tarball-package": "https://example.com/package.tgz",
+          },
+          peerDependencies: {
+            "@fixture/base": "npm:@fixture/renamed-base@^1.0.0",
+            "git-package": "git+https://example.com/package.git",
+          },
+        },
+      },
+    ],
+  });
+
+  const output = runValidator(repositoryRoot);
+
+  assert.match(output, /aligned for 2 buildable shared packages/);
+});
+
 test("rejects a buildable library missing from the root references", () => {
   const repositoryRoot = createRepository({
     rootReferences: [],
