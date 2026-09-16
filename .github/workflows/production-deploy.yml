@@ -108,7 +108,9 @@ jobs:
     name: Validate (install, typecheck, build, test)
     needs: classify
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
+    # `always()` prevents a failed/cancelled classifier from turning this required
+    # branch-protection check into a merge-permitting "skipped" conclusion.
+    if: always() && (github.ref == 'refs/heads/main' || github.event_name == 'pull_request')
     services:
       postgres:
         image: postgres:16
@@ -128,6 +130,12 @@ jobs:
       SESSION_SECRET: ci-only-session-secret-not-used-in-production-0000000000000000
       NODE_ENV: development
     steps:
+      - name: Require successful change classification
+        if: needs.classify.result != 'success'
+        run: |
+          echo "Change classification did not succeed; validation cannot be trusted."
+          exit 1
+
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -143,6 +151,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Verify production deployment workflow safety policy
+        run: pnpm --filter @workspace/scripts run test:deployment-workflow-policy
 
       - name: Validate shared-package TypeScript project references
         run: pnpm run test:ts-references
