@@ -8,6 +8,7 @@
     "db-migrate": "tsx ./src/db-migrate.ts",
     "github-sync": "tsx ./src/github-sync.ts",
     "test:github-sync-concurrency": "node --import tsx/esm --test ./src/github-sync-git-auth.test.ts",
+    "test:deployment-workflow-policy": "node --import tsx/esm --test ./src/deployment-workflow-policy.test.ts",
     "verify-git-remotes": "tsx ./src/verify-git-remotes.ts",
     "test:verify-git-remotes": "node --import tsx/esm --test ./src/verify-git-remotes.test.ts",
     "test:ts-project-references": "node --test ./validate-ts-project-references.test.mjs",
