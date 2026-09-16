@@ -139,6 +139,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Validate shared-package TypeScript project references
+        run: pnpm run validate:ts-references
+
       - name: Typecheck (libs + artifacts + scripts)
         run: pnpm run typecheck
 
