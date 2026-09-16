@@ -225,6 +225,23 @@ test("rejects an unreadable library package.json path and names the affected fil
   assert.doesNotMatch(result.stderr, /\n\s+at /);
 });
 
+test("rejects an unreadable root tsconfig.json path and names the affected file", () => {
+  const repositoryRoot = createRepository({
+    rootReferences: [],
+    libraries: [],
+  });
+  const rootConfigPath = path.join(repositoryRoot, "tsconfig.json");
+  fs.rmSync(rootConfigPath);
+  fs.mkdirSync(rootConfigPath);
+
+  const result = runFailingValidator(repositoryRoot);
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /TypeScript project reference validation failed:/);
+  assert.match(result.stderr, /Could not read tsconfig\.json:/);
+  assert.doesNotMatch(result.stderr, /\n\s+at /);
+});
+
 test("rejects a malformed library tsconfig.json and names the affected file", () => {
   const repositoryRoot = createRepository({
     rootReferences: [{ path: "./lib/base" }],
