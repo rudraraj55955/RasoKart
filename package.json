@@ -7,6 +7,7 @@
     "prepare": "sh scripts/install-hooks.sh",
     "build": "pnpm run typecheck && pnpm -r --if-present run build",
     "validate:ts-references": "node scripts/validate-ts-project-references.mjs",
+    "test:ts-references": "pnpm run validate:ts-references && pnpm --filter @workspace/scripts run test:ts-project-references",
     "typecheck:libs": "tsc --build --force",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
   },
