@@ -374,17 +374,27 @@ jobs:
           echo "Working dir     : $(pwd)"
 
           REMOTE_URL="$(git config --get remote.origin.url 2>/dev/null || echo '<none>')"
+          REMOTE_PUSH_URL="$(git config --get remote.origin.pushurl 2>/dev/null || true)"
+          [ -n "$REMOTE_PUSH_URL" ] || REMOTE_PUSH_URL="$REMOTE_URL"
           GIT_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '<unknown>')"
           CURRENT_SHA="$(git rev-parse HEAD 2>/dev/null || echo '<unknown>')"
 
-          echo "Git remote      : $REMOTE_URL"
+          echo "Git remote      : value withheld"
           echo "Git branch      : $GIT_BRANCH"
           echo "Current commit  : $CURRENT_SHA"
 
+          for CANDIDATE_URL in "$REMOTE_URL" "$REMOTE_PUSH_URL"; do
+            case "$CANDIDATE_URL" in
+              http://*'@'* | https://*'@'*)
+                echo "ERROR: Git remote contains HTTP credentials (value redacted) — refusing to deploy." >&2
+                exit 1
+                ;;
+            esac
+          done
           case "$REMOTE_URL" in
             *rudraraj55955/RasoKart* | *rudraraj55955/RPAY*) ;;
             *)
-              echo "ERROR: Unexpected git remote '$REMOTE_URL' — refusing to deploy." >&2
+              echo "ERROR: Unexpected git remote (value redacted) — refusing to deploy." >&2
               echo "Expected a remote pointing to rudraraj55955/RasoKart or rudraraj55955/RPAY." >&2
               exit 1
               ;;
@@ -500,17 +510,27 @@ jobs:
           echo "Working dir     : $(pwd)"
 
           REMOTE_URL="$(git config --get remote.origin.url 2>/dev/null || echo '<none>')"
+          REMOTE_PUSH_URL="$(git config --get remote.origin.pushurl 2>/dev/null || true)"
+          [ -n "$REMOTE_PUSH_URL" ] || REMOTE_PUSH_URL="$REMOTE_URL"
           GIT_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '<unknown>')"
           CURRENT_SHA="$(git rev-parse HEAD 2>/dev/null || echo '<unknown>')"
 
-          echo "Git remote      : $REMOTE_URL"
+          echo "Git remote      : value withheld"
           echo "Git branch      : $GIT_BRANCH"
           echo "Current commit  : $CURRENT_SHA"
 
+          for CANDIDATE_URL in "$REMOTE_URL" "$REMOTE_PUSH_URL"; do
+            case "$CANDIDATE_URL" in
+              http://*'@'* | https://*'@'*)
+                echo "ERROR: Git remote contains HTTP credentials (value redacted) — refusing to deploy." >&2
+                exit 1
+                ;;
+            esac
+          done
           case "$REMOTE_URL" in
             *rudraraj55955/RasoKart* | *rudraraj55955/RPAY*) ;;
             *)
-              echo "ERROR: Unexpected git remote '$REMOTE_URL' — refusing to deploy." >&2
+              echo "ERROR: Unexpected git remote (value redacted) — refusing to deploy." >&2
               echo "Expected a remote pointing to rudraraj55955/RasoKart or rudraraj55955/RPAY." >&2
               exit 1
               ;;

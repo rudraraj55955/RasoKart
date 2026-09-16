@@ -8,6 +8,8 @@
     "db-migrate": "tsx ./src/db-migrate.ts",
     "github-sync": "tsx ./src/github-sync.ts",
     "test:github-sync-concurrency": "node --import tsx/esm --test ./src/github-sync-git-auth.test.ts",
+    "verify-git-remotes": "tsx ./src/verify-git-remotes.ts",
+    "test:verify-git-remotes": "node --import tsx/esm --test ./src/verify-git-remotes.test.ts",
     "test:ts-project-references": "node --test ./validate-ts-project-references.test.mjs",
     "fix-credentials": "tsx ./src/fix-credentials.ts",
     "verify-demo-credentials": "tsx ./src/verify-demo-credentials.ts",
