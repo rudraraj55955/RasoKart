@@ -33,6 +33,8 @@ name: Production Deploy
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch: {}
 
 concurrency:
@@ -46,7 +48,7 @@ jobs:
   classify:
     name: Classify changes
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
     outputs:
       deployment_type: ${{ steps.classify.outputs.deployment_type }}
     steps:
@@ -58,7 +60,10 @@ jobs:
       - name: Determine base/head SHAs
         id: shas
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             HEAD_SHA="${{ github.sha }}"
             BASE_SHA="$(git rev-parse "$HEAD_SHA^" 2>/dev/null || echo "$HEAD_SHA")"
           else
@@ -103,7 +108,7 @@ jobs:
     name: Validate (install, typecheck, build, test)
     needs: classify
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
     services:
       postgres:
         image: postgres:16
