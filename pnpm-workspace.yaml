@@ -4,6 +4,13 @@ packages:
   - lib/integrations/*
   - scripts
 
+allowBuilds:
+  '@swc/core': true
+  core-js: false
+  esbuild: true
+  msw: true
+  unrs-resolver: true
+
 autoInstallPeers: false
 
 catalog:
