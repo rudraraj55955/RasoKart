@@ -64,9 +64,16 @@ cd "$APP_DIR" || fail "App directory $APP_DIR not found."
 # ---------------------------------------------------------------------------
 log "Verifying repository identity and branch..."
 REMOTE_URL="$(git config --get remote.origin.url || true)"
+REMOTE_PUSH_URL="$(git config --get remote.origin.pushurl || true)"
+[ -n "$REMOTE_PUSH_URL" ] || REMOTE_PUSH_URL="$REMOTE_URL"
+for CANDIDATE_URL in "$REMOTE_URL" "$REMOTE_PUSH_URL"; do
+  case "$CANDIDATE_URL" in
+    http://*'@'* | https://*'@'*) fail "Git remote contains HTTP credentials (value redacted) — refusing to deploy." ;;
+  esac
+done
 case "$REMOTE_URL" in
   *rudraraj55955/RasoKart* | *rudraraj55955/RPAY*) : ;;
-  *) fail "Unexpected git remote '$REMOTE_URL' — refusing to deploy." ;;
+  *) fail "Unexpected git remote (value redacted) — refusing to deploy." ;;
 esac
 
 CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"

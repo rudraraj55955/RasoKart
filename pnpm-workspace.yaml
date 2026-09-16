@@ -14,7 +14,7 @@ catalog:
   '@tanstack/react-query': ^5.90.21
   '@types/node': ^25.3.3
   '@types/nodemailer': ^6.4.17
-  nodemailer: ^9.0.5
+  nodemailer: ^9.1.1
   '@types/react': ^19.2.0
   '@types/react-dom': ^19.2.0
   '@vitejs/plugin-react': ^5.0.4
@@ -44,9 +44,23 @@ onlyBuiltDependencies:
   - msw
   - unrs-resolver
 
+patchedDependencies:
+  orval@8.22.0: patches/orval@8.22.0.patch
+
 overrides:
-  'nanoid@^3': '3.3.17'
+  '@babel/core': '>=7.29.6'
+  body-parser: '>=2.3.0'
+  brace-expansion: '>=5.0.9'
+  browserslist: '>=4.28.7'
+  dompurify: '>=3.4.13'
+  fast-uri: '>=3.1.6'
+  'form-data@^2': '>=2.5.6'
+  linkify-it: '>=5.0.2'
+  markdown-it: '>=14.2.0'
+  'nanoid@^3': '3.3.19'
   'nanoid@^5': '5.1.16'
+  postcss: '>=8.5.23'
+  qs: '>=6.16.0'
   ip-address: '>=10.3.1'
   js-yaml: '>=4.3.1'
   uuid: '>=11.1.1'
@@ -71,7 +85,7 @@ overrides:
   '@tailwindcss/oxide>@tailwindcss/oxide-linux-x64-musl': '-'
   '@tailwindcss/oxide>@tailwindcss/oxide-win32-arm64-msvc': '-'
   '@tailwindcss/oxide>@tailwindcss/oxide-win32-x64-msvc': '-'
-  esbuild: 0.27.3
+  esbuild: 0.28.2
   esbuild>@esbuild/aix-ppc64: '-'
   esbuild>@esbuild/android-arm: '-'
   esbuild>@esbuild/android-arm64: '-'

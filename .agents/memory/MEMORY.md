@@ -108,3 +108,5 @@
 - [Concurrent settings validation collision](concurrent-settings-validation-collision.md) — settings checks mutate shared config; concurrent completion runs can invalidate each other's snapshots, so confirm failures in isolation.
 - [Post-merge GitHub sync isolation](post-merge-github-sync-isolation.md) — GitHub mirror failures are reported by the sync job but must never abort dependency, migration, or workflow reconciliation.
 - [Merchant login OTP lifecycle](merchant-login-otp-lifecycle.md) — serialize identifier challenges with a DB advisory lock; commit/invalidate only around confirmed delivery and keep attempts separate from resends.
+- [Orval and secure js-yaml compatibility](orval-js-yaml-v5.md) — patch Orval to namespace-import js-yaml; runtime changes or downgrading js-yaml do not safely fix codegen startup.
+- [Git remote credential safety](git-remote-credential-safety.md) — keep GitHub tokens in process-local askpass helpers; remote URLs and validation output must remain credential-free.
