@@ -971,6 +971,22 @@ async function runGuard(executor: GuardExecutor = db): Promise<void> {
         last_event_at TIMESTAMPTZ
       )
     `);
+    // Legacy installations may have created this table before the delivery
+    // lifecycle columns were introduced.  Add each column independently so
+    // existing delivery history is preserved and the guard is retry-safe.
+    await exec.execute(sql`ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS recipient_hash TEXT NOT NULL DEFAULT ''`);
+    await exec.execute(sql`ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS recipient_masked TEXT NOT NULL DEFAULT ''`);
+    await exec.execute(sql`ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS purpose TEXT NOT NULL DEFAULT 'unknown'`);
+    await exec.execute(sql`ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS provider TEXT NOT NULL DEFAULT 'unknown'`);
+    await exec.execute(sql`ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'accepted'`);
+    await exec.execute(sql`ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS provider_message_id TEXT`);
+    await exec.execute(sql`ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS provider_event_id TEXT`);
+    await exec.execute(sql`ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS error_reason TEXT`);
+    await exec.execute(sql`ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS otp_id INTEGER`);
+    await exec.execute(sql`ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS user_id INTEGER`);
+    await exec.execute(sql`ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
+    await exec.execute(sql`ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
+    await exec.execute(sql`ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS last_event_at TIMESTAMPTZ`);
     await exec.execute(sql`CREATE INDEX IF NOT EXISTS email_delivery_logs_created_at_idx ON email_delivery_logs(created_at DESC)`);
     await exec.execute(sql`CREATE INDEX IF NOT EXISTS email_delivery_logs_purpose_created_at_idx ON email_delivery_logs(purpose, created_at DESC)`);
     await exec.execute(sql`CREATE INDEX IF NOT EXISTS email_delivery_logs_status_idx ON email_delivery_logs(status)`);
@@ -997,6 +1013,15 @@ async function runGuard(executor: GuardExecutor = db): Promise<void> {
         received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
+    // The events table was introduced after the log table.  Keep this
+    // reconciliation additive: no existing rows are deleted or rewritten.
+    await exec.execute(sql`ALTER TABLE email_delivery_events ADD COLUMN IF NOT EXISTS delivery_log_id INTEGER`);
+    await exec.execute(sql`ALTER TABLE email_delivery_events ADD COLUMN IF NOT EXISTS provider TEXT NOT NULL DEFAULT 'unknown'`);
+    await exec.execute(sql`ALTER TABLE email_delivery_events ADD COLUMN IF NOT EXISTS provider_message_id TEXT`);
+    await exec.execute(sql`ALTER TABLE email_delivery_events ADD COLUMN IF NOT EXISTS provider_event_id TEXT`);
+    await exec.execute(sql`ALTER TABLE email_delivery_events ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'accepted'`);
+    await exec.execute(sql`ALTER TABLE email_delivery_events ADD COLUMN IF NOT EXISTS failure_summary TEXT`);
+    await exec.execute(sql`ALTER TABLE email_delivery_events ADD COLUMN IF NOT EXISTS received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
     await exec.execute(sql`
       ALTER TABLE email_delivery_events
       ALTER COLUMN provider_event_id DROP NOT NULL

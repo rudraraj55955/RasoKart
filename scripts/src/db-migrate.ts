@@ -1842,6 +1842,72 @@ async function migrate() {
     ALTER TABLE merchant_portal_sessions ADD COLUMN IF NOT EXISTS processing_lease_expires_at TIMESTAMPTZ;
   `);
 
+  // ── Section P: legacy email delivery reconciliation ─────────────────────
+  // Older production databases may already contain these tables with only a
+  // subset of the current delivery columns. Every operation is additive and
+  // idempotent; existing delivery rows are never dropped, truncated, or
+  // recreated.
+  await runSection("email_delivery_legacy_reconciliation", sql`
+    CREATE TABLE IF NOT EXISTS email_delivery_logs (
+      id SERIAL PRIMARY KEY,
+      recipient_hash TEXT NOT NULL DEFAULT '',
+      recipient_masked TEXT NOT NULL DEFAULT '',
+      purpose TEXT NOT NULL DEFAULT 'unknown',
+      provider TEXT NOT NULL DEFAULT 'unknown',
+      status TEXT NOT NULL DEFAULT 'accepted',
+      provider_message_id TEXT,
+      provider_event_id TEXT,
+      error_reason TEXT,
+      otp_id INTEGER,
+      user_id INTEGER,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_event_at TIMESTAMPTZ
+    );
+    ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS recipient_hash TEXT NOT NULL DEFAULT '';
+    ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS recipient_masked TEXT NOT NULL DEFAULT '';
+    ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS purpose TEXT NOT NULL DEFAULT 'unknown';
+    ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS provider TEXT NOT NULL DEFAULT 'unknown';
+    ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'accepted';
+    ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS provider_message_id TEXT;
+    ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS provider_event_id TEXT;
+    ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS error_reason TEXT;
+    ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS otp_id INTEGER;
+    ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS user_id INTEGER;
+    ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+    ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+    ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS last_event_at TIMESTAMPTZ;
+    CREATE INDEX IF NOT EXISTS email_delivery_logs_created_at_idx ON email_delivery_logs(created_at DESC);
+    CREATE INDEX IF NOT EXISTS email_delivery_logs_purpose_created_at_idx ON email_delivery_logs(purpose, created_at DESC);
+    CREATE INDEX IF NOT EXISTS email_delivery_logs_status_idx ON email_delivery_logs(status);
+    CREATE INDEX IF NOT EXISTS email_delivery_logs_provider_message_id_idx ON email_delivery_logs(provider_message_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS email_delivery_logs_provider_event_id_unique
+      ON email_delivery_logs(provider_event_id) WHERE provider_event_id IS NOT NULL;
+
+    CREATE TABLE IF NOT EXISTS email_delivery_events (
+      id SERIAL PRIMARY KEY,
+      delivery_log_id INTEGER,
+      provider TEXT NOT NULL DEFAULT 'unknown',
+      provider_message_id TEXT,
+      provider_event_id TEXT,
+      status TEXT NOT NULL DEFAULT 'accepted',
+      failure_summary TEXT,
+      received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    ALTER TABLE email_delivery_events ADD COLUMN IF NOT EXISTS delivery_log_id INTEGER;
+    ALTER TABLE email_delivery_events ADD COLUMN IF NOT EXISTS provider TEXT NOT NULL DEFAULT 'unknown';
+    ALTER TABLE email_delivery_events ADD COLUMN IF NOT EXISTS provider_message_id TEXT;
+    ALTER TABLE email_delivery_events ADD COLUMN IF NOT EXISTS provider_event_id TEXT;
+    ALTER TABLE email_delivery_events ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'accepted';
+    ALTER TABLE email_delivery_events ADD COLUMN IF NOT EXISTS failure_summary TEXT;
+    ALTER TABLE email_delivery_events ADD COLUMN IF NOT EXISTS received_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+    ALTER TABLE email_delivery_events ALTER COLUMN provider_event_id DROP NOT NULL;
+    CREATE INDEX IF NOT EXISTS email_delivery_events_delivery_log_received_at_idx
+      ON email_delivery_events(delivery_log_id, received_at DESC);
+    CREATE UNIQUE INDEX IF NOT EXISTS email_delivery_events_provider_event_id_unique
+      ON email_delivery_events(provider_event_id) WHERE provider_event_id IS NOT NULL;
+  `);
+
   console.log("DB migrations complete.");
   process.exit(0);
 }

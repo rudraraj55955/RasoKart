@@ -118,6 +118,36 @@ describe("ensureSchemaGuard", () => {
     assert.ok(indexCall, "expected a supporting index on (flushed, deliver_after)");
   });
 
+  it("reconciles legacy email-delivery tables additively", async () => {
+    mockExecute(() => {});
+    await ensureSchemaGuard();
+    for (const table of ["email_delivery_logs", "email_delivery_events"]) {
+      assert.ok(
+        calls.some((c) => /CREATE TABLE IF NOT EXISTS/i.test(c) && new RegExp(`\\b${table}\\b`, "i").test(c)),
+        `expected ${table} creation guard`,
+      );
+    }
+    for (const column of [
+      "recipient_hash", "recipient_masked", "purpose", "provider", "status",
+      "provider_message_id", "provider_event_id", "error_reason", "otp_id",
+      "user_id", "created_at", "updated_at", "last_event_at",
+    ]) {
+      assert.ok(
+        calls.some((c) => /ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS/i.test(c) && new RegExp(`\\b${column}\\b`, "i").test(c)),
+        `expected additive reconciliation for email_delivery_logs.${column}`,
+      );
+    }
+    for (const column of [
+      "delivery_log_id", "provider", "provider_message_id", "provider_event_id",
+      "status", "failure_summary", "received_at",
+    ]) {
+      assert.ok(
+        calls.some((c) => /ALTER TABLE email_delivery_events ADD COLUMN IF NOT EXISTS/i.test(c) && new RegExp(`\\b${column}\\b`, "i").test(c)),
+        `expected additive reconciliation for email_delivery_events.${column}`,
+      );
+    }
+  });
+
   it("only runs the guard once per process (cached)", async () => {
     mockExecute(() => {});
     await ensureSchemaGuard();

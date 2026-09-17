@@ -2,11 +2,12 @@ import { pathToFileURL } from "node:url";
 import { appendFileSync } from "node:fs";
 
 export const REQUIRED_VALIDATION_CONTEXT =
-  "Production Deploy / Validate (install, typecheck, build, test)";
+  "Validate (install, typecheck, build, test)";
 export const PRODUCTION_ENVIRONMENT = "production-sensitive";
 export const TEMP_AUTO_DEPLOY_VARIABLE = "TEMP_AUTO_DEPLOY_ENABLED";
 
 export const EXPECTED_PRODUCTION_APPROVERS_VARIABLE = "EXPECTED_PRODUCTION_APPROVERS";
+export const DEFAULT_EXPECTED_PRODUCTION_APPROVERS = "user:rudraraj55955";
 type StatusCheck = { context?: unknown };
 type BranchProtection = {
   required_pull_request_reviews?: unknown;
@@ -76,8 +77,8 @@ export function findBranchProtectionDrift(
   if (protection.allow_deletions?.enabled !== false) {
     drift.push("branch deletion is not blocked");
   }
-  if (protection.enforce_admins?.enabled !== false) {
-    drift.push("administrator emergency bypass is not preserved");
+  if (protection.enforce_admins?.enabled !== true) {
+    drift.push("branch protection is not enforced for administrators");
   }
 
   return drift;
@@ -249,4 +250,3 @@ function reviewerIdentity(reviewer: unknown): string | undefined {
   return typeof identity === "string" ? `${type}:${identity.toLowerCase()}` : undefined;
 }
 
-export const DEFAULT_EXPECTED_PRODUCTION_APPROVERS = "user:rudraraj55955";
