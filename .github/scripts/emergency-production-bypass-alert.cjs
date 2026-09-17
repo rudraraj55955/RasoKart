@@ -1,6 +1,17 @@
 const LABEL = "emergency-production-bypass";
 const SAFEGUARD_LABEL = "production-safeguard-drift";
 const SAFEGUARD_MARKER = "<!-- production-safeguard-drift -->";
+const ISSUE_LIST_MAX_ATTEMPTS = 3;
+const ISSUE_LIST_BACKOFF_MS = 250;
+
+function isRetryableIssueListError(error) {
+  const status = Number(error?.status);
+  return status === 408 || status === 429 || (status >= 500 && status <= 599);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 async function ensureLabel(github, owner, repo) {
   try {
@@ -37,23 +48,35 @@ async function findSafeguardIssue(
   owner,
   repo,
   marker = SAFEGUARD_MARKER,
+  {
+    maxAttempts = ISSUE_LIST_MAX_ATTEMPTS,
+    backoffMs = ISSUE_LIST_BACKOFF_MS,
+    delay = sleep,
+  } = {},
 ) {
   for (let page = 1; ; page += 1) {
     let existing;
-    try {
-      existing = await github.rest.issues.listForRepo({
-        owner,
-        repo,
-        state: "all",
-        creator: "github-actions[bot]",
-        per_page: 100,
-        page,
-      });
-    } catch (error) {
-      throw new Error(
-        `Failed to look up production safeguard alert for ${owner}/${repo} on issue page ${page}`,
-        { cause: error },
-      );
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        existing = await github.rest.issues.listForRepo({
+          owner,
+          repo,
+          state: "all",
+          creator: "github-actions[bot]",
+          per_page: 100,
+          page,
+        });
+        break;
+      } catch (error) {
+        const retryable = isRetryableIssueListError(error);
+        if (!retryable || attempt === maxAttempts) {
+          throw new Error(
+            `Failed to look up production safeguard alert for ${owner}/${repo} on issue page ${page} after ${attempt} attempt${attempt === 1 ? "" : "s"}`,
+            { cause: error },
+          );
+        }
+        await delay(backoffMs * 2 ** (attempt - 1));
+      }
     }
     const safeguardIssue = existing.data.find((issue) => issue.body?.includes(marker));
     if (safeguardIssue) return safeguardIssue;
@@ -116,9 +139,10 @@ async function runProductionSafeguardAlert({
   labelName = SAFEGUARD_LABEL,
   marker = SAFEGUARD_MARKER,
   titlePrefix = "",
+  issueListRetry,
 }) {
   const { owner, repo } = context.repo;
-  const existing = await findSafeguardIssue(github, owner, repo, marker);
+  const existing = await findSafeguardIssue(github, owner, repo, marker, issueListRetry);
   const normalizedDrift = (Array.isArray(drift) ? drift : []).filter(
     (problem) => typeof problem === "string" && problem,
   );

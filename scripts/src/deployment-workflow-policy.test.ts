@@ -287,6 +287,7 @@ function fakeSafeguardHarness(
   existingIssue?: Record<string, unknown>,
   issuePages?: Array<Array<Record<string, unknown>>>,
   failingPage?: number,
+  failureOptions: { status?: number; failures?: number } = {},
 ) {
   const calls = {
     creates: [] as Array<Record<string, unknown>>,
@@ -294,14 +295,20 @@ function fakeSafeguardHarness(
     updates: [] as Array<Record<string, unknown>>,
     listRequests: [] as Array<Record<string, unknown>>,
   };
+  let failuresRemaining = failureOptions.failures ?? (failingPage === undefined ? 0 : Number.POSITIVE_INFINITY);
   const github = {
     rest: {
       issues: {
         listForRepo: async (request: Record<string, unknown>) => {
           calls.listRequests.push(request);
           const page = Number(request.page ?? 1);
-          if (page === failingPage) {
-            throw new Error("simulated GitHub issue-list API failure");
+          if (page === failingPage && failuresRemaining > 0) {
+            failuresRemaining -= 1;
+            const error = new Error("simulated GitHub issue-list API failure") as Error & {
+              status?: number;
+            };
+            error.status = failureOptions.status;
+            throw error;
           }
           const pages = issuePages ?? [existingIssue ? [existingIssue] : []];
           return { data: pages[page - 1] ?? [] };
@@ -674,6 +681,103 @@ test("production safeguard lookup failure reports repository and page without mu
 
   assert.equal(harness.calls.listRequests.length, 2);
   assert.equal(harness.calls.labelCreates.length, 0);
+  assert.equal(harness.calls.creates.length, 0);
+  assert.equal(harness.calls.updates.length, 0);
+});
+
+test("production safeguard lookup retries a transient failure with exponential backoff", async () => {
+  const existingIssue = {
+    number: 173,
+    body: SAFEGUARD_MARKER,
+    state: "closed",
+  };
+  const harness = fakeSafeguardHarness(existingIssue, undefined, 1, {
+    status: 503,
+    failures: 2,
+  });
+  const delays: number[] = [];
+
+  const result = await runProductionSafeguardAlert({
+    ...harness,
+    auditSucceeded: true,
+    drift: ["required status check is missing"],
+    issueListRetry: {
+      maxAttempts: 3,
+      backoffMs: 10,
+      delay: async (ms: number) => {
+        delays.push(ms);
+      },
+    },
+  });
+
+  assert.equal(result.updated, true);
+  assert.equal(harness.calls.listRequests.length, 3);
+  assert.deepEqual(delays, [10, 20]);
+  assert.equal(harness.calls.updates.length, 1);
+  assert.equal(harness.calls.creates.length, 0);
+});
+
+test("production safeguard lookup exhausts bounded retries before any alert mutation", async () => {
+  const harness = fakeSafeguardHarness(undefined, undefined, 1, {
+    status: 502,
+    failures: 3,
+  });
+  const delays: number[] = [];
+
+  await assert.rejects(
+    runProductionSafeguardAlert({
+      ...harness,
+      auditSucceeded: true,
+      drift: [],
+      issueListRetry: {
+        maxAttempts: 3,
+        backoffMs: 5,
+        delay: async (ms: number) => {
+          delays.push(ms);
+        },
+      },
+    }),
+    (error: unknown) => {
+      assert(error instanceof Error);
+      assert.match(error.message, /repo-owner\/repo-name/);
+      assert.match(error.message, /issue page 1/);
+      assert.match(error.message, /after 3 attempts/);
+      return true;
+    },
+  );
+
+  assert.equal(harness.calls.listRequests.length, 3);
+  assert.deepEqual(delays, [5, 10]);
+  assert.equal(harness.calls.labelCreates.length, 0);
+  assert.equal(harness.calls.creates.length, 0);
+  assert.equal(harness.calls.updates.length, 0);
+});
+
+test("production safeguard lookup does not retry non-retryable responses", async () => {
+  const harness = fakeSafeguardHarness(undefined, undefined, 1, {
+    status: 403,
+    failures: 1,
+  });
+  const delays: number[] = [];
+
+  await assert.rejects(
+    runProductionSafeguardAlert({
+      ...harness,
+      auditSucceeded: true,
+      drift: [],
+      issueListRetry: {
+        maxAttempts: 3,
+        backoffMs: 5,
+        delay: async (ms: number) => {
+          delays.push(ms);
+        },
+      },
+    }),
+    /repo-owner\/repo-name.*issue page 1.*after 1 attempt/,
+  );
+
+  assert.equal(harness.calls.listRequests.length, 1);
+  assert.deepEqual(delays, []);
   assert.equal(harness.calls.creates.length, 0);
   assert.equal(harness.calls.updates.length, 0);
 });
