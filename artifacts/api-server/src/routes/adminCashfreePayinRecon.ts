@@ -338,7 +338,7 @@ interface BackfillOrderResult {
   detail: string;
 }
 
-async function backfillOrder(cashfreeOrderId: string): Promise<BackfillOrderResult> {
+export async function backfillOrder(cashfreeOrderId: string): Promise<BackfillOrderResult> {
   // Fetch the order — must exist and be in the affected window.
   const [cfOrder] = await db
     .select()
@@ -423,7 +423,10 @@ async function backfillOrder(cashfreeOrderId: string): Promise<BackfillOrderResu
         description:     `[RECONCILIATION] Cashfree payin backfill — order ${cashfreeOrderId}, ref ${utr}`,
       });
 
-      // ── Step 6: Transaction record — idempotent on UTR constraint ────────
+      // ── Step 6: Transaction record ───────────────────────────────────────
+      // A UTR collision must abort this transaction. Suppressing it would
+      // commit the PAID order, wallet credit, and ledger row without a matching
+      // transaction record.
       await tx.insert(transactionsTable).values({
         merchantId:  cfOrder.merchantId,
         provider:    "cashfree",
@@ -438,7 +441,7 @@ async function backfillOrder(cashfreeOrderId: string): Promise<BackfillOrderResu
           source:       "admin-cashfree-payin-recon",
           backfilledAt: new Date().toISOString(),
         }),
-      }).onConflictDoNothing();
+      });
 
       return "credited";
     });
@@ -471,6 +474,12 @@ router.post("/backfill", async (req, res, next) => {
     });
     return;
   }
+  let lockReleased = false;
+  const releaseOwnedLock = async () => {
+    if (lockReleased) return;
+    await releaseBackfillLock(user.id, lockToken);
+    lockReleased = true;
+  };
 
   try {
     const body = req.body as { cashfreeOrderIds?: unknown };
@@ -536,17 +545,23 @@ router.post("/backfill", async (req, res, next) => {
       "admin_cashfree_payin_recon: backfill complete",
     );
 
-    res.json({
+    const responseBody = {
       results,
       summary: { credited, duplicate, notFound, errors, total: results.length },
-    });
+    };
+
+    // Release before acknowledging completion. Otherwise a client that starts
+    // another backfill immediately after receiving this 200 can briefly see a
+    // stale in-progress lock and receive a false 409.
+    await releaseOwnedLock();
+    res.json(responseBody);
   } catch (err) {
     next(err);
   } finally {
     // Token-conditional release: only deletes the system_config row if our
     // token still matches.  Safe even if the TTL expired and a second request
     // already acquired the lock — we won't delete their lock row.
-    await releaseBackfillLock(user.id, lockToken).catch(releaseErr =>
+    await releaseOwnedLock().catch(releaseErr =>
       logger.warn({ releaseErr, adminId: user.id }, "admin_cashfree_payin_recon: lock release failed")
     );
   }

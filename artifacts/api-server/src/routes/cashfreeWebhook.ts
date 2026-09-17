@@ -18,6 +18,41 @@ import { decryptSecret } from "../helpers/cryptoUtils";
 import { creditWalletForLoad } from "./payoutWalletLoad";
 
 const router = Router();
+let cashfreeWebhookTestBeforeCredit: (() => void) | null = null;
+
+export function setCashfreeWebhookTestBeforeCreditHook(hook: (() => void) | null): void {
+  if (process.env.NODE_ENV !== "test") {
+    throw new Error("Cashfree webhook test hooks are only available in NODE_ENV=test");
+  }
+  cashfreeWebhookTestBeforeCredit = hook;
+}
+
+export function validateCashfreePaymentMatch(
+  webhookAmount: string | null,
+  webhookCurrency: string | null,
+  storedAmount: string,
+  storedCurrency: string,
+): { ok: true } | { ok: false; reason: "amount" | "currency" } {
+  const normalizeMoney = (value: string | null): string | null => {
+    if (!value || !/^\d+(?:\.\d{1,2})?$/.test(value)) return null;
+    const [whole, fraction = ""] = value.split(".");
+    return `${whole.replace(/^0+(?=\d)/, "")}.${fraction.padEnd(2, "0")}`;
+  };
+  const received = normalizeMoney(webhookAmount);
+  const expected = normalizeMoney(storedAmount);
+  if (
+    !received ||
+    !expected ||
+    received === "0.00" ||
+    received !== expected
+  ) {
+    return { ok: false, reason: "amount" };
+  }
+  if (!webhookCurrency || webhookCurrency !== storedCurrency) {
+    return { ok: false, reason: "currency" };
+  }
+  return { ok: true };
+}
 
 /**
  * POST /api/payment/cashfree-webhook
@@ -88,20 +123,19 @@ export const cashfreePayinWebhookHandler: RequestHandler = async (req, res) => {
 
     const webhookSecret  = resolveSecret(SYSTEM_CONFIG_KEYS.CASHFREE_WEBHOOK_SECRET);
     const clientSecretFb = resolveSecret(SYSTEM_CONFIG_KEYS.CASHFREE_CLIENT_SECRET);
-    const signingSecret  = webhookSecret ?? clientSecretFb;
+    const signingSecrets = [webhookSecret, clientSecretFb].filter(
+      (secret, index, all): secret is string => Boolean(secret) && all.indexOf(secret) === index,
+    );
 
     // No signing credential configured → reject; never fall through to credit path.
-    if (!signingSecret) {
+    if (!signingSecrets.length) {
       logger.error({}, "cashfree_payin_webhook_no_secret: rejected (fail-closed) — configure cashfree_webhook_secret or cashfree_client_secret");
       res.status(401).json({ error: "Webhook signing not configured" });
       return;
     }
 
-    const valid = verifyCashfreeWebhookSignature(
-      rawBody,
-      timestamp ?? "",
-      signature ?? "",
-      signingSecret,
+    const valid = signingSecrets.some((signingSecret) =>
+      verifyCashfreeWebhookSignature(rawBody, timestamp ?? "", signature ?? "", signingSecret),
     );
     if (!valid) {
       logger.warn({ signingSource: webhookSecret ? "webhook_secret" : "client_secret_fallback" },
@@ -119,8 +153,8 @@ export const cashfreePayinWebhookHandler: RequestHandler = async (req, res) => {
 
     if (enabledRow?.value !== "true") {
       logger.warn({ body }, "Cashfree webhook received but Cashfree is disabled — ignoring");
-      res.json({ success: true });
       await insertLog({ eventType: "unknown", cashfreeOrderId: null, merchantId: null, amount: null, status: null, rawPayload: rawBody, processingResult: "ignored", errorMessage: "Cashfree disabled" });
+      res.json({ success: true });
       return;
     }
 
@@ -132,20 +166,21 @@ export const cashfreePayinWebhookHandler: RequestHandler = async (req, res) => {
     const payment = data?.["payment"] as Record<string, unknown> | undefined;
 
     cashfreeOrderId = (order?.["order_id"] as string) ?? null;
-    amount = (payment?.["payment_amount"] as string | number | undefined)?.toString() ?? (order?.["order_amount"] as string | number | undefined)?.toString() ?? null;
+    amount = (payment?.["payment_amount"] as string | number | undefined)?.toString() ?? null;
     status = (payment?.["payment_status"] as string) ?? null;
+    const webhookCurrency =
+      (payment?.["payment_currency"] as string | undefined) ??
+      (order?.["order_currency"] as string | undefined) ??
+      null;
 
     logger.info({ eventType, cashfreeOrderId, status }, "Cashfree payment webhook received");
-
-    // Acknowledge immediately — Cashfree requires a fast 200 ACK.
-    // All DB work below happens after the response is sent.
-    res.json({ success: true });
 
     // Only process SUCCESS payments
     if (!cashfreeOrderId) {
       processingResult = "ignored";
       errorMessage = "Missing order_id in payload";
       await insertLog({ eventType, cashfreeOrderId: null, merchantId: null, amount, status, rawPayload: rawBody, processingResult, errorMessage });
+      res.json({ success: true });
       return;
     }
 
@@ -153,6 +188,7 @@ export const cashfreePayinWebhookHandler: RequestHandler = async (req, res) => {
       processingResult = "ignored";
       errorMessage = `Non-success payment status: ${status}`;
       await insertLog({ eventType, cashfreeOrderId, merchantId: null, amount, status, rawPayload: rawBody, processingResult, errorMessage });
+      res.json({ success: true });
       return;
     }
 
@@ -168,15 +204,36 @@ export const cashfreePayinWebhookHandler: RequestHandler = async (req, res) => {
       if (!loadOrder) {
         logger.warn({ cashfreeOrderId }, "Cashfree wallet load webhook: load order not found");
         await insertLog({ eventType, cashfreeOrderId, merchantId: null, amount, status, rawPayload: rawBody, processingResult: "ignored", errorMessage: "Wallet load order not found" });
+        res.json({ success: true });
         return;
       }
 
       merchantId = loadOrder.merchantId;
+      const loadPaymentMatch = validateCashfreePaymentMatch(
+        amount,
+        webhookCurrency,
+        String(loadOrder.amount ?? ""),
+        "INR",
+      );
+      if (!loadPaymentMatch.ok) {
+        processingResult = "error";
+        errorMessage = loadPaymentMatch.reason === "amount"
+          ? "Cashfree wallet-load amount does not match the stored load"
+          : "Cashfree wallet-load currency does not match INR";
+        await insertLog({ eventType, cashfreeOrderId, merchantId, amount, status, rawPayload: rawBody, processingResult, errorMessage });
+        res.status(400).json({ error: errorMessage });
+        return;
+      }
       const creditResult = await creditWalletForLoad(loadOrder, providerPaymentId);
       processingResult = creditResult === "credited" ? "credited" : creditResult === "duplicate" ? "duplicate" : "error";
       errorMessage     = creditResult === "error" ? "Wallet credit failed" : null;
       logger.info({ cashfreeOrderId, loadId: loadOrder.loadId, creditResult }, "Cashfree wallet load webhook processed");
       await insertLog({ eventType, cashfreeOrderId, merchantId, amount, status, rawPayload: rawBody, processingResult, errorMessage });
+      if (creditResult === "error") {
+        res.status(503).json({ error: "Cashfree wallet processing failed; retryable" });
+        return;
+      }
+      res.json({ success: true });
       return;
     }
 
@@ -192,6 +249,7 @@ export const cashfreePayinWebhookHandler: RequestHandler = async (req, res) => {
       processingResult = "ignored";
       errorMessage = "Order not found in DB";
       await insertLog({ eventType, cashfreeOrderId, merchantId: null, amount, status, rawPayload: rawBody, processingResult, errorMessage });
+      res.json({ success: true });
       return;
     }
 
@@ -200,13 +258,36 @@ export const cashfreePayinWebhookHandler: RequestHandler = async (req, res) => {
     // Compute UTR and amount outside the transaction (pure derivation, no I/O)
     const paymentId = (payment?.["cf_payment_id"] as string | number | undefined)?.toString() ?? null;
     const utr       = paymentId ? `CF-${paymentId}` : `CF-${cashfreeOrderId}`;
-    const paidAmount = amount ?? cfOrder.amount?.toString() ?? "0";
-    const paidAmountNum = parseFloat(paidAmount);
+    const paymentMatch = validateCashfreePaymentMatch(
+      amount,
+      webhookCurrency,
+      String(cfOrder.amount ?? ""),
+      String(cfOrder.currency ?? ""),
+    );
+    if (!paymentMatch.ok && paymentMatch.reason === "amount") {
+      processingResult = "error";
+      errorMessage = "Cashfree payment amount does not match the stored order";
+      await insertLog({ eventType, cashfreeOrderId, merchantId, amount, status, rawPayload: rawBody, processingResult, errorMessage });
+      res.status(400).json({ error: errorMessage });
+      return;
+    }
+    if (!paymentMatch.ok) {
+      processingResult = "error";
+      errorMessage = "Cashfree payment currency does not match the stored order";
+      await insertLog({ eventType, cashfreeOrderId, merchantId, amount, status, rawPayload: rawBody, processingResult, errorMessage });
+      res.status(400).json({ error: errorMessage });
+      return;
+    }
+    const paidAmount = amount ?? "0";
+    const paidAmountNum = Number(paidAmount);
 
     // ── Atomic credit: status + wallet + ledger in one transaction ─────────
     // If any step fails, the entire transaction rolls back.
     // The order status stays non-PAID so Cashfree's retry delivery re-attempts.
     type CreditResult = "credited" | "duplicate";
+    if (process.env.NODE_ENV === "test") {
+      cashfreeWebhookTestBeforeCredit?.();
+    }
     const creditResult: CreditResult = await db.transaction(async (tx) => {
       // Step 1: Atomic idempotency gate — only one concurrent delivery wins.
       const updated = await tx
@@ -278,7 +359,7 @@ export const cashfreePayinWebhookHandler: RequestHandler = async (req, res) => {
         referenceId: cashfreeOrderId!,
         description: `Cashfree payment — order ${cashfreeOrderId}`,
         metadata:    rawBody,
-      }).onConflictDoNothing();
+      });
 
       return "credited";
     });
@@ -293,6 +374,7 @@ export const cashfreePayinWebhookHandler: RequestHandler = async (req, res) => {
     }
 
     await insertLog({ eventType, cashfreeOrderId, merchantId, amount: paidAmount, status, rawPayload: rawBody, processingResult, errorMessage: null });
+    res.json({ success: true });
 
   } catch (err) {
     // DB transaction rolled back — order status is still non-PAID.
@@ -303,7 +385,10 @@ export const cashfreePayinWebhookHandler: RequestHandler = async (req, res) => {
     try {
       await insertLog({ eventType, cashfreeOrderId, merchantId, amount, status, rawPayload: rawBody, processingResult: "error", errorMessage });
     } catch (logErr) {
-      logger.warn({ logErr }, "Cashfree webhook: failed to insert log after error");
+      logger.warn({ logErr }, "Cashfree webhook: failed to insert error log");
+    }
+    if (!res.headersSent) {
+      res.status(503).json({ error: "Cashfree webhook processing failed; retryable" });
     }
   }
 };
@@ -320,8 +405,7 @@ async function insertLog(params: {
   processingResult: "credited" | "duplicate" | "ignored" | "error";
   errorMessage: string | null;
 }) {
-  try {
-    await db.insert(cashfreePaymentLogsTable).values({
+  await db.insert(cashfreePaymentLogsTable).values({
       eventType: params.eventType ?? undefined,
       cashfreeOrderId: params.cashfreeOrderId ?? undefined,
       merchantId: params.merchantId ?? undefined,
@@ -330,10 +414,7 @@ async function insertLog(params: {
       rawPayload: params.rawPayload,
       processingResult: params.processingResult,
       errorMessage: params.errorMessage ?? undefined,
-    });
-  } catch (err) {
-    logger.warn({ err }, "Cashfree webhook: failed to insert log");
-  }
+  });
 }
 
 export default router;

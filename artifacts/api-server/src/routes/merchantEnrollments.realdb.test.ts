@@ -101,7 +101,7 @@ async function createTestMerchant(suffix: string) {
     .values({ name: "Test", email, passwordHash: "x", role: "merchant", merchantId: merchant.id })
     .returning({ id: usersTable.id, email: usersTable.email, role: usersTable.role, merchantId: usersTable.merchantId });
 
-  const token = generateToken(user as any);
+  const token = generateToken({ userId: user.id, role: user.role });
   return { merchantId: merchant.id, userId: user.id, token };
 }
 
@@ -291,7 +291,7 @@ describe("merchant enrollment routes (real DB)", () => {
   // ── 12. 404 on credential submit without enrollment ───────────────────────
   it("PUT /:slug/credentials returns 404 when no enrollment record exists", async () => {
     const r = await makeRequest(
-      server, "PUT", `${BASE}/bharatpe/credentials`, tokenB,
+      server, "PUT", `${BASE}/phonepe/credentials`, tokenB,
       { apiKey: "some-key" },
     );
     assert.equal(r.status, 404, JSON.stringify(r.body));

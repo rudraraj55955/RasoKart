@@ -15,7 +15,7 @@ function protectedMain() {
     },
     allow_force_pushes: { enabled: false },
     allow_deletions: { enabled: false },
-    enforce_admins: { enabled: false },
+    enforce_admins: { enabled: true },
   };
 }
 
@@ -50,14 +50,14 @@ const driftCases = [
     expected: "branch deletion is not blocked",
   },
   {
-    name: "administrator emergency bypass",
-    change: { enforce_admins: { enabled: true } },
-    expected: "administrator emergency bypass is not preserved",
+    name: "administrator enforcement",
+    change: { enforce_admins: { enabled: false } },
+    expected: "branch protection is not enforced for administrators",
   },
   {
     name: "missing administrator enforcement response",
     change: { enforce_admins: null },
-    expected: "administrator emergency bypass is not preserved",
+    expected: "branch protection is not enforced for administrators",
   },
 ] as const;
 

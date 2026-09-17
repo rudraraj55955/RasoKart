@@ -47,9 +47,9 @@ describe("Pine Labs portal-session lifecycle policy", async () => {
   });
 
   it("clears the terminal session token and preserves retries below the limit", () => {
-    assert.match(routeSource, /encryptedSession: hitMaxAttempts\s*\?\s*null/);
+    assert.match(routeSource, /encryptedSession: hitCredentialMaxAttempts\s*\?\s*null/);
     assert.match(routeSource, /recoverableOtpFailure/);
-    assert.match(routeSource, /persistedStatus = hitMaxAttempts/);
+    assert.match(routeSource, /persistedStatus = hitCredentialMaxAttempts/);
   });
 
   it("never exposes lease internals or changes the dry-run transaction invariant", () => {
