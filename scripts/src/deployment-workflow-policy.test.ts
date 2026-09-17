@@ -286,6 +286,7 @@ function fakeAlertHarness(associatedPulls: unknown[] = []) {
 function fakeSafeguardHarness(
   existingIssue?: Record<string, unknown>,
   issuePages?: Array<Array<Record<string, unknown>>>,
+  failingPage?: number,
 ) {
   const calls = {
     creates: [] as Array<Record<string, unknown>>,
@@ -299,6 +300,9 @@ function fakeSafeguardHarness(
         listForRepo: async (request: Record<string, unknown>) => {
           calls.listRequests.push(request);
           const page = Number(request.page ?? 1);
+          if (page === failingPage) {
+            throw new Error("simulated GitHub issue-list API failure");
+          }
           const pages = issuePages ?? [existingIssue ? [existingIssue] : []];
           return { data: pages[page - 1] ?? [] };
         },
@@ -572,6 +576,42 @@ test("production safeguard lookup scans the next page and creates only one alert
   assert.equal(harness.calls.listRequests.length, 2);
   assert.equal(harness.calls.listRequests[0]?.page, 1);
   assert.equal(harness.calls.listRequests[1]?.page, 2);
+});
+
+test("production safeguard lookup failure reports repository and page without mutating alerts", async () => {
+  const harness = fakeSafeguardHarness(
+    undefined,
+    [
+      Array.from({ length: 100 }, (_, index) => ({
+        number: index + 1,
+        body: `unrelated issue ${index + 1}`,
+      })),
+    ],
+    2,
+  );
+
+  await assert.rejects(
+    runProductionSafeguardAlert({
+      ...harness,
+      auditSucceeded: true,
+      drift: [],
+    }),
+    (error: unknown) => {
+      assert(error instanceof Error);
+      assert.match(error.message, /repo-owner\/repo-name/);
+      assert.match(error.message, /issue page 2/);
+      assert.equal(
+        (error as Error & { cause?: Error }).cause?.message,
+        "simulated GitHub issue-list API failure",
+      );
+      return true;
+    },
+  );
+
+  assert.equal(harness.calls.listRequests.length, 2);
+  assert.equal(harness.calls.labelCreates.length, 0);
+  assert.equal(harness.calls.creates.length, 0);
+  assert.equal(harness.calls.updates.length, 0);
 });
 
 test("safeguard integration cleans up after issue verification fails", async () => {

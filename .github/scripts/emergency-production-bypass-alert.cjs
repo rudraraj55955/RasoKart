@@ -39,14 +39,22 @@ async function findSafeguardIssue(
   marker = SAFEGUARD_MARKER,
 ) {
   for (let page = 1; ; page += 1) {
-    const existing = await github.rest.issues.listForRepo({
-      owner,
-      repo,
-      state: "all",
-      creator: "github-actions[bot]",
-      per_page: 100,
-      page,
-    });
+    let existing;
+    try {
+      existing = await github.rest.issues.listForRepo({
+        owner,
+        repo,
+        state: "all",
+        creator: "github-actions[bot]",
+        per_page: 100,
+        page,
+      });
+    } catch (error) {
+      throw new Error(
+        `Failed to look up production safeguard alert for ${owner}/${repo} on issue page ${page}`,
+        { cause: error },
+      );
+    }
     const safeguardIssue = existing.data.find((issue) => issue.body?.includes(marker));
     if (safeguardIssue) return safeguardIssue;
     if (existing.data.length < 100) return undefined;
