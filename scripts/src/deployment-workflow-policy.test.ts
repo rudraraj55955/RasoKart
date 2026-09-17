@@ -232,10 +232,16 @@ test("emergency bypass alerts cannot be blocked by production deployment concurr
   assert.doesNotMatch(source, /rasokart-production/);
 });
 
-function fakeAlertHarness(associatedPulls: unknown[] = []) {
+function fakeAlertHarness(
+  associatedPulls: unknown[] = [],
+  issuePages: Array<Array<Record<string, unknown>>> = [[]],
+  failingPage?: number,
+) {
   const calls = {
     associated: 0,
     creates: [] as Array<Record<string, unknown>>,
+    labelCreates: [] as Array<Record<string, unknown>>,
+    listRequests: [] as Array<Record<string, unknown>>,
     updates: [] as Array<Record<string, unknown>>,
   };
   const issue = {
@@ -252,9 +258,19 @@ function fakeAlertHarness(associatedPulls: unknown[] = []) {
         },
       },
       issues: {
-        listForRepo: async () => ({ data: [] }),
+        listForRepo: async (request: Record<string, unknown>) => {
+          calls.listRequests.push(request);
+          const page = Number(request.page ?? 1);
+          if (page === failingPage) {
+            throw new Error("simulated GitHub issue-list API failure");
+          }
+          return { data: issuePages[page - 1] ?? [] };
+        },
         getLabel: async () => ({ data: { name: LABEL } }),
-        createLabel: async () => ({ data: { name: LABEL } }),
+        createLabel: async (request: Record<string, unknown>) => {
+          calls.labelCreates.push(request);
+          return { data: { name: LABEL } };
+        },
         create: async (request: Record<string, unknown>) => {
           calls.creates.push(request);
           return { data: issue };
@@ -444,6 +460,60 @@ test("simulated normal pull-request merge exercises association API without crea
 
   assert.deepEqual(result, { created: false, reason: "normal_pull_request_merge" });
   assert.equal(harness.calls.associated, 1);
+  assert.equal(harness.calls.creates.length, 0);
+});
+
+test("emergency bypass lookup finds a matching alert beyond the first issue page", async () => {
+  const marker = "<!-- emergency-production-bypass:push-sha -->";
+  const harness = fakeAlertHarness(
+    [],
+    [
+      Array.from({ length: 100 }, (_, index) => ({
+        number: index + 1,
+        body: `unrelated issue ${index + 1}`,
+      })),
+      [{ number: 173, body: marker }],
+    ],
+  );
+
+  const result = await runEmergencyBypassAlert(harness);
+
+  assert.deepEqual(result, { created: false, reason: "duplicate" });
+  assert.equal(harness.calls.listRequests.length, 2);
+  assert.equal(harness.calls.listRequests[0]?.page, 1);
+  assert.equal(harness.calls.listRequests[1]?.page, 2);
+  assert.equal(harness.calls.labelCreates.length, 0);
+  assert.equal(harness.calls.creates.length, 0);
+});
+
+test("emergency bypass lookup failure reports repository and page before mutating alerts", async () => {
+  const harness = fakeAlertHarness(
+    [],
+    [
+      Array.from({ length: 100 }, (_, index) => ({
+        number: index + 1,
+        body: `unrelated issue ${index + 1}`,
+      })),
+    ],
+    2,
+  );
+
+  await assert.rejects(
+    runEmergencyBypassAlert(harness),
+    (error: unknown) => {
+      assert(error instanceof Error);
+      assert.match(error.message, /repo-owner\/repo-name/);
+      assert.match(error.message, /issue page 2/);
+      assert.equal(
+        (error as Error & { cause?: Error }).cause?.message,
+        "simulated GitHub issue-list API failure",
+      );
+      return true;
+    },
+  );
+
+  assert.equal(harness.calls.listRequests.length, 2);
+  assert.equal(harness.calls.labelCreates.length, 0);
   assert.equal(harness.calls.creates.length, 0);
 });
 

@@ -43,6 +43,30 @@ async function ensureSafeguardLabel(github, owner, repo, labelName = SAFEGUARD_L
   }
 }
 
+async function findEmergencyBypassIssue(github, owner, repo, marker) {
+  for (let page = 1; ; page += 1) {
+    let existing;
+    try {
+      existing = await github.rest.issues.listForRepo({
+        owner,
+        repo,
+        state: "all",
+        creator: "github-actions[bot]",
+        per_page: 100,
+        page,
+      });
+    } catch (error) {
+      throw new Error(
+        `Failed to look up emergency bypass alert for ${owner}/${repo} on issue page ${page}`,
+        { cause: error },
+      );
+    }
+    const bypassIssue = existing.data.find((issue) => issue.body?.includes(marker));
+    if (bypassIssue) return bypassIssue;
+    if (existing.data.length < 100) return undefined;
+  }
+}
+
 async function findSafeguardIssue(
   github,
   owner,
@@ -345,14 +369,8 @@ async function runEmergencyBypassAlert({
   const title = `${prefix} Direct push to main by ${actor}`;
   const marker = `<!-- emergency-production-bypass:${integrationCheck ? `check-${context.runId}` : sha} -->`;
 
-  const existing = await github.rest.issues.listForRepo({
-    owner,
-    repo,
-    state: "all",
-    creator: "github-actions[bot]",
-    per_page: 100,
-  });
-  if (existing.data.some((issue) => issue.body?.includes(marker))) {
+  const existing = await findEmergencyBypassIssue(github, owner, repo, marker);
+  if (existing) {
     core.info(`An emergency bypass alert already exists for ${sha}.`);
     return { created: false, reason: "duplicate" };
   }
