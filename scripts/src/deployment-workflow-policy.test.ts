@@ -478,6 +478,60 @@ test("production safeguard drift creates one owner-assigned issue with every dri
   );
 });
 
+test("serialized production safeguard alerts create only one marker issue", async () => {
+  const calls = {
+    creates: [] as Array<Record<string, unknown>>,
+    updates: [] as Array<Record<string, unknown>>,
+  };
+  const issues: Array<Record<string, unknown>> = [];
+  const github = {
+    rest: {
+      issues: {
+        listForRepo: async () => ({ data: [...issues] }),
+        getLabel: async () => ({ data: { name: SAFEGUARD_LABEL } }),
+        createLabel: async (request: Record<string, unknown>) => ({
+          data: { name: request.name },
+        }),
+        create: async (request: Record<string, unknown>) => {
+          const issue = { number: 73, ...request };
+          issues.push(issue);
+          calls.creates.push(request);
+          return { data: issue };
+        },
+        update: async (request: Record<string, unknown>) => {
+          calls.updates.push(request);
+          return { data: request };
+        },
+      },
+    },
+  };
+  const input = {
+    github,
+    context: {
+      repo: { owner: "repo-owner", repo: "repo-name" },
+      serverUrl: "https://github.test",
+      runId: 987,
+    },
+    core: { info: () => undefined },
+    auditSucceeded: true,
+    drift: ["required status check is missing"],
+  };
+
+  const results = [
+    await runProductionSafeguardAlert(input),
+    await runProductionSafeguardAlert(input),
+  ];
+
+  assert.equal(calls.creates.length, 1);
+  assert.equal(issues.filter((issue) => String(issue.body).includes(SAFEGUARD_MARKER)).length, 1);
+  assert.equal(calls.updates.length, 1);
+  assert.deepEqual(
+    results.map((result) => result.created).sort(),
+    [false, true],
+  );
+  assert.deepEqual(calls.creates[0]?.assignees, ["repo-owner"]);
+});
+
 test("production safeguard alerts are deduplicated, reopened on drift, and closed when healthy", async () => {
   const existingIssue = {
     number: 73,
@@ -515,14 +569,24 @@ test("safeguard integration creates, verifies, resolves, and cleans up a tempora
 
   assert.equal(result.created, true);
   assert.equal(result.resolved, true);
-  assert.equal(harness.calls.labelCreates.length, 1);
+  assert.equal(
+    harness.calls.labelCreates.filter(
+      (request) => request.name === "production-safeguard-integration-987",
+    ).length,
+    1,
+  );
   assert.equal(harness.calls.creates.length, 1);
   assert.deepEqual(harness.calls.creates[0]?.assignees, ["repo-owner"]);
   assert.deepEqual(harness.calls.creates[0]?.labels, ["production-safeguard-integration-987"]);
   assert.equal(harness.calls.updates.length, 1);
   assert.equal(harness.calls.updates[0]?.state, "closed");
   assert.deepEqual(harness.calls.updates[0]?.assignees, ["repo-owner"]);
-  assert.equal(harness.calls.labelDeletes.length, 1);
+  assert.equal(
+    harness.calls.labelDeletes.filter(
+      (request) => request.name === "production-safeguard-integration-987",
+    ).length,
+    1,
+  );
 });
 
 test("production safeguard lookup finds a closed alert beyond the first issue page", async () => {
@@ -627,8 +691,11 @@ test("safeguard integration cleans up after issue verification fails", async () 
   assert.equal(harness.calls.updates[0]?.state, "closed");
   assert.deepEqual(harness.calls.updates[0]?.assignees, ["repo-owner"]);
   assert.deepEqual(harness.calls.updates[0]?.labels, ["production-safeguard-integration-987"]);
-  assert.equal(harness.calls.labelDeletes.length, 1);
-  assert.deepEqual(harness.calls.labelDeletes[0], {
+  const integrationLabelDeletes = harness.calls.labelDeletes.filter(
+    (request) => request.name === "production-safeguard-integration-987",
+  );
+  assert.equal(integrationLabelDeletes.length, 1);
+  assert.deepEqual(integrationLabelDeletes[0], {
     owner: "repo-owner",
     repo: "repo-name",
     name: "production-safeguard-integration-987",
@@ -673,6 +740,14 @@ test("branch and deployment safeguards are audited on a schedule and on demand",
   assert.match(source, /Preserve the failed audit status/);
   assert.doesNotMatch(source, /contents:\s*write/);
   assert.doesNotMatch(source, /\bdeploy(?:ment)?\s*:\s*write\b/i);
+});
+
+test("scheduled and manual safeguard audits are serialized without cancelling either run", () => {
+  const source = readWorkflow(BRANCH_PROTECTION_AUDIT_WORKFLOW);
+  const concurrency = topLevelSection(source, "concurrency");
+
+  assert.match(concurrency, /^\s{2}group:\s*production-safeguards-audit\s*$/m);
+  assert.match(concurrency, /^\s{2}cancel-in-progress:\s*false\s*$/m);
 });
 
 test("safeguard alert integration is manual, issue-only, and cannot change safeguards", () => {

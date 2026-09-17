@@ -15,6 +15,10 @@ permissions:
   contents: read
   issues: write
 
+concurrency:
+  group: production-safeguards-audit
+  cancel-in-progress: false
+
 jobs:
   audit:
     name: Audit branch and deployment safeguards

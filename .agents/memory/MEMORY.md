@@ -116,3 +116,4 @@
 - [Git remote credential safety](git-remote-credential-safety.md) — keep GitHub tokens in process-local askpass helpers; remote URLs and validation output must remain credential-free.
 - [pnpm 11 dependency build approvals](pnpm11-build-approvals.md) — keep allowBuilds decisions alongside older allowlists; pnpm 11 can reject installs that pnpm 10 only warns about.
 - [Main branch production protection](main-branch-production-protection.md) — main requires PRs and release validation; admins retain the intentional emergency bypass.
+- [Safeguard audit concurrency](safeguard-audit-concurrency.md) — serialize scheduled/manual audits with workflow concurrency; repository-label mutexes can become permanent after runner termination.
