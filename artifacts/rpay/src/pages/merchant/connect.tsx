@@ -1860,7 +1860,7 @@ function RazorpayPortalCard({
 // and stores only the encrypted browser session state. No passwords are stored.
 // OTPs are discarded after submission and never stored, logged, or replayed.
 
-type PaytmUiStep = "mobile" | "otp" | "password" | "connected" | "blocked" | "reconnect_needed";
+type PaytmUiStep = "mobile" | "otp" | "mpin" | "password" | "connected" | "blocked" | "reconnect_needed";
 
 function PaytmPortalCard({
   provider,
@@ -1876,6 +1876,7 @@ function PaytmPortalCard({
     if (!s) return "mobile";
     if (s.status === "CONNECTED") return "connected";
     if (s.status === "AWAITING_OTP") return "otp";
+    if (s.status === "AWAITING_MPIN") return "mpin";
     if (s.status === "AWAITING_PASSWORD") return "password";
     if (s.status === "BLOCKED") return "blocked";
     if (s.status === "RECONNECT_REQUIRED" || s.status === "SESSION_EXPIRED") return "reconnect_needed";
@@ -1886,6 +1887,7 @@ function PaytmPortalCard({
   const [uiStep, setUiStep] = useState<PaytmUiStep>(() => deriveStep(session));
   const [mobile, setMobile]     = useState("");
   const [otp, setOtp]           = useState("");
+  const [mpin, setMpin]         = useState("");
   const [password, setPassword] = useState("");
   const [initiating, setInitiating] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -1897,6 +1899,7 @@ function PaytmPortalCard({
    * re-renders — making the handler truly non-reentrant on fast double-taps.
    */
   const submittingOtpRef = useRef(false);
+  const submittingMpinRef = useRef(false);
   /**
    * Ref-based in-flight guard for handleSubmitPassword.
    * Mirrors submittingOtpRef so fast double-taps on the password submit button
@@ -1956,6 +1959,10 @@ function PaytmPortalCard({
         setUiStep("otp");
         setMobile(""); // wipe from component state immediately
         toast.success("OTP sent to your Paytm-registered mobile. Enter it below.");
+      } else if (result.status === "AWAITING_MPIN") {
+        setUiStep("mpin");
+        setMobile("");
+        toast.info(result.message ?? "Enter your Paytm Business MPIN.");
       } else if (result.status === "AWAITING_USER_ACTION") {
         setErrorMsg(
           result.message ??
@@ -2005,6 +2012,9 @@ function PaytmPortalCard({
         toast.success("Paytm Business account connected. Syncing transactions…");
         // Auto-sync
         setTimeout(() => handleSync(), 1500);
+      } else if (body.status === "AWAITING_MPIN") {
+        setUiStep("mpin");
+        setErrorMsg(body.message ?? null);
       } else if (body.status === "FAILED" && body.errorCode === "OTP_EXPIRED") {
         setUiStep("mobile");
         setErrorMsg("OTP expired. Please enter your mobile number again to receive a new OTP.");
@@ -2020,6 +2030,52 @@ function PaytmPortalCard({
       setErrorMsg("Could not submit OTP. Please try again.");
     } finally {
       submittingOtpRef.current = false;
+      setSubmitting(false);
+    }
+  }
+
+  // ── Step 2a: submit MPIN ─────────────────────────────────────────────────────
+  async function handleSubmitMpin() {
+    if (submittingMpinRef.current) return;
+    submittingMpinRef.current = true;
+    const mpinVal = mpin.trim().replace(/\D/g, "");
+    if (mpinVal.length < 4) {
+      submittingMpinRef.current = false;
+      setErrorMsg("Enter your Paytm Business MPIN.");
+      return;
+    }
+    setSubmitting(true);
+    setErrorMsg(null);
+    try {
+      const res = await portalFetch(
+        "/api/merchant/portal-sessions/paytm_merchant/submit-step",
+        { method: "POST", body: JSON.stringify({ otp: mpinVal }) },
+      );
+      setMpin("");
+
+      const body = await res.json().catch(() => ({}));
+      qc.invalidateQueries({ queryKey: PORTAL_SESSIONS_QUERY_KEY });
+
+      if (body.status === "CONNECTED") {
+        setUiStep("connected");
+        toast.success("Paytm Business account connected. Syncing transactions…");
+        setTimeout(() => handleSync(), 1500);
+      } else if (body.status === "AWAITING_MPIN") {
+        setUiStep("mpin");
+        const msg = body.message ?? "That MPIN was not accepted. Check it and try again.";
+        setErrorMsg(msg);
+        toast.error(msg);
+      } else {
+        if (body.errorCode === "MAX_ATTEMPTS_REACHED") setUiStep("mobile");
+        const msg = body.message ?? "MPIN verification failed. Please restart the connection.";
+        setErrorMsg(msg);
+        toast.error(msg);
+      }
+    } catch {
+      setMpin("");
+      setErrorMsg("Could not submit MPIN. Please try again.");
+    } finally {
+      submittingMpinRef.current = false;
       setSubmitting(false);
     }
   }
@@ -2058,6 +2114,9 @@ function PaytmPortalCard({
         // Portal sent OTP for 2FA after password
         setUiStep("otp");
         toast.info("Paytm sent an OTP for 2-step verification. Enter it below.");
+      } else if (body.status === "AWAITING_MPIN") {
+        setUiStep("mpin");
+        toast.info(body.message ?? "Enter your Paytm Business MPIN.");
       } else {
         const msg =
           body.message ??
@@ -2138,6 +2197,9 @@ function PaytmPortalCard({
       } else if (body.status === "AWAITING_OTP") {
         setUiStep("otp");
         toast.info("A new OTP is required. Enter it below.");
+      } else if (body.status === "AWAITING_MPIN") {
+        setUiStep("mpin");
+        toast.info(body.message ?? "Enter your Paytm Business MPIN.");
       } else if (body.status === "AWAITING_PASSWORD") {
         setUiStep("password");
         toast.info(body.message ?? "Re-enter your Paytm Business account password.");
@@ -2177,6 +2239,11 @@ function PaytmPortalCard({
               {uiStep === "otp" && (
                 <Badge variant="outline" className="text-xs border-amber-500/40 text-amber-400 flex items-center gap-1">
                   <Clock className="w-3 h-3" /> Enter OTP
+                </Badge>
+              )}
+              {uiStep === "mpin" && (
+                <Badge variant="outline" className="text-xs border-violet-500/40 text-violet-400 flex items-center gap-1">
+                  <Lock className="w-3 h-3" /> Enter MPIN
                 </Badge>
               )}
               {uiStep === "password" && (
@@ -2343,6 +2410,70 @@ function PaytmPortalCard({
                 variant="ghost"
                 className="text-muted-foreground"
                 onClick={() => { setUiStep("mobile"); setOtp(""); setErrorMsg(null); }}
+              >
+                Start Over
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* ── AWAITING_MPIN state: MPIN entry ────────────────────────────── */}
+        {uiStep === "mpin" && (
+          <div className="space-y-3">
+            <div className="p-3 rounded-lg bg-violet-500/5 border border-violet-500/20">
+              <p className="text-xs font-semibold text-violet-400 flex items-center gap-1.5 mb-1">
+                <Lock className="w-3.5 h-3.5" /> MPIN Required
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Enter your Paytm Business MPIN to continue. It is encrypted on the server,
+                used once, and immediately discarded.
+              </p>
+            </div>
+
+            {errorMsg && (
+              <div className="p-2.5 rounded-lg bg-red-500/5 border border-red-500/20">
+                <p className="text-xs text-red-400 flex items-start gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  {errorMsg}
+                </p>
+              </div>
+            )}
+
+            <div>
+              <label className="text-xs text-muted-foreground block mb-1">Paytm Business MPIN</label>
+              <Input
+                className="h-8 text-sm font-mono tracking-widest"
+                placeholder="Enter MPIN"
+                aria-label="Paytm Business MPIN"
+                type="password"
+                inputMode="numeric"
+                autoComplete="off"
+                maxLength={8}
+                value={mpin}
+                onChange={e => setMpin(e.target.value.replace(/\D/g, ""))}
+                onKeyDown={e => e.key === "Enter" && handleSubmitMpin()}
+                autoFocus
+              />
+            </div>
+
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                className="flex-1 gap-1.5"
+                onClick={handleSubmitMpin}
+                disabled={submitting || mpin.trim().length < 4}
+              >
+                {submitting ? (
+                  <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Verifying…</>
+                ) : (
+                  <><CheckCircle2 className="w-3.5 h-3.5" /> Verify MPIN</>
+                )}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-muted-foreground"
+                onClick={() => { setUiStep("mobile"); setMpin(""); setErrorMsg(null); }}
               >
                 Start Over
               </Button>
@@ -2546,6 +2677,7 @@ type PineLabsOneUiStep =
   | "identifier"
   | "password"
   | "otp"
+  | "mpin"
   | "connected"
   | "blocked"
   | "reconnect_needed";
@@ -2563,6 +2695,7 @@ function PineLabsOnePortalCard({
     if (!s) return "identifier";
     if (s.status === "CONNECTED") return "connected";
     if (s.status === "AWAITING_OTP") return "otp";
+    if (s.status === "AWAITING_MPIN") return "mpin";
     if (s.status === "AWAITING_PASSWORD") return "password";
     if (s.status === "BLOCKED") return "blocked";
     if (s.status === "RECONNECT_REQUIRED" || s.status === "SESSION_EXPIRED") return "reconnect_needed";
@@ -2573,6 +2706,7 @@ function PineLabsOnePortalCard({
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword]     = useState("");
   const [otp, setOtp]               = useState("");
+  const [mpin, setMpin]             = useState("");
   const [initiating, setInitiating] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [syncing, setSyncing]       = useState(false);
@@ -2613,6 +2747,7 @@ function PineLabsOnePortalCard({
    * re-renders — making the handler truly non-reentrant on fast double-taps.
    */
   const submittingOtpRef = useRef(false);
+  const submittingMpinRef = useRef(false);
   /**
    * Ref-based in-flight guard for handleSubmitPassword.
    * Mirrors submittingOtpRef so fast double-taps on the password submit button
@@ -2756,6 +2891,9 @@ function PineLabsOnePortalCard({
         startResendCooldown("otp_first", result.resendAvailableAt);
         setUiStep("otp");
         toast.success("OTP sent to your registered email or mobile. Enter it below.");
+      } else if (result.status === "AWAITING_MPIN") {
+        setUiStep("mpin");
+        toast.info(result.message ?? "Enter your Pine Labs ONE MPIN.");
       } else if (result.status === "AWAITING_USER_ACTION") {
         setErrorMsg(
           result.message ??
@@ -2804,6 +2942,9 @@ function PineLabsOnePortalCard({
       } else if (body.status === "AWAITING_OTP") {
         setUiStep("otp");
         toast.info("Pine Labs ONE sent an OTP for 2-step verification. Enter it below.");
+      } else if (body.status === "AWAITING_MPIN") {
+        setUiStep("mpin");
+        toast.info(body.message ?? "Enter your Pine Labs ONE MPIN.");
       } else {
         const msg = body.message ?? "Password verification failed. Please check your credentials and try again.";
         setErrorMsg(msg);
@@ -2815,6 +2956,52 @@ function PineLabsOnePortalCard({
     } finally {
       setSubmitting(false);
       submittingPasswordRef.current = false;
+    }
+  }
+
+  // ── Step 2a: submit MPIN ────────────────────────────────────────────────────
+  async function handleSubmitMpin() {
+    if (submittingMpinRef.current) return;
+    submittingMpinRef.current = true;
+    const mpinVal = mpin.trim().replace(/\D/g, "");
+    if (mpinVal.length < 4) {
+      submittingMpinRef.current = false;
+      setErrorMsg("Enter your Pine Labs ONE MPIN.");
+      return;
+    }
+    setSubmitting(true);
+    setErrorMsg(null);
+    try {
+      const res = await portalFetch(
+        "/api/merchant/portal-sessions/pinelabs_one/submit-step",
+        { method: "POST", body: JSON.stringify({ otp: mpinVal }) },
+      );
+      setMpin("");
+
+      const body = await res.json().catch(() => ({}));
+      qc.invalidateQueries({ queryKey: PORTAL_SESSIONS_QUERY_KEY });
+
+      if (body.status === "CONNECTED") {
+        setUiStep("connected");
+        toast.success("Pine Labs ONE account connected. Syncing transactions…");
+        setTimeout(() => handleSync(), 1500);
+      } else if (body.status === "AWAITING_MPIN") {
+        setUiStep("mpin");
+        const msg = body.message ?? "That MPIN was not accepted. Check it and try again.";
+        setErrorMsg(msg);
+        toast.error(msg);
+      } else {
+        if (body.errorCode === "MAX_ATTEMPTS_REACHED") setUiStep("identifier");
+        const msg = body.message ?? "MPIN verification failed. Please restart the connection.";
+        setErrorMsg(msg);
+        toast.error(msg);
+      }
+    } catch {
+      setMpin("");
+      setErrorMsg("Could not submit MPIN. Please try again.");
+    } finally {
+      submittingMpinRef.current = false;
+      setSubmitting(false);
     }
   }
 
@@ -2933,6 +3120,9 @@ function PineLabsOnePortalCard({
         setUiStep("connected");
         toast.success("Pine Labs ONE account connected. Syncing transactions…");
         setTimeout(() => handleSync(), 1500);
+      } else if (body.status === "AWAITING_MPIN") {
+        setUiStep("mpin");
+        setErrorMsg(body.message ?? null);
       } else if (body.status === "FAILED" && body.errorCode === "OTP_EXPIRED") {
         setUiStep("identifier");
         setErrorMsg("OTP expired. Please enter your registered email or mobile number again to start over.");
@@ -3005,6 +3195,9 @@ function PineLabsOnePortalCard({
       } else if (body.status === "AWAITING_OTP") {
         setUiStep("otp");
         toast.info("A new OTP is required. Enter it below.");
+      } else if (body.status === "AWAITING_MPIN") {
+        setUiStep("mpin");
+        toast.info(body.message ?? "Enter your Pine Labs ONE MPIN.");
       } else if (body.status === "AWAITING_PASSWORD") {
         setUiStep("password");
         toast.info(body.message ?? "Re-enter your Pine Labs ONE account password.");
@@ -3046,6 +3239,11 @@ function PineLabsOnePortalCard({
               {uiStep === "otp" && (
                 <Badge variant="outline" className="text-xs border-amber-500/40 text-amber-400 flex items-center gap-1">
                   <Clock className="w-3 h-3" /> Enter OTP
+                </Badge>
+              )}
+              {uiStep === "mpin" && (
+                <Badge variant="outline" className="text-xs border-violet-500/40 text-violet-400 flex items-center gap-1">
+                  <Lock className="w-3 h-3" /> Enter MPIN
                 </Badge>
               )}
               {uiStep === "blocked" && (
@@ -3339,6 +3537,69 @@ function PineLabsOnePortalCard({
                 setOtpSource("2fa");
                 resetResendCooldown();
               }}
+            >
+              Start Over
+            </Button>
+          </div>
+        )}
+
+        {/* ── AWAITING_MPIN state: MPIN entry ────────────────────────────── */}
+        {uiStep === "mpin" && (
+          <div className="space-y-3">
+            <div className="p-3 rounded-lg bg-violet-500/5 border border-violet-500/20">
+              <p className="text-xs font-semibold text-violet-400 flex items-center gap-1.5 mb-1">
+                <Lock className="w-3.5 h-3.5" /> MPIN Required
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Enter your Pine Labs ONE MPIN to continue. It is encrypted on the server,
+                used once, and immediately discarded.
+              </p>
+            </div>
+
+            {errorMsg && (
+              <div className="p-2.5 rounded-lg bg-red-500/5 border border-red-500/20">
+                <p className="text-xs text-red-400 flex items-start gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  {errorMsg}
+                </p>
+              </div>
+            )}
+
+            <div>
+              <label className="text-xs text-muted-foreground block mb-1">Pine Labs ONE MPIN</label>
+              <Input
+                className="h-8 text-sm font-mono tracking-widest"
+                placeholder="Enter MPIN"
+                aria-label="Pine Labs ONE MPIN"
+                type="password"
+                inputMode="numeric"
+                autoComplete="off"
+                maxLength={8}
+                value={mpin}
+                onChange={e => setMpin(e.target.value.replace(/\D/g, ""))}
+                onKeyDown={e => e.key === "Enter" && handleSubmitMpin()}
+                autoFocus
+              />
+            </div>
+
+            <Button
+              size="sm"
+              className="w-full gap-1.5"
+              onClick={handleSubmitMpin}
+              disabled={submitting || mpin.trim().length < 4}
+            >
+              {submitting ? (
+                <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Verifying…</>
+              ) : (
+                <><CheckCircle2 className="w-3.5 h-3.5" /> Verify MPIN</>
+              )}
+            </Button>
+
+            <Button
+              size="sm"
+              variant="ghost"
+              className="w-full text-muted-foreground"
+              onClick={() => { setUiStep("identifier"); setMpin(""); setErrorMsg(null); }}
             >
               Start Over
             </Button>

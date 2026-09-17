@@ -48,6 +48,14 @@ args = "system-config-coverage"
 task = "workflow.run"
 args = "schema-guard-coverage"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "password-reset-delivery-cleanup"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "git-remote-credentials"
+
 [[workflows.workflow]]
 name = "settings-persistence"
 author = "agent"
@@ -132,6 +140,28 @@ args = "pnpm --filter @workspace/scripts run schema-guard-coverage"
 
 [workflows.workflow.metadata]
 outputType = "console"
+
+[[workflows.workflow]]
+name = "password-reset-delivery-cleanup"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm --filter @workspace/api-server run test:password-reset-delivery-cleanup"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow]]
+name = "git-remote-credentials"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm --filter @workspace/scripts run verify-git-remotes"
+
+[workflows.workflow.metadata]
+isValidation = true
 
 [agent]
 stack = "PNPM_WORKSPACE"

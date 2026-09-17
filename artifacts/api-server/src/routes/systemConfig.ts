@@ -12,6 +12,7 @@ import { rescheduleFromDb, getNextRunTime } from "../helpers/reconScheduler";
 import { loadQrCleanupRetentionDays, loadQrCleanupLastRun, runQrCleanup, loadQrCleanupHistory, clearQrCleanupHistory } from "../helpers/qrCleanupScheduler";
 import { loadVaCleanupRetentionDays, loadVaCleanupLastRun, runVaCleanup, loadVaCleanupHistory, clearVaCleanupHistory } from "../helpers/vaCleanupScheduler";
 import { loadTestEmailRetentionDays, runTestEmailRetentionCleanup } from "../helpers/testEmailRetentionScheduler";
+import { loadPasswordResetDeliveryCleanupHistory, loadPasswordResetDeliveryRetentionDays, runPasswordResetDeliveryCleanup } from "../helpers/passwordResetDeliveryRetentionScheduler";
 import { loadAuditReportLogRetentionDays, runAuditReportLogCleanup } from "../helpers/auditReportRetentionScheduler";
 import { resetAlertRateLimit } from "../helpers/signatureFailureAlert";
 import { notifyAdminsOfCredentialRotation } from "../helpers/adminNotifyEmail";
@@ -337,6 +338,8 @@ router.get("/qr-cleanup/history", async (req, res, next) => {
         id: r.id,
         trigger: r.trigger,
         ranAt: r.ranAt.toISOString(),
+        status: r.status,
+        summary: r.summary,
         expired: r.expired ?? null,
         deleted: r.deleted,
         retentionDays: r.retentionDays,
@@ -367,6 +370,8 @@ router.get("/va-cleanup/history", async (req, res, next) => {
         id: r.id,
         trigger: r.trigger,
         ranAt: r.ranAt.toISOString(),
+        status: r.status,
+        summary: r.summary,
         closed: r.closed ?? null,
         deleted: r.deleted,
         retentionDays: r.retentionDays,
@@ -653,6 +658,69 @@ router.post("/test-email-retention/run", async (req, res, next) => {
     const { deleted } = await runTestEmailRetentionCleanup();
     req.log.info({ deleted }, "Test email history retention cleanup triggered manually");
     res.json({ deleted });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Password-reset delivery metadata is retained for at least seven days so
+// current delivery incidents remain available for troubleshooting.
+router.get("/password-reset-delivery-retention", async (_req, res, next) => {
+  try {
+    const [retentionDays, history] = await Promise.all([
+      loadPasswordResetDeliveryRetentionDays(),
+      loadPasswordResetDeliveryCleanupHistory(),
+    ]);
+    res.json({
+      retentionDays,
+      minimumRetentionDays: 7,
+      schedule: "Nightly at 02:45 server time",
+      history: history.map((row) => ({ ...row, ranAt: row.ranAt.toISOString() })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put("/password-reset-delivery-retention", async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+    const { retentionDays } = req.body;
+    if (!Number.isInteger(retentionDays) || retentionDays < 7 || retentionDays > 365) {
+      res.status(400).json({ error: "retentionDays must be an integer between 7 and 365" });
+      return;
+    }
+    const currentRetentionDays = await loadPasswordResetDeliveryRetentionDays();
+    await db.insert(systemConfigTable).values({
+      key: SYSTEM_CONFIG_KEYS.PASSWORD_RESET_DELIVERY_RETENTION_DAYS,
+      value: String(retentionDays),
+      updatedByEmail: user.email,
+    }).onConflictDoUpdate({
+      target: systemConfigTable.key,
+      set: { value: String(retentionDays), updatedByEmail: user.email, updatedAt: sql`now()` },
+    });
+    if (currentRetentionDays !== retentionDays) {
+      await db.insert(auditLogsTable).values({
+        adminId: user.id,
+        adminEmail: user.email,
+        action: "system_config_updated",
+        targetType: "system_config",
+        targetId: null,
+        details: JSON.stringify({ section: "password_reset_delivery_retention", retentionDays }),
+        ipAddress: req.ip ?? null,
+      });
+    }
+    res.json({ retentionDays, minimumRetentionDays: 7 });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/password-reset-delivery-retention/run", async (req, res, next) => {
+  try {
+    const result = await runPasswordResetDeliveryCleanup("manual");
+    req.log.info(result, "Password reset delivery retention cleanup triggered manually");
+    res.json(result);
   } catch (err) {
     next(err);
   }

@@ -24,7 +24,7 @@ module.exports = {
         PORT: 3000,
         DATABASE_URL: "postgresql://rasokart:CHANGE_THIS@localhost:5432/rasokart",
         SESSION_SECRET: "REPLACE_WITH_64_CHAR_HEX_FROM_CRYPTO_RANDOM",
-        // Injected automatically by deploy-vps.yml [3.5/9] on every deploy.
+        // Set on the VPS for portal connector browser automation.
         // On a fresh VPS bootstrap, set this to the output of: which chromium-browser
         PLAYWRIGHT_CHROMIUM_EXECUTABLE: "",
       },

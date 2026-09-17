@@ -1,0 +1,94 @@
+name: Production Safeguards Audit
+
+on:
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+    inputs:
+      safeguard_integration_check:
+        description: Exercise safeguard alert creation and resolution without auditing or changing production settings
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  audit:
+    name: Audit branch and deployment safeguards
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install dependencies
+        if: inputs.safeguard_integration_check != true
+        run: pnpm install --frozen-lockfile
+
+      - name: Read and verify live production safeguards
+        id: safeguards_audit
+        if: inputs.safeguard_integration_check != true
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.BRANCH_PROTECTION_AUDIT_TOKEN }}
+          PROTECTED_BRANCH: main
+          # Comma-separated user:<login> and team:<slug> identities that must
+          # remain configured on the production environment approval gate.
+          EXPECTED_PRODUCTION_APPROVERS: user:rudraraj55955
+        run: pnpm --filter @workspace/scripts run audit:branch-protection
+
+      - name: Run safeguard alert integration check
+        if: inputs.safeguard_integration_check == true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const {
+              runSafeguardIntegrationCheck,
+            } = require("./.github/scripts/emergency-production-bypass-alert.cjs");
+            await runSafeguardIntegrationCheck({ github, context, core });
+
+      - name: Create or resolve the owner safeguard alert
+        if: always() && inputs.safeguard_integration_check != true
+        uses: actions/github-script@v7
+        env:
+          AUDIT_SUCCEEDED: ${{ steps.safeguards_audit.outcome == 'success' }}
+          AUDIT_DRIFT: ${{ steps.safeguards_audit.outputs.drift }}
+          AUDIT_ERROR: ${{ steps.safeguards_audit.outputs.audit_error }}
+        with:
+          script: |
+            const {
+              runProductionSafeguardAlert,
+            } = require("./.github/scripts/emergency-production-bypass-alert.cjs");
+            const parseJson = (value, fallback) => {
+              if (!value) return fallback;
+              try {
+                return JSON.parse(value);
+              } catch (error) {
+                core.warning(`Could not parse audit output: ${error.message}`);
+                return fallback;
+              }
+            };
+            await runProductionSafeguardAlert({
+              github,
+              context,
+              core,
+              auditSucceeded: process.env.AUDIT_SUCCEEDED === "true",
+              drift: parseJson(process.env.AUDIT_DRIFT, []),
+              auditError: parseJson(process.env.AUDIT_ERROR, undefined),
+            });
+
+      - name: Preserve the failed audit status
+        if: inputs.safeguard_integration_check != true && steps.safeguards_audit.outcome == 'failure'
+        run: exit 1

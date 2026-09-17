@@ -10,3 +10,6 @@ description: Custom github-sync script defaults to the old RPAY repo name unless
   **Why:** don't assume a scope limitation still applies — verify the actual token's scopes via the GitHub API before deciding a workflow file can't be pushed.
   **How to apply:** if `.github/workflows/*` changes seem to vanish from every commit, check `.gitignore` first, then verify token scope before concluding it's unfixable.
 - The custom github-sync script only does `git push <remote> HEAD:main --force`; it never stages or commits uncommitted changes. New/edited files must already be committed (via the platform's own checkpoint mechanism, not manual `git commit` from the main-agent sandbox) before triggering a sync, or they silently won't be pushed.
+- This workspace can retain a stale `origin/main` ref even while `github/main` points to the actual production lineage. Treat `github/main` as the deployment base and confirm the currently deployed commit is its ancestor before creating an isolated release branch.
+  **Why:** basing a release on stale `origin/main` can produce a clean diff and passing tests while silently rolling back commits already live in production.
+  **How to apply:** fetch `github main`, compare it with the production health commit, and branch from that fetched ref; never infer the live lineage from a remote named `origin`.

@@ -124,6 +124,7 @@ import AdminSettings from "@/pages/admin/settings";
 import AdminCompanyBranding from "@/pages/admin/company-branding";
 import AdminOtpSettings from "@/pages/admin/otp-settings";
 import AdminOtpEmailSettings from "@/pages/admin/otp-email-settings";
+import AdminEmailDelivery from "@/pages/admin/email-delivery";
 import AdminSocialProviders from "@/pages/admin/social-providers";
 import AdminDataHygiene from "@/pages/admin/data-hygiene";
 import AdminSecureIdSettings from "@/pages/admin/secure-id-settings";
@@ -549,6 +550,7 @@ function Router() {
       <Route path="/admin/company-branding"><AdminRoute component={AdminCompanyBranding} /></Route>
       <Route path="/admin/otp-settings"><AdminRoute component={AdminOtpSettings} /></Route>
       <Route path="/admin/otp-email-settings"><AdminRoute component={AdminOtpEmailSettings} /></Route>
+      <Route path="/admin/email-delivery"><AdminRoute component={AdminEmailDelivery} /></Route>
       <Route path="/admin/social-providers"><AdminRoute component={AdminSocialProviders} /></Route>
       <Route path="/admin/data-hygiene"><AdminRoute component={AdminDataHygiene} /></Route>
       <Route path="/admin/secure-id-settings"><AdminRoute component={AdminSecureIdSettings} /></Route>

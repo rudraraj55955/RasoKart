@@ -13,8 +13,4 @@ Also: once the signature passes, Cashfree's dashboard "Test" button sends a dumm
 
 **Admin UI encryption rule (critical):** systemConfig.ts saves BOTH cashfree_webhook_secret and cashfree_client_secret through encryptSecret() (enc:v1: AES-256-GCM). Any webhook route reading these from system_config MUST call decryptSecret() via a resolveSecret() helper before using the value as an HMAC key. Using the raw enc:v1:… blob as an HMAC key causes all legitimate Cashfree webhooks to return 401 silently. This was a live P0 production bug fixed in commit ff0acb6c (deployed 2026-08-15).
 
-**Two-route architecture (production state as of 2026-08-15):**
-- POST /api/payment/cashfree-webhook (cashfreeWebhook.ts) — CANONICAL, HARD fail-closed, new wallet model (merchant_wallets + wallet_ledger + transactions), deployed and active. Cashfree dashboard points here. Uses cashfree_webhook_secret (priority) → cashfree_client_secret (fallback).
-- POST /api/webhooks/payin/cashfree (payinWebhook.ts) — added by a merged task, SOFT (no-credential fallback accepts unsigned), LEGACY accounting (merchants.balance + ledger_entries). NOT registered in Cashfree dashboard. Pending deprecation or alignment.
-
 **Replit executeSql ≠ VPS production DB:** Replit's executeSql with environment:"production" queries the Replit-managed DB, NOT the VPS production PostgreSQL. For credential presence checks, SSH into VPS and query via node + pg from the pnpm store path: `/var/www/rasokart/node_modules/.pnpm/pg@8.20.0/node_modules/pg`.

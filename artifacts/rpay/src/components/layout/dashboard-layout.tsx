@@ -624,6 +624,7 @@ const ADMIN_NAV = [
       { title: "Company Branding", icon: Paintbrush, href: "/admin/company-branding" },
       { title: "OTP / SMS Settings", icon: MessageSquare, href: "/admin/otp-settings", superAdminOnly: true },
       { title: "Email OTP Settings", icon: Mail, href: "/admin/otp-email-settings", superAdminOnly: true as const },
+      { title: "Password Reset Delivery", icon: Activity, href: "/admin/email-delivery", permissionOverride: "admin_email_delivery" as const },
       { title: "Social Auth Providers", icon: Shield, href: "/admin/social-providers", superAdminOnly: true as const },
       { title: "Secure ID Provider", icon: ShieldCheck, href: "/admin/secure-id-settings", superAdminOnly: true as const },
       { title: "Merchant Auto KYC Settings", icon: ShieldCheck, href: "/admin/merchant-kyc-settings", superAdminOnly: true as const },
@@ -647,6 +648,7 @@ function AdminSidebar() {
   const [location] = useLocation();
   const { user } = useAuth();
   const hasIamRead = useHasPermission("iam_read");
+  const hasEmailDelivery = useHasPermission("admin_email_delivery");
   const { data: complianceData } = useGetSecurityComplianceSummary();
   const neverCount = complianceData?.neverCount ?? 0;
 
@@ -761,6 +763,7 @@ function AdminSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {group.items.map((item) => {
+                if ((item as any).permissionOverride === "admin_email_delivery" && !hasEmailDelivery) return null;
                 if ((item as any).superAdminOnly) {
                   const hasPermOverride = (item as any).permissionOverride && hasIamRead;
                   if (!meData?.isSuperAdmin && !hasPermOverride) return null;

@@ -656,6 +656,7 @@ ssh -i /tmp/vps_key $VPS_USER@$VPS_HOST \
 | EKQR webhook reachability | `cd artifacts/api-server && node --import tsx/esm --test src/routes/paymentWebhook.test.ts` | 3 | Any EKQR change |
 | Gateway panel coverage | `cd artifacts/rpay && node --import tsx/esm --test src/lib/gateway-panel-coverage.test.ts` | 7 | Any gateway panel change |
 | System config coverage | `cd lib/db && node --import tsx/esm --test src/schema/systemConfig.coverage.test.ts` | 3 | Any system_config key change |
+| Password-reset delivery cleanup history | `pnpm --filter @workspace/api-server run test:password-reset-delivery-cleanup` | 3 | Any password-reset delivery retention or cleanup history change |
 | Schema guard coverage | `pnpm --filter @workspace/scripts run schema-guard-coverage` | 115 tables, 0 gaps | Any new Drizzle table |
 | Schema guard fresh-install | `cd artifacts/api-server && node --import tsx/esm --test src/lib/schemaGuard.freshInstall.realdb.test.ts` | 50 | Any schemaGuard.ts change |
 | Priority conflict guard | `pnpm --filter @workspace/scripts run verify-priority-conflict-tests` | real-DB | Any routing rule change |

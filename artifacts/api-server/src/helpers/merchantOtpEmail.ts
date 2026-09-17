@@ -1,6 +1,7 @@
 import { logger } from "../lib/logger";
-import { sendMail } from "./mailer";
+import { sendMailRich } from "./mailer";
 import { sendMsg91EmailOtp } from "./sendMsg91EmailOtp";
+import { extractProviderMessageId } from "./emailDelivery";
 
 export type OtpEmailPurpose =
   | "LOGIN"
@@ -8,6 +9,13 @@ export type OtpEmailPurpose =
   | "KYC_EMAIL"
   | "ADMIN_PASSWORD_RESET"
   | "SIGNUP_VERIFY";
+
+export interface EmailOtpDispatchResult {
+  sent: boolean;
+  provider: "msg91" | "smtp" | "msg91+smtp";
+  providerMessageId: string | null;
+  errorReason: string | null;
+}
 
 function escapeHtml(str: string): string {
   return str
@@ -105,12 +113,12 @@ function purposeLabels(purpose: OtpEmailPurpose): { title: string; subtitle: str
   }
 }
 
-export async function sendMerchantOtpEmail(opts: {
+export async function sendMerchantOtpEmailWithResult(opts: {
   to: string;
   otp: string;
   purpose: OtpEmailPurpose;
   toName?: string;
-}): Promise<boolean> {
+}): Promise<EmailOtpDispatchResult> {
   const { to, otp, purpose, toName } = opts;
   const { title, subtitle, subject } = purposeLabels(purpose);
 
@@ -123,7 +131,14 @@ export async function sendMerchantOtpEmail(opts: {
     return { sent: false as const, errorReason: "Unexpected dispatch error" };
   });
 
-  if (msg91Result.sent) return true;
+  if (msg91Result.sent) {
+    return {
+      sent: true,
+      provider: "msg91",
+      providerMessageId: extractProviderMessageId(msg91Result.providerResponse),
+      errorReason: null,
+    };
+  }
 
   logger.info({ to, purpose, errorReason: msg91Result.errorReason }, "MSG91 unavailable; falling back to SMTP");
 
@@ -133,10 +148,32 @@ export async function sendMerchantOtpEmail(opts: {
     otp,
     expiryMinutes: purpose === "LOGIN" ? 5 : 10,
   });
-  const sent = await sendMail({ to, subject, html }).catch((err: unknown) => {
+  const smtpResult = await sendMailRich({ to, subject, html }).catch((err: unknown) => {
     logger.warn({ err }, "SMTP fallback OTP email failed");
-    return false;
+    return { ok: false, error: "Unexpected SMTP dispatch error", messageId: undefined };
   });
 
-  return sent;
+  return smtpResult.ok
+    ? {
+        sent: true,
+        provider: "smtp",
+        providerMessageId: smtpResult.messageId ?? null,
+        errorReason: null,
+      }
+    : {
+        sent: false,
+        provider: "msg91+smtp",
+        providerMessageId: null,
+        errorReason: smtpResult.error ?? msg91Result.errorReason ?? "Email delivery failed",
+      };
+}
+
+export async function sendMerchantOtpEmail(opts: {
+  to: string;
+  otp: string;
+  purpose: OtpEmailPurpose;
+  toName?: string;
+}): Promise<boolean> {
+  const result = await sendMerchantOtpEmailWithResult(opts);
+  return result.sent;
 }

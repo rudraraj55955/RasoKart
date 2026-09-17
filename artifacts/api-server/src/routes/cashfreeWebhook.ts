@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type RequestHandler } from "express";
 import {
   db,
   cashfreePaymentOrdersTable,
@@ -47,7 +47,7 @@ const router = Router();
  * Idempotency: step 1's conditional UPDATE returns 0 rows when already PAID → early
  * exit with processingResult=duplicate; no wallet/ledger mutation occurs.
  */
-router.post("/cashfree-webhook", async (req, res) => {
+export const cashfreePayinWebhookHandler: RequestHandler = async (req, res) => {
   const rawBody = ((req as any).rawBody as Buffer | undefined)?.toString("utf8") ?? JSON.stringify(req.body);
   const body = req.body as Record<string, unknown>;
 
@@ -306,7 +306,9 @@ router.post("/cashfree-webhook", async (req, res) => {
       logger.warn({ logErr }, "Cashfree webhook: failed to insert log after error");
     }
   }
-});
+};
+
+router.post("/cashfree-webhook", cashfreePayinWebhookHandler);
 
 async function insertLog(params: {
   eventType: string | null;

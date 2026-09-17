@@ -396,7 +396,7 @@ router.post("/:provider/initiate", initiateLimit, async (req: any, res) => {
 // Submit an OTP / MPIN / password after initiateSession returned AWAITING_*.
 //
 // SECURITY GATES (applied before adapter call):
-//   1. Session must be in AWAITING_OTP or AWAITING_PASSWORD status.
+//   1. Session must be in AWAITING_OTP, AWAITING_MPIN, or AWAITING_PASSWORD status.
 //   2. stepFailureCount must be < MAX_OTP_ATTEMPTS (3). Exceeding blocks further
 //      attempts and requires full re-initiate.
 //   3. OTP session must be < OTP_SESSION_MAX_AGE_MS (10 min) old (via updatedAt).
@@ -436,6 +436,7 @@ router.post("/:provider/submit-step", submitStepLimit, async (req: any, res) => 
   let reservedLeaseId: string | undefined;
   let reservedSessionId: number | undefined;
   let reservedLifecycle: {
+    stepFailureCount: number;
     otpVerificationFailureCount: number;
     otpResendCount: number;
     otpResendAvailableAt: Date | null;
@@ -503,21 +504,27 @@ router.post("/:provider/submit-step", submitStepLimit, async (req: any, res) => 
     if (
       !isCredentialFreeAction &&
       ((session.status === "AWAITING_OTP" && (!otp || password)) ||
+       (session.status === "AWAITING_MPIN" && (!otp || password)) ||
        (session.status === "AWAITING_PASSWORD" && (!password || otp)))
     ) {
       res.status(400).json({
         error: session.status === "AWAITING_OTP"
           ? "This session requires exactly one OTP."
-          : "This session requires exactly one password.",
+          : session.status === "AWAITING_MPIN"
+            ? "This session requires exactly one MPIN."
+            : "This session requires exactly one password.",
         errorCode: "CREDENTIAL_MISMATCH",
       });
       return;
     }
     const isOtpVerification = session.status === "AWAITING_OTP" && !isCredentialFreeAction;
+    const isMpinVerification = session.status === "AWAITING_MPIN" && !isCredentialFreeAction;
     const otpFailures = session.otpVerificationFailureCount ?? 0;
+    const mpinFailures = session.stepFailureCount ?? 0;
 
     // ── Server-side AES-256-GCM encryption — raw credentials never leave this scope ─
-    const encryptedOtp      = isOtpVerification ? encryptSecret(String(otp)) : undefined;
+    const encryptedOtp      =
+      isOtpVerification || isMpinVerification ? encryptSecret(String(otp)) : undefined;
     const encryptedPassword =
       session.status === "AWAITING_PASSWORD" && !isCredentialFreeAction
         ? encryptSecret(String(password))
@@ -534,6 +541,18 @@ router.post("/:provider/submit-step", submitStepLimit, async (req: any, res) => 
         errorCode: "MAX_ATTEMPTS_REACHED",
         status:    "FAILED",
         ...otpLifecycleMetadata(session),
+      });
+      return;
+    }
+    if (isMpinVerification && mpinFailures >= MAX_OTP_ATTEMPTS) {
+      logger.warn(
+        { merchantId, providerSlug, failures: mpinFailures },
+        "merchant_portal_mpin_max_attempts_reached",
+      );
+      res.status(429).json({
+        error: `Maximum MPIN attempts (${MAX_OTP_ATTEMPTS}) reached. Please re-initiate the session.`,
+        errorCode: "MAX_ATTEMPTS_REACHED",
+        status: "FAILED",
       });
       return;
     }
@@ -618,6 +637,7 @@ router.post("/:provider/submit-step", submitStepLimit, async (req: any, res) => 
     reservedLeaseId = leaseId;
     reservedSessionId = session.id;
     reservedLifecycle = {
+      stepFailureCount: session.stepFailureCount ?? 0,
       otpVerificationFailureCount: session.otpVerificationFailureCount ?? 0,
       otpResendCount: session.otpResendCount ?? 0,
       otpResendAvailableAt: session.otpResendAvailableAt,
@@ -656,6 +676,32 @@ router.post("/:provider/submit-step", submitStepLimit, async (req: any, res) => 
           errorCode: "MAX_ATTEMPTS_REACHED",
           status: "FAILED",
           ...otpLifecycleMetadata(session),
+        });
+        return;
+      }
+      lifecycleSession = reserved;
+    } else if (isMpinVerification) {
+      const [reserved] = await db
+        .update(merchantPortalSessionsTable)
+        .set({
+          stepFailureCount: sql`${merchantPortalSessionsTable.stepFailureCount} + 1`,
+          processingLeaseId: leaseId,
+          processingLeaseExpiresAt: leaseExpiresAt,
+        })
+        .where(
+          and(
+            eq(merchantPortalSessionsTable.id, session.id),
+            eq(merchantPortalSessionsTable.status, "AWAITING_MPIN"),
+            lt(merchantPortalSessionsTable.stepFailureCount, MAX_OTP_ATTEMPTS),
+            leaseAvailable,
+          ),
+        )
+        .returning();
+      if (!reserved) {
+        res.status(429).json({
+          error: `Maximum MPIN attempts (${MAX_OTP_ATTEMPTS}) reached or another submission is in progress.`,
+          errorCode: "MAX_ATTEMPTS_REACHED",
+          status: "FAILED",
         });
         return;
       }
@@ -747,6 +793,13 @@ router.post("/:provider/submit-step", submitStepLimit, async (req: any, res) => 
       !isConnected &&
       !infrastructureFailure &&
       reservedOtpAttemptCount >= MAX_OTP_ATTEMPTS;
+    const reservedMpinAttemptCount = lifecycleSession.stepFailureCount ?? 0;
+    const hitMpinMaxAttempts =
+      isMpinVerification &&
+      !isConnected &&
+      !infrastructureFailure &&
+      reservedMpinAttemptCount >= MAX_OTP_ATTEMPTS;
+    const hitCredentialMaxAttempts = hitMaxAttempts || hitMpinMaxAttempts;
     const recoverableOtpFailure =
       isOtpVerification &&
       isFailed &&
@@ -759,8 +812,23 @@ router.post("/:provider/submit-step", submitStepLimit, async (req: any, res) => 
       !["SESSION_RESTART_REQUIRED", "CAPTCHA_REQUIRED", "MANUAL_ACTION_REQUIRED", "ACCOUNT_BLOCKED"].includes(
         result.failReason ?? "",
       );
-    const recoverableFailure = recoverableOtpFailure || recoverablePasswordFailure;
-    const newStepFailureCount = isFailed ? (lifecycleSession.stepFailureCount ?? 0) + 1 : 0;
+    const recoverableMpinFailure =
+      lifecycleSession.status === "AWAITING_MPIN" &&
+      isMpinVerification &&
+      isFailed &&
+      !hitMpinMaxAttempts &&
+      result.failReason === "INVALID_MPIN";
+    const recoverableFailure =
+      recoverableOtpFailure || recoverablePasswordFailure || recoverableMpinFailure;
+    const newStepFailureCount = isMpinVerification
+      ? (isConnected
+          ? 0
+          : infrastructureFailure
+            ? mpinFailures
+            : reservedMpinAttemptCount)
+      : isFailed
+        ? (lifecycleSession.stepFailureCount ?? 0) + 1
+        : 0;
     const resendSucceeded = isResend && result.status === "AWAITING_OTP" && !result.failReason;
     const enteredOtpState =
       result.status === "AWAITING_OTP" &&
@@ -796,7 +864,7 @@ router.post("/:provider/submit-step", submitStepLimit, async (req: any, res) => 
               otpResendAvailableAt: lifecycleSession.otpResendAvailableAt,
               otpExpiresAt: lifecycleSession.otpExpiresAt,
             };
-    const persistedStatus = hitMaxAttempts
+    const persistedStatus = hitCredentialMaxAttempts
       ? "FAILED"
       : recoverableFailure
         ? lifecycleSession.status
@@ -809,11 +877,12 @@ router.post("/:provider/submit-step", submitStepLimit, async (req: any, res) => 
       .update(merchantPortalSessionsTable)
       .set({
         status:           persistedStatus,
-        encryptedSession: hitMaxAttempts
+        encryptedSession: hitCredentialMaxAttempts
           ? null
           : preserveSession
             ? (result.encryptedSessionToken ?? lifecycleSession.encryptedSession)
           : (result.encryptedSessionToken ?? null),
+        lastErrorCode:     result.failReason ?? null,
         lastStatusMessage: result.failReason ?? result.nextStepPrompt ?? null,
         stepFailureCount:  newStepFailureCount,
         ...lifecycle,
@@ -855,8 +924,8 @@ router.post("/:provider/submit-step", submitStepLimit, async (req: any, res) => 
     res.json({
       status:    persistedStatus,
       errorCode: result.failReason ?? null,
-      message:   hitMaxAttempts
-        ? `Maximum OTP attempts reached. Please re-initiate the session.`
+      message:   hitCredentialMaxAttempts
+        ? `Maximum ${hitMpinMaxAttempts ? "MPIN" : "OTP"} attempts reached. Please re-initiate the session.`
         : (result.nextStepPrompt ?? result.failDetail ?? null),
       nextStep:  result.nextStep ?? null,
       ...otpLifecycleMetadata(lifecycle),
@@ -870,6 +939,7 @@ router.post("/:provider/submit-step", submitStepLimit, async (req: any, res) => 
         await db
           .update(merchantPortalSessionsTable)
           .set({
+            stepFailureCount: reservedLifecycle.stepFailureCount,
             otpVerificationFailureCount: reservedLifecycle.otpVerificationFailureCount,
             otpResendCount: reservedLifecycle.otpResendCount,
             otpResendAvailableAt: reservedLifecycle.otpResendAvailableAt,

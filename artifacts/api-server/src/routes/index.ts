@@ -43,6 +43,7 @@ import cashfreeOrdersRouter from "./cashfreeOrders";
 import cashfreePayoutRouter from "./cashfreePayout";
 import cashfreePayoutWebhookRouter from "./cashfreePayoutWebhook";
 import payinOrdersRouter from "./payinOrders";
+import payinWebhookRouter from "./payinWebhook";
 import payinCustomWebhookRouter from "./payinCustomWebhook";
 import adminPayinOrdersRouter from "./adminPayinOrders";
 import adminPayinGatewayDebugRouter from "./adminPayinGatewayDebug";
@@ -52,6 +53,8 @@ import rasokartServicesRouter from "./rasokartServices";
 import otpSettingsRouter from "./otpSettings";
 import otpEmailSettingsRouter from "./otpEmailSettings";
 import smsLogsRouter from "./smsLogs";
+import adminEmailDeliveryRouter from "./adminEmailDelivery";
+import emailDeliveryWebhookRouter from "./emailDeliveryWebhook";
 import onboardingRouter from "./onboarding";
 import adminOnboardingRouter from "./adminOnboarding";
 import secureIdSettingsRouter from "./secureIdSettings";
@@ -129,6 +132,9 @@ router.get("/browser-health", async (_req: Request, res: Response) => {
   }
 });
 
+// Public email-provider delivery callback — authenticate with the provider
+// webhook secret inside its own router before the global JWT guard below.
+router.use("/webhooks/email-delivery", emailDeliveryWebhookRouter);
 router.use("/auth", authRouter);
 // Top-level alias: some deploy configs / older frontend builds call
 // `/api/merchant/login` directly. Mounts the same authRouter so
@@ -144,10 +150,9 @@ router.use("/api-keys", apiKeysRouter);
 // Public payout webhook alias — must come BEFORE /webhooks (which has global requireAuth)
 router.use("/webhooks/payouts/cashfree", cashfreePayoutWebhookRouter);
 // Public generic custom-gateway payin webhook — same reason as above.
-// NOTE: The Cashfree-specific payin webhook route (/webhooks/payin/cashfree) was
-// removed — the canonical route is POST /payment/cashfree-webhook (cashfreeWebhook.ts),
-// which is HARD fail-closed and uses the new wallet model. The alternate route used
-// legacy accounting (merchants.balance) and had a SOFT no-credential fallback.
+// Public Cashfree payin webhook — both the canonical endpoint and its legacy alias
+// are served by the same router. This must come before /webhooks, which is auth-guarded.
+router.use("/webhooks/payin", payinWebhookRouter);
 router.use("/webhooks/payin/custom", payinCustomWebhookRouter);
 // Public UPIGateway payin webhook — must come BEFORE /webhooks (which has global requireAuth)
 router.use("/webhooks/upigateway", upigatewayWebhookRouter);
@@ -213,6 +218,7 @@ router.use("/admin/tryit-presets", adminTryItPresetsRouter);
 router.use("/admin/otp-settings", otpSettingsRouter);
 router.use("/admin/otp-email-settings", otpEmailSettingsRouter);
 router.use("/admin/sms-logs", smsLogsRouter);
+router.use("/admin/email-delivery", adminEmailDeliveryRouter);
 // Merchant automated onboarding (Secure ID flow)
 router.use("/onboarding", onboardingRouter);
 router.use("/admin/onboarding", adminOnboardingRouter);

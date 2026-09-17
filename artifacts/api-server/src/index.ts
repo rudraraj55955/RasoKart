@@ -14,6 +14,7 @@ import { initPlanExpiryScheduler } from "./helpers/planExpiryScheduler";
 import { initPlanRenewalScheduler } from "./helpers/planRenewalScheduler";
 import { initRateLimitCleanupScheduler } from "./helpers/rateLimitCleanupScheduler";
 import { initTestEmailRetentionScheduler } from "./helpers/testEmailRetentionScheduler";
+import { initPasswordResetDeliveryRetentionScheduler } from "./helpers/passwordResetDeliveryRetentionScheduler";
 import { initAuditReportRetentionScheduler } from "./helpers/auditReportRetentionScheduler";
 import { initDormantMerchantScheduler, runDormantMerchantScan } from "./helpers/dormantMerchantScheduler";
 import { initEkqrSyncScheduler } from "./helpers/ekqrSyncScheduler";
@@ -189,6 +190,7 @@ async function main() {
   initPlanRenewalScheduler();
   initRateLimitCleanupScheduler();
   initTestEmailRetentionScheduler();
+  initPasswordResetDeliveryRetentionScheduler();
   initAuditReportRetentionScheduler();
   initDormantMerchantScheduler();
   initEkqrSyncScheduler();

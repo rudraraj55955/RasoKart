@@ -27,6 +27,7 @@
 export type PortalSessionStatus =
   | "PENDING"
   | "AWAITING_OTP"
+  | "AWAITING_MPIN"
   | "AWAITING_PASSWORD"
   | "AWAITING_CAPTCHA"
   | "AWAITING_USER_ACTION"   // CAPTCHA, device-binding, or other manual step required
@@ -104,7 +105,7 @@ export interface InitiateResult {
 
 export interface SubmitStepParams {
   encryptedSessionToken: string;
-  /** Encrypted OTP string — adapter decrypts inside method, never stores */
+  /** Encrypted OTP or MPIN string — adapter decrypts inside method, never stores */
   encryptedOtp?: string;
   /** Encrypted password — adapter decrypts, never stores after session is made */
   encryptedPassword?: string;

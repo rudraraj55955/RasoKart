@@ -17496,7 +17496,7 @@ components:
 
     CleanupRunHistoryEntry:
       type: object
-      required: [id, ranAt, deleted, retentionDays, trigger]
+      required: [id, ranAt, deleted, retentionDays, trigger, status]
       properties:
         id:
           type: integer
@@ -17508,6 +17508,14 @@ components:
           type: string
           format: date-time
           description: ISO timestamp of when the cleanup run occurred.
+        status:
+          type: string
+          enum: [success, failed]
+          description: Whether the cleanup completed successfully.
+        summary:
+          type: string
+          nullable: true
+          description: Safe admin-facing summary for a failed cleanup; null for successful runs.
         expired:
           type: integer
           nullable: true

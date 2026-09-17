@@ -110,3 +110,9 @@
 - [Merchant login OTP lifecycle](merchant-login-otp-lifecycle.md) — serialize identifier challenges with a DB advisory lock; commit/invalidate only around confirmed delivery and keep attempts separate from resends.
 - [Orval and secure js-yaml compatibility](orval-js-yaml-v5.md) — patch Orval to namespace-import js-yaml; runtime changes or downgrading js-yaml do not safely fix codegen startup.
 - [Git remote credential safety](git-remote-credential-safety.md) — keep GitHub tokens in process-local askpass helpers; remote URLs and validation output must remain credential-free.
+- [RasoKart inbound mail routing](rasokart-inbound-mail-routing.md) — root MX must target PrivateEmail, never the web VPS; MSG91 acceptance does not prove mailbox delivery.
+- [Callback event audit integrity](callback-event-audit-integrity.md) — dedup claims and status changes must be atomic; preserve opaque IDs exactly and sanitize both live events and legacy backfills.
+- [Orval and secure js-yaml compatibility](orval-js-yaml-v5.md) — patch Orval to namespace-import js-yaml; runtime changes or downgrading js-yaml do not safely fix codegen startup.
+- [Git remote credential safety](git-remote-credential-safety.md) — keep GitHub tokens in process-local askpass helpers; remote URLs and validation output must remain credential-free.
+- [pnpm 11 dependency build approvals](pnpm11-build-approvals.md) — keep allowBuilds decisions alongside older allowlists; pnpm 11 can reject installs that pnpm 10 only warns about.
+- [Main branch production protection](main-branch-production-protection.md) — main requires PRs and release validation; admins retain the intentional emergency bypass.

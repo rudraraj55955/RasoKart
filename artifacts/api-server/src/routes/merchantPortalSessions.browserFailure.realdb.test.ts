@@ -333,7 +333,7 @@ describe("merchant portal submit-step browser failure recovery (real DB)", () =>
     assert.equal(afterRetry.processingLeaseExpiresAt, null);
   });
 
-  it("releases an MPIN lease after browser failure and permits a retry", async () => {
+  it("keeps an invalid MPIN retryable after browser failure recovery", async () => {
     assert.ok(adapter);
     assert.ok(originalSubmitStep);
 
@@ -343,10 +343,18 @@ describe("merchant portal submit-step browser failure recovery (real DB)", () =>
       if (calls === 1) {
         throw new BrowserRuntimeUnavailableError();
       }
+      if (calls === 2 || calls === 3) {
+        return {
+          status: "FAILED",
+          failReason: "INVALID_MPIN",
+          failDetail: "The MPIN is invalid.",
+        };
+      }
       return {
-        status: "AWAITING_MPIN" as any,
-        failReason: "INVALID_MPIN",
-        failDetail: "The MPIN is invalid.",
+        status: "CONNECTED",
+        encryptedSessionToken: "enc:test-connected-mpin-session",
+        nextStep: "COMPLETE",
+        nextStepPrompt: "Connected.",
       };
     };
 
@@ -392,10 +400,60 @@ describe("merchant portal submit-step browser failure recovery (real DB)", () =>
       .from(merchantPortalSessionsTable)
       .where(eq(merchantPortalSessionsTable.id, mpinSessionId));
     assert.equal(afterRetry.status, "AWAITING_MPIN");
-    assert.equal(afterRetry.stepFailureCount, 0);
+    assert.equal(afterRetry.encryptedSession, "enc:test-browser-failure-mpin-session");
+    assert.equal(afterRetry.lastErrorCode, "INVALID_MPIN");
+    assert.equal(afterRetry.lastStatusMessage, "INVALID_MPIN");
+    assert.equal(afterRetry.stepFailureCount, 2);
     assert.equal(afterRetry.otpVerificationFailureCount, 1);
     assert.equal(afterRetry.otpResendCount, 2);
+    assert.ok(afterRetry.otpResendAvailableAt);
+    assert.ok(afterRetry.otpExpiresAt);
     assert.equal(afterRetry.processingLeaseId, null);
     assert.equal(afterRetry.processingLeaseExpiresAt, null);
+
+    const exhausted = await post(server, path, mpinToken, { otp: "2468" });
+    assert.equal(exhausted.status, 200);
+    assert.equal(calls, 3);
+    assert.equal(exhausted.body.status, "FAILED");
+    assert.equal(exhausted.body.errorCode, "INVALID_MPIN");
+    assert.match(String(exhausted.body.message), /Maximum MPIN attempts reached/);
+
+    const blocked = await post(server, path, mpinToken, { otp: "9999" });
+    assert.equal(blocked.status, 400);
+    assert.equal(calls, 3, "adapter must not be invoked after the MPIN cap");
+
+    await db
+      .update(merchantPortalSessionsTable)
+      .set({
+        status: "AWAITING_MPIN",
+        encryptedSession: "enc:test-browser-failure-mpin-session",
+        stepFailureCount: 2,
+      })
+      .where(eq(merchantPortalSessionsTable.id, mpinSessionId));
+    adapter.submitStep = async () => {
+      calls++;
+      return {
+        status: "CONNECTED",
+        encryptedSessionToken: "enc:test-connected-mpin-session",
+        nextStep: "COMPLETE",
+        nextStepPrompt: "Connected.",
+      };
+    };
+
+    const recovered = await post(server, path, mpinToken, { otp: "1357" });
+    assert.equal(recovered.status, 200);
+    assert.equal(calls, 4);
+    assert.equal(recovered.body.status, "CONNECTED");
+
+    const [afterRecovery] = await db
+      .select()
+      .from(merchantPortalSessionsTable)
+      .where(eq(merchantPortalSessionsTable.id, mpinSessionId));
+    assert.equal(afterRecovery.status, "CONNECTED");
+    assert.equal(afterRecovery.encryptedSession, "enc:test-connected-mpin-session");
+    assert.equal(afterRecovery.lastErrorCode, null);
+    assert.equal(afterRecovery.stepFailureCount, 0);
+    assert.equal(afterRecovery.processingLeaseId, null);
+    assert.equal(afterRecovery.processingLeaseExpiresAt, null);
   });
 });

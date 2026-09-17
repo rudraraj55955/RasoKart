@@ -951,6 +951,104 @@ async function runGuard(executor: GuardExecutor = db): Promise<void> {
     logger.info({ table: "sms_send_logs" }, "schema_guard_table_created");
   });
 
+  // ── email_delivery_logs (password-reset email delivery status) ───────────
+  await block("email_delivery_logs", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS email_delivery_logs (
+        id SERIAL PRIMARY KEY,
+        recipient_hash TEXT NOT NULL,
+        recipient_masked TEXT NOT NULL,
+        purpose TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        status TEXT NOT NULL,
+        provider_message_id TEXT,
+        provider_event_id TEXT,
+        error_reason TEXT,
+        otp_id INTEGER,
+        user_id INTEGER,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_event_at TIMESTAMPTZ
+      )
+    `);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS email_delivery_logs_created_at_idx ON email_delivery_logs(created_at DESC)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS email_delivery_logs_purpose_created_at_idx ON email_delivery_logs(purpose, created_at DESC)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS email_delivery_logs_status_idx ON email_delivery_logs(status)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS email_delivery_logs_provider_message_id_idx ON email_delivery_logs(provider_message_id)`);
+    await exec.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS email_delivery_logs_provider_event_id_unique
+      ON email_delivery_logs(provider_event_id)
+      WHERE provider_event_id IS NOT NULL
+    `);
+    logger.info({ table: "email_delivery_logs" }, "schema_guard_table_created");
+  });
+
+  // ── email_delivery_events (sanitized callback audit history) ──────────────
+  await block("email_delivery_events", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS email_delivery_events (
+        id SERIAL PRIMARY KEY,
+        delivery_log_id INTEGER NOT NULL REFERENCES email_delivery_logs(id) ON DELETE CASCADE,
+        provider TEXT NOT NULL,
+        provider_message_id TEXT,
+        provider_event_id TEXT,
+        status TEXT NOT NULL,
+        failure_summary TEXT,
+        received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`
+      ALTER TABLE email_delivery_events
+      ALTER COLUMN provider_event_id DROP NOT NULL
+    `);
+    await exec.execute(sql`
+      CREATE INDEX IF NOT EXISTS email_delivery_events_delivery_log_received_at_idx
+      ON email_delivery_events(delivery_log_id, received_at DESC)
+    `);
+    await exec.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS email_delivery_events_provider_event_id_unique
+      ON email_delivery_events(provider_event_id)
+      WHERE provider_event_id IS NOT NULL
+    `);
+    await exec.execute(sql`
+      INSERT INTO email_delivery_events (
+        delivery_log_id,
+        provider,
+        provider_message_id,
+        provider_event_id,
+        status,
+        failure_summary,
+        received_at
+      )
+      SELECT
+        id,
+        provider,
+        provider_message_id,
+        provider_event_id,
+        status,
+        CASE
+          WHEN status = 'delivered' OR error_reason IS NULL THEN NULL
+          ELSE 'Provider reported delivery failure'
+        END,
+        COALESCE(last_event_at, updated_at, created_at)
+      FROM email_delivery_logs
+      WHERE provider_event_id IS NOT NULL
+      ON CONFLICT DO NOTHING
+    `);
+    await exec.execute(sql`
+      UPDATE email_delivery_events
+      SET failure_summary = CASE
+        WHEN status = 'delivered' OR failure_summary IS NULL THEN NULL
+        ELSE 'Provider reported delivery failure'
+      END
+      WHERE failure_summary IS DISTINCT FROM CASE
+        WHEN status = 'delivered' OR failure_summary IS NULL THEN NULL
+        ELSE 'Provider reported delivery failure'
+      END
+    `);
+    logger.info({ table: "email_delivery_events" }, "schema_guard_table_created");
+  });
+
   // ── merchant_tryit_presets (server-side Try It preset sync) ───────────────
   await block("merchant_tryit_presets", async () => {
     await exec.execute(sql`
@@ -2462,6 +2560,8 @@ async function runGuard(executor: GuardExecutor = db): Promise<void> {
         type           TEXT        NOT NULL,
         trigger        TEXT        NOT NULL DEFAULT 'scheduled',
         ran_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+        status          TEXT        NOT NULL DEFAULT 'success',
+        summary         TEXT,
         expired        INTEGER,
         closed         INTEGER,
         deleted        INTEGER     NOT NULL DEFAULT 0,
@@ -2469,6 +2569,8 @@ async function runGuard(executor: GuardExecutor = db): Promise<void> {
         triggered_by   TEXT        NOT NULL DEFAULT 'scheduled'
       )
     `);
+    await exec.execute(sql`ALTER TABLE cleanup_run_history ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'success'`);
+    await exec.execute(sql`ALTER TABLE cleanup_run_history ADD COLUMN IF NOT EXISTS summary TEXT`);
     logger.info({ table: "cleanup_run_history" }, "schema_guard_table_created");
   });
 

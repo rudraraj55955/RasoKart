@@ -4195,12 +4195,23 @@ export const CleanupRunHistoryEntryTrigger = {
   manual: 'manual',
 } as const;
 
+export type CleanupRunHistoryEntryStatus = typeof CleanupRunHistoryEntryStatus[keyof typeof CleanupRunHistoryEntryStatus];
+
+export const CleanupRunHistoryEntryStatus = {
+  success: 'success',
+  failed: 'failed',
+} as const;
+
 export interface CleanupRunHistoryEntry {
   id: number;
   /** Whether this run was triggered by the cron schedule or manually by an admin. */
   trigger: CleanupRunHistoryEntryTrigger;
   /** ISO timestamp of when the cleanup run occurred. */
   ranAt: string;
+  /** Whether the cleanup completed successfully. */
+  status: CleanupRunHistoryEntryStatus;
+  /** Safe admin-facing summary for a failed cleanup; null for successful runs. */
+  summary?: string | null;
   /** Number of QR codes marked as expired in this run (QR cleanup only). */
   expired?: number | null;
   /** Number of virtual accounts closed in this run (VA cleanup only). */

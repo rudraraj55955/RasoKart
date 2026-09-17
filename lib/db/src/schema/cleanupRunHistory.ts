@@ -5,6 +5,8 @@ export const cleanupRunHistoryTable = pgTable("cleanup_run_history", {
   type: text("type").notNull(),
   trigger: text("trigger").notNull().default("scheduled"),
   ranAt: timestamp("ran_at", { withTimezone: true }).notNull().defaultNow(),
+  status: text("status").notNull().default("success"),
+  summary: text("summary"),
   expired: integer("expired"),
   closed: integer("closed"),
   deleted: integer("deleted").notNull().default(0),

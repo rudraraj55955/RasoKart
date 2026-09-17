@@ -4,8 +4,38 @@ import { eq, inArray, sql, desc } from "drizzle-orm";
 import { logger } from "../lib/logger";
 
 const HISTORY_LIMIT = 20;
+const FAILED_CLEANUP_SUMMARY = "Cleanup could not complete. Check server logs for technical details.";
 
 let cleanupTask: ScheduledTask | null = null;
+
+async function trimQrCleanupHistory(): Promise<void> {
+  const allRows = await db
+    .select({ id: cleanupRunHistoryTable.id })
+    .from(cleanupRunHistoryTable)
+    .where(eq(cleanupRunHistoryTable.type, "qr"))
+    .orderBy(desc(cleanupRunHistoryTable.ranAt));
+
+  if (allRows.length > HISTORY_LIMIT) {
+    const idsToDelete = allRows.slice(HISTORY_LIMIT).map((r) => r.id);
+    await db.execute(sql`DELETE FROM cleanup_run_history WHERE id = ANY(${idsToDelete})`);
+  }
+}
+
+async function recordFailedQrCleanup(
+  trigger: "scheduled" | "manual",
+  retentionDays: number,
+): Promise<void> {
+  await db.insert(cleanupRunHistoryTable).values({
+    type: "qr",
+    trigger,
+    triggeredBy: trigger,
+    status: "failed",
+    summary: FAILED_CLEANUP_SUMMARY,
+    deleted: 0,
+    retentionDays,
+  });
+  await trimQrCleanupHistory();
+}
 
 export async function loadQrCleanupRetentionDays(): Promise<number> {
   const rows = await db
@@ -49,44 +79,34 @@ async function persistQrCleanupStats(
     deleted,
     retentionDays,
   });
-
-  const allRows = await db
-    .select({ id: cleanupRunHistoryTable.id })
-    .from(cleanupRunHistoryTable)
-    .where(eq(cleanupRunHistoryTable.type, "qr"))
-    .orderBy(desc(cleanupRunHistoryTable.ranAt));
-
-  if (allRows.length > HISTORY_LIMIT) {
-    const idsToDelete = allRows.slice(HISTORY_LIMIT).map((r) => r.id);
-    await db.execute(
-      sql`DELETE FROM cleanup_run_history WHERE id = ANY(${idsToDelete})`
-    );
-  }
+  await trimQrCleanupHistory();
 }
 
 export async function runQrCleanup(
   trigger: "scheduled" | "manual" = "scheduled"
 ): Promise<{ expired: number; deleted: number }> {
-  const retentionDays = await loadQrCleanupRetentionDays();
+  let retentionDays = 0;
+  try {
+    retentionDays = await loadQrCleanupRetentionDays();
 
-  if (retentionDays === 0) {
-    logger.info("QR code auto-cleanup is disabled (retention_days = 0) — skipping");
-    return { expired: 0, deleted: 0 };
-  }
+    if (retentionDays === 0) {
+      logger.info("QR code auto-cleanup is disabled (retention_days = 0) — skipping");
+      return { expired: 0, deleted: 0 };
+    }
 
-  const expireResult = await db.execute(sql`
+    const expireResult = await db.execute(sql`
     UPDATE qr_codes
     SET status = 'expired'
     WHERE expires_at IS NOT NULL
       AND expires_at < NOW()
       AND status = 'active'
   `);
-  const expired = Number((expireResult as any).rowCount ?? 0);
-  if (expired > 0) {
-    logger.info({ expired }, "QR code auto-cleanup: marked active-but-past-expiry codes as expired");
-  }
+    const expired = Number((expireResult as any).rowCount ?? 0);
+    if (expired > 0) {
+      logger.info({ expired }, "QR code auto-cleanup: marked active-but-past-expiry codes as expired");
+    }
 
-  const deleteResult = await db.execute(sql`
+    const deleteResult = await db.execute(sql`
     DELETE FROM qr_codes
     WHERE
       (status = 'expired'
@@ -96,13 +116,21 @@ export async function runQrCleanup(
       (status = 'used'
         AND updated_at < NOW() - (${retentionDays} || ' days')::interval)
   `);
-  const deleted = Number((deleteResult as any).rowCount ?? 0);
+    const deleted = Number((deleteResult as any).rowCount ?? 0);
 
-  logger.info({ retentionDays, trigger, expired, deleted }, "QR code auto-cleanup complete");
+    logger.info({ retentionDays, trigger, expired, deleted }, "QR code auto-cleanup complete");
 
-  await persistQrCleanupStats(deleted, retentionDays, trigger, expired);
+    await persistQrCleanupStats(deleted, retentionDays, trigger, expired);
 
-  return { expired, deleted };
+    return { expired, deleted };
+  } catch (err) {
+    try {
+      await recordFailedQrCleanup(trigger, retentionDays);
+    } catch (historyErr) {
+      logger.warn({ err: historyErr, trigger }, "Failed to record QR cleanup failure");
+    }
+    throw err;
+  }
 }
 
 export async function loadQrCleanupLastRun(): Promise<{ lastRunAt: string | null; lastDeleted: number | null }> {
@@ -124,6 +152,8 @@ export async function loadQrCleanupHistory(): Promise<Array<{
   id: number;
   trigger: string;
   ranAt: Date;
+  status: string;
+  summary: string | null;
   expired: number | null;
   deleted: number;
   retentionDays: number;

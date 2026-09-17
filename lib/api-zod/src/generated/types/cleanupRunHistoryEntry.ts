@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { CleanupRunHistoryEntryTrigger } from './cleanupRunHistoryEntryTrigger';
+import type { CleanupRunHistoryEntryStatus } from './cleanupRunHistoryEntryStatus';
 
 export interface CleanupRunHistoryEntry {
   id: number;
@@ -13,6 +14,10 @@ export interface CleanupRunHistoryEntry {
   trigger: CleanupRunHistoryEntryTrigger;
   /** ISO timestamp of when the cleanup run occurred. */
   ranAt: Date;
+  /** Whether the cleanup completed successfully. */
+  status: CleanupRunHistoryEntryStatus;
+  /** Safe admin-facing summary for a failed cleanup; null for successful runs. */
+  summary?: string | null;
   /** Number of QR codes marked as expired in this run (QR cleanup only). */
   expired?: number | null;
   /** Number of virtual accounts closed in this run (VA cleanup only). */

@@ -9,6 +9,7 @@
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "find src -name '*.test.ts' ! -name '*.realdb.test.ts' | sort | xargs node --import tsx --test-concurrency=1 --test-force-exit --test",
+    "test:password-reset-delivery-cleanup": "node --import tsx/esm --test src/helpers/passwordResetDeliveryRetentionScheduler.test.ts",
     "seed": "tsx src/seed.ts"
   },
   "dependencies": {

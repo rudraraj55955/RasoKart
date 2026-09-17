@@ -10,7 +10,8 @@ import { makeRateLimiter, safeIpKey } from "../helpers/makeRateLimiter";
 import { sendNewLoginAlertEmail } from "../helpers/newLoginEmail";
 import { sendPrefChangeUnknownDeviceEmail } from "../helpers/prefChangeEmail";
 import { createNotification } from "../helpers/notifications";
-import { sendMerchantOtpEmail } from "../helpers/merchantOtpEmail";
+import { sendMerchantOtpEmail, sendMerchantOtpEmailWithResult } from "../helpers/merchantOtpEmail";
+import { recordPasswordResetEmailDelivery } from "../helpers/emailDelivery";
 import { sendOtpSms } from "../helpers/sendOtpSms";
 import { checkAuthLock, recordWindowExhaustion } from "../helpers/authLock";
 import { verifyGoogleIdToken, isGoogleConfigured } from "../helpers/googleAuth";
@@ -1932,7 +1933,7 @@ async function createAndSendOtp(opts: {
   const otpHash = await hashOtp(otp);
   const resendCount = existing ? existing.resendCount + 1 : 0;
 
-  await db.insert(merchantAuthOtpsTable).values({
+  const [createdOtp] = await db.insert(merchantAuthOtpsTable).values({
     merchantId: user.merchantId,
     identifierHash,
     otpHash,
@@ -1941,7 +1942,7 @@ async function createAndSendOtp(opts: {
     attempts: 0,
     resendCount,
     ipHash,
-  });
+  }).returning({ id: merchantAuthOtpsTable.id });
 
   req.log.info({ purpose, hasUser: true }, "merchant_otp_requested");
 
@@ -1959,6 +1960,35 @@ async function createAndSendOtp(opts: {
       req.log.info({ purpose, smsSent: smsResult.sent, provider: smsResult.provider, fallback: smsResult.fallbackUsed }, "merchant_otp_sent");
     }).catch((err: unknown) => {
       req.log.warn({ err, purpose }, "merchant_otp_sms_error");
+    });
+  } else if (purpose === "PASSWORD_RESET") {
+    sendMerchantOtpEmailWithResult({ to: user.email, otp, purpose }).then(async result => {
+      await recordPasswordResetEmailDelivery({
+        to: user.email,
+        provider: result.provider,
+        status: result.sent ? "accepted" : "failed",
+        providerMessageId: result.providerMessageId,
+        errorReason: result.errorReason,
+        otpId: createdOtp.id,
+        userId: user.id,
+      }).catch((err: unknown) => {
+        req.log.warn({ err, purpose }, "password_reset_email_delivery_log_failed");
+      });
+      if (!result.sent) {
+        await db
+          .update(merchantAuthOtpsTable)
+          .set({ consumedAt: new Date() })
+          .where(and(
+            eq(merchantAuthOtpsTable.id, createdOtp.id),
+            isNull(merchantAuthOtpsTable.consumedAt),
+          ))
+          .catch((err: unknown) => {
+            req.log.warn({ err, purpose }, "password_reset_otp_invalidate_failed");
+          });
+      }
+      req.log.info({ purpose, sent: result.sent, provider: result.provider }, "merchant_otp_sent");
+    }).catch((err: unknown) => {
+      req.log.warn({ err, purpose }, "merchant_otp_send_error");
     });
   } else {
     sendMerchantOtpEmail({ to: user.email, otp, purpose }).then(sent => {
@@ -3027,18 +3057,35 @@ router.post("/admin/password/forgot", adminPasswordForgotLimiter, adminPasswordF
     // Wait for the provider result so the request log captures the complete
     // delivery attempt. Keep the public response opaque to avoid revealing
     // whether an admin account exists.
-    const sent = await sendMerchantOtpEmail({
+    const delivery = await sendMerchantOtpEmailWithResult({
       to: normalizedEmail,
       otp,
       purpose: "ADMIN_PASSWORD_RESET",
     }).catch((err: unknown) => {
       req.log.warn({ err, purpose: "ADMIN_PASSWORD_RESET" }, "admin_pwd_reset_email_error");
-      return false;
+      return {
+        sent: false,
+        provider: "msg91+smtp" as const,
+        providerMessageId: null,
+        errorReason: "Unexpected email dispatch error",
+      };
     });
 
-    req.log.info({ purpose: "ADMIN_PASSWORD_RESET", sent }, "admin_pwd_reset_otp_sent");
+    await recordPasswordResetEmailDelivery({
+      to: normalizedEmail,
+      provider: delivery.provider,
+      status: delivery.sent ? "accepted" : "failed",
+      providerMessageId: delivery.providerMessageId,
+      errorReason: delivery.errorReason,
+      otpId: createdOtp.id,
+      userId: adminUser.id,
+    }).catch((err: unknown) => {
+      req.log.warn({ err, purpose: "ADMIN_PASSWORD_RESET" }, "password_reset_email_delivery_log_failed");
+    });
 
-    if (!sent) {
+    req.log.info({ purpose: "ADMIN_PASSWORD_RESET", sent: delivery.sent, provider: delivery.provider }, "admin_pwd_reset_otp_sent");
+
+    if (!delivery.sent) {
       // An undelivered code must never remain usable. Mark only the row created
       // by this request as consumed while preserving the opaque public response.
       await db

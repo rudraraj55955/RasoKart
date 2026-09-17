@@ -733,15 +733,20 @@ export default function AdminSettings() {
         toast.success(`Cleanup complete — ${parts.join(", ")}.`);
       }
     },
-    onError: (err: Error) => toast.error(`Cleanup failed: ${err.message}`),
+    onError: (err: Error) => {
+      qc.invalidateQueries({ queryKey: getGetQrCleanupHistoryQueryKey() });
+      toast.error(`Cleanup failed: ${err.message}`);
+    },
   });
 
   const [vaCleanupRunResult, setVaCleanupRunResult] = useState<{ closed: number; deleted: number } | null>(null);
   const [qrHistoryOpen, setQrHistoryOpen] = useState(false);
   const [vaHistoryOpen, setVaHistoryOpen] = useState(false);
 
-  const { data: qrHistoryData, isLoading: qrHistoryLoading } = useGetQrCleanupHistory({ query: { enabled: qrHistoryOpen, queryKey: getGetQrCleanupHistoryQueryKey(), staleTime: 30_000 } });
-  const { data: vaHistoryData, isLoading: vaHistoryLoading } = useGetVaCleanupHistory({ query: { enabled: vaHistoryOpen, queryKey: getGetVaCleanupHistoryQueryKey(), staleTime: 30_000 } });
+  const { data: qrHistoryData, isLoading: qrHistoryLoading } = useGetQrCleanupHistory({ query: { queryKey: getGetQrCleanupHistoryQueryKey(), staleTime: 30_000 } });
+  const { data: vaHistoryData, isLoading: vaHistoryLoading } = useGetVaCleanupHistory({ query: { queryKey: getGetVaCleanupHistoryQueryKey(), staleTime: 30_000 } });
+  const latestQrCleanup = qrHistoryData?.data?.[0];
+  const latestVaCleanup = vaHistoryData?.data?.[0];
 
   const { mutate: clearQrHistory, isPending: clearingQrHistory } = useClearQrCleanupHistory({
     mutation: {
@@ -778,7 +783,10 @@ export default function AdminSettings() {
         toast.success(`Cleanup complete — ${parts.join(", ")}.`);
       }
     },
-    onError: (err: Error) => toast.error(`Cleanup failed: ${err.message}`),
+    onError: (err: Error) => {
+      qc.invalidateQueries({ queryKey: getGetVaCleanupHistoryQueryKey() });
+      toast.error(`Cleanup failed: ${err.message}`);
+    },
   });
 
   const currentTestEmailRetentionDays = testEmailRetentionData?.retentionDays ?? 30;
@@ -2285,6 +2293,19 @@ export default function AdminSettings() {
               </span>
             </div>
           )}
+          {latestQrCleanup?.status === "failed" && (
+            <div className="flex items-start gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-md px-3 py-2">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <span>
+                <strong>Latest QR cleanup failed</strong>
+                {" — "}
+                <span title={new Date(latestQrCleanup.ranAt).toLocaleString()}>
+                  {formatTimeAgo(latestQrCleanup.ranAt)}
+                </span>
+                {latestQrCleanup.summary ? ` · ${latestQrCleanup.summary}` : ""}
+              </span>
+            </div>
+          )}
           {cleanupStats?.qrCleanup.lastRunAt != null ? (
             <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/20 border border-border/40 rounded-md px-3 py-2">
               <History className="w-3.5 h-3.5 shrink-0" />
@@ -2397,6 +2418,7 @@ export default function AdminSettings() {
                         <tr className="border-b border-border/40 bg-muted/20">
                           <th className="text-left px-3 py-2 font-medium text-muted-foreground">Date &amp; time</th>
                           <th className="text-left px-3 py-2 font-medium text-muted-foreground">Trigger</th>
+                           <th className="text-left px-3 py-2 font-medium text-muted-foreground">Status</th>
                           <th className="text-right px-3 py-2 font-medium text-muted-foreground">Expired</th>
                           <th className="text-right px-3 py-2 font-medium text-muted-foreground">Deleted</th>
                           <th className="text-right px-3 py-2 font-medium text-muted-foreground">Retention</th>
@@ -2414,13 +2436,26 @@ export default function AdminSettings() {
                                 : <span className="inline-flex items-center gap-1 rounded-full bg-muted/40 border border-border/40 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">scheduled</span>
                               }
                             </td>
+                             <td className="px-3 py-2">
+                               <span className={`inline-flex rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${
+                                 row.status === "failed"
+                                   ? "bg-red-500/15 border-red-500/25 text-red-400"
+                                   : "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                               }`}>
+                                 {row.status === "failed" ? "failed" : "succeeded"}
+                               </span>
+                             </td>
                             <td className="px-3 py-2 text-right tabular-nums">
-                              {(row.expired ?? 0) === 0
+                               {row.status === "failed"
+                                 ? <span className="text-muted-foreground">—</span>
+                                 : (row.expired ?? 0) === 0
                                 ? <span className="text-muted-foreground">0</span>
                                 : <span className="text-amber-400 font-medium">{row.expired}</span>}
                             </td>
                             <td className="px-3 py-2 text-right tabular-nums">
-                              {row.deleted === 0
+                               {row.status === "failed"
+                                 ? <span className="text-muted-foreground">—</span>
+                                 : row.deleted === 0
                                 ? <span className="text-muted-foreground">0</span>
                                 : <span className="text-amber-400 font-medium">{row.deleted}</span>}
                             </td>
@@ -2506,6 +2541,19 @@ export default function AdminSettings() {
               <span>
                 Closed virtual accounts are deleted automatically after{" "}
                 <strong>{currentVaRetentionDays} day{currentVaRetentionDays !== 1 ? "s" : ""}</strong>.
+              </span>
+            </div>
+          )}
+          {latestVaCleanup?.status === "failed" && (
+            <div className="flex items-start gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-md px-3 py-2">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <span>
+                <strong>Latest virtual-account cleanup failed</strong>
+                {" — "}
+                <span title={new Date(latestVaCleanup.ranAt).toLocaleString()}>
+                  {formatTimeAgo(latestVaCleanup.ranAt)}
+                </span>
+                {latestVaCleanup.summary ? ` · ${latestVaCleanup.summary}` : ""}
               </span>
             </div>
           )}
@@ -2601,6 +2649,7 @@ export default function AdminSettings() {
                         <tr className="border-b border-border/40 bg-muted/20">
                           <th className="text-left px-3 py-2 font-medium text-muted-foreground">Date &amp; time</th>
                           <th className="text-left px-3 py-2 font-medium text-muted-foreground">Trigger</th>
+                           <th className="text-left px-3 py-2 font-medium text-muted-foreground">Status</th>
                           <th className="text-right px-3 py-2 font-medium text-muted-foreground">Closed</th>
                           <th className="text-right px-3 py-2 font-medium text-muted-foreground">Deleted</th>
                           <th className="text-right px-3 py-2 font-medium text-muted-foreground">Retention</th>
@@ -2618,13 +2667,26 @@ export default function AdminSettings() {
                                 : <span className="inline-flex items-center gap-1 rounded-full bg-muted/40 border border-border/40 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">scheduled</span>
                               }
                             </td>
+                             <td className="px-3 py-2">
+                               <span className={`inline-flex rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${
+                                 row.status === "failed"
+                                   ? "bg-red-500/15 border-red-500/25 text-red-400"
+                                   : "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                               }`}>
+                                 {row.status === "failed" ? "failed" : "succeeded"}
+                               </span>
+                             </td>
                             <td className="px-3 py-2 text-right tabular-nums">
-                              {(row.closed ?? 0) === 0
+                               {row.status === "failed"
+                                 ? <span className="text-muted-foreground">—</span>
+                                 : (row.closed ?? 0) === 0
                                 ? <span className="text-muted-foreground">0</span>
                                 : <span className="text-amber-400 font-medium">{row.closed}</span>}
                             </td>
                             <td className="px-3 py-2 text-right tabular-nums">
-                              {row.deleted === 0
+                               {row.status === "failed"
+                                 ? <span className="text-muted-foreground">—</span>
+                                 : row.deleted === 0
                                 ? <span className="text-muted-foreground">0</span>
                                 : <span className="text-amber-400 font-medium">{row.deleted}</span>}
                             </td>

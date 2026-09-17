@@ -50,6 +50,7 @@ export const PERMISSIONS = {
   ADMIN_SOCIAL_PROVIDERS:  "admin_social_providers",
   ADMIN_SECURE_ID:         "admin_secure_id",
   ADMIN_OTP_SETTINGS:      "admin_otp_settings",
+  ADMIN_EMAIL_DELIVERY:    "admin_email_delivery",
   ADMIN_RECONCILIATION:    "admin_reconciliation",
   ADMIN_MODULE_CONTROL:    "admin_module_control",
   ADMIN_PLATFORM_PROFIT:   "admin_platform_profit",
