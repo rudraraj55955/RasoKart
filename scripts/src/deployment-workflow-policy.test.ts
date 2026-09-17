@@ -9,6 +9,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const WORKFLOWS_DIR = join(ROOT, ".github/workflows");
 const GUARDED_WORKFLOW = "production-deploy.yml";
 const BYPASS_ALERT_WORKFLOW = "emergency-production-bypass-alert.yml";
+const BYPASS_ALERT_MONITOR_WORKFLOW = "emergency-production-bypass-alert-monitor.yml";
 const BRANCH_PROTECTION_AUDIT_WORKFLOW = "branch-protection-audit.yml";
 const DEPLOY_JOBS = [
   "auto_frontend_deploy",
@@ -18,12 +19,14 @@ const DEPLOY_JOBS = [
 
 const {
   LABEL,
+  STALE_RUN_LABEL,
   SAFEGUARD_LABEL,
   SAFEGUARD_MARKER,
   runEmergencyBypassAlert,
   runIntegrationCheck,
   runProductionSafeguardAlert,
   runSafeguardIntegrationCheck,
+  runStaleIntegrationCheck,
 } = alertModule;
 function readWorkflow(name: string): string {
   return readFileSync(join(WORKFLOWS_DIR, name), "utf8");
@@ -230,6 +233,20 @@ test("emergency bypass alerts cannot be blocked by production deployment concurr
   assert.doesNotMatch(source, /^concurrency:/m);
   assert.match(production, /group:\s*rasokart-production/);
   assert.doesNotMatch(source, /rasokart-production/);
+});
+
+test("the stale-run monitor is independent and cannot deploy or push to main", () => {
+  const source = readWorkflow(BYPASS_ALERT_MONITOR_WORKFLOW);
+  const trigger = topLevelSection(source, "on");
+  const monitor = jobBlock(source, "monitor");
+
+  assert.match(trigger, /^\s{2}schedule:/m);
+  assert.match(source, /actions:\s*read/);
+  assert.match(source, /issues:\s*write/);
+  assert.match(monitor, /runStaleIntegrationCheck/);
+  assert.doesNotMatch(source, /contents:\s*write/);
+  assert.doesNotMatch(source, /\bgit\s+push\b/);
+  assert.doesNotMatch(source, /\bdeploy(?:ment)?\b/i);
 });
 
 function fakeAlertHarness(
@@ -877,6 +894,121 @@ test("safeguard integration cleans up after issue verification fails", async () 
   assert.equal(harness.getIssue()?.state, "closed");
   assert.deepEqual(harness.getIssue()?.assignees, ["repo-owner"]);
   assert.equal(harness.hasLabel(), false);
+});
+
+function staleRunHarness(runs: unknown[], existingIssues: unknown[] = []) {
+  const calls = {
+    workflowRuns: [] as Array<Record<string, unknown>>,
+    creates: [] as Array<Record<string, unknown>>,
+  };
+  const github = {
+    rest: {
+      actions: {
+        listWorkflowRuns: async (request: Record<string, unknown>) => {
+          calls.workflowRuns.push(request);
+          return { data: { workflow_runs: runs } };
+        },
+      },
+      issues: {
+        listForRepo: async () => ({ data: existingIssues }),
+        getLabel: async () => ({ data: { name: STALE_RUN_LABEL } }),
+        createLabel: async () => ({ data: { name: STALE_RUN_LABEL } }),
+        create: async (request: Record<string, unknown>) => {
+          calls.creates.push(request);
+          return { data: { number: 84, ...request } };
+        },
+      },
+    },
+  };
+  const context = {
+    repo: { owner: "repo-owner", repo: "repo-name" },
+    serverUrl: "https://github.test",
+  };
+  const core = { info: () => undefined };
+  return { github, context, core, calls };
+}
+
+test("stale-run monitor ignores normal scheduling delays", async () => {
+  const harness = staleRunHarness([
+    {
+      id: 101,
+      completed_at: "2026-09-15T05:00:00Z",
+      html_url: "https://github.test/run/101",
+    },
+  ]);
+  const result = await runStaleIntegrationCheck({
+    ...harness,
+    now: Date.parse("2026-09-16T06:00:00Z"),
+    staleRunWindowMs: 8 * 24 * 60 * 60 * 1000,
+  });
+
+  assert.equal(result.created, false);
+  assert.equal(result.reason, "recent_completed_run");
+  assert.equal(harness.calls.creates.length, 0);
+  assert.deepEqual(harness.calls.workflowRuns[0], {
+    owner: "repo-owner",
+    repo: "repo-name",
+    workflow_id: "emergency-production-bypass-alert.yml",
+    event: "schedule",
+    status: "completed",
+    per_page: 100,
+  });
+});
+
+test("stale-run monitor creates one owner-assigned alert for an overdue check", async () => {
+  const harness = staleRunHarness([
+    {
+      id: 102,
+      completed_at: "2026-09-01T05:00:00Z",
+      html_url: "https://github.test/run/102",
+    },
+  ]);
+  const result = await runStaleIntegrationCheck({
+    ...harness,
+    now: Date.parse("2026-09-16T06:00:00Z"),
+    staleRunWindowMs: 8 * 24 * 60 * 60 * 1000,
+  });
+
+  assert.equal(result.created, true);
+  assert.equal(harness.calls.creates.length, 1);
+  assert.deepEqual(harness.calls.creates[0]?.assignees, ["repo-owner"]);
+  assert.deepEqual(harness.calls.creates[0]?.labels, [STALE_RUN_LABEL]);
+  assert.match(String(harness.calls.creates[0]?.body), /stale-run:102/);
+  assert.match(String(harness.calls.creates[0]?.body), /does not deploy or push/);
+});
+
+test("stale-run monitor alerts when the scheduled workflow has never completed", async () => {
+  const harness = staleRunHarness([]);
+  const result = await runStaleIntegrationCheck({
+    ...harness,
+    now: Date.parse("2026-09-16T06:00:00Z"),
+    staleRunWindowMs: 8 * 24 * 60 * 60 * 1000,
+  });
+
+  assert.equal(result.created, true);
+  assert.equal(harness.calls.creates.length, 1);
+  assert.match(String(harness.calls.creates[0]?.body), /No completed scheduled run/);
+  assert.match(String(harness.calls.creates[0]?.body), /stale-run:none/);
+});
+
+test("stale-run monitor deduplicates an existing alert for the same overdue run", async () => {
+  const marker = `<!-- ${STALE_RUN_LABEL}:102 -->`;
+  const harness = staleRunHarness(
+    [{ id: 102, completed_at: "2026-09-01T05:00:00Z" }],
+    [{ body: `Existing alert\n${marker}` }],
+  );
+  const result = await runStaleIntegrationCheck({
+    ...harness,
+    now: Date.parse("2026-09-16T06:00:00Z"),
+    staleRunWindowMs: 8 * 24 * 60 * 60 * 1000,
+  });
+
+  assert.deepEqual(result, {
+    created: false,
+    reason: "duplicate",
+    run: { id: 102, completed_at: "2026-09-01T05:00:00Z" },
+  });
+  assert.equal(harness.calls.creates.length, 0);
 });
 
 test("branch and deployment safeguards are audited on a schedule and on demand", () => {

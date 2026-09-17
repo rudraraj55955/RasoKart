@@ -1,4 +1,7 @@
 const LABEL = "emergency-production-bypass";
+const STALE_RUN_LABEL = "emergency-production-bypass-stale-run";
+const INTEGRATION_WORKFLOW_FILE = "emergency-production-bypass-alert.yml";
+const DEFAULT_STALE_RUN_WINDOW_MS = 8 * 24 * 60 * 60 * 1000;
 const SAFEGUARD_LABEL = "production-safeguard-drift";
 const SAFEGUARD_MARKER = "<!-- production-safeguard-drift -->";
 const ISSUE_LIST_MAX_ATTEMPTS = 3;
@@ -13,17 +16,24 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function ensureLabel(github, owner, repo) {
+async function ensureLabel(
+  github,
+  owner,
+  repo,
+  label = LABEL,
+  description = "A direct push bypassed the normal production pull-request gates",
+  color = "B60205",
+) {
   try {
-    await github.rest.issues.getLabel({ owner, repo, name: LABEL });
+    await github.rest.issues.getLabel({ owner, repo, name: label });
   } catch (error) {
     if (error.status !== 404) throw error;
     await github.rest.issues.createLabel({
       owner,
       repo,
-      name: LABEL,
-      color: "B60205",
-      description: "A direct push bypassed the normal production pull-request gates",
+      name: label,
+      color,
+      description,
     });
   }
 }
@@ -467,12 +477,118 @@ async function runIntegrationCheck({ github, context, core }) {
   }
 }
 
+function runTimestamp(run) {
+  const timestamp = run.completed_at ?? run.updated_at ?? run.created_at;
+  const milliseconds = Date.parse(timestamp ?? "");
+  return Number.isFinite(milliseconds) ? milliseconds : null;
+}
+
+function workflowRunUrl({ context, owner, repo, run }) {
+  return (
+    run.html_url ??
+    `${context.serverUrl}/${owner}/${repo}/actions/runs/${run.id}`
+  );
+}
+
+async function runStaleIntegrationCheck({
+  github,
+  context,
+  core,
+  now = Date.now(),
+  staleRunWindowMs = DEFAULT_STALE_RUN_WINDOW_MS,
+}) {
+  const { owner, repo } = context.repo;
+  const runsResponse = await github.rest.actions.listWorkflowRuns({
+    owner,
+    repo,
+    workflow_id: INTEGRATION_WORKFLOW_FILE,
+    event: "schedule",
+    status: "completed",
+    per_page: 100,
+  });
+  const runs = (runsResponse.data.workflow_runs ?? [])
+    .slice()
+    .sort((left, right) => (runTimestamp(right) ?? 0) - (runTimestamp(left) ?? 0));
+  const latestRun = runs[0];
+  const latestRunTimestamp = latestRun ? runTimestamp(latestRun) : null;
+  const runIsRecent =
+    latestRunTimestamp !== null &&
+    now - latestRunTimestamp <= staleRunWindowMs;
+
+  if (runIsRecent) {
+    core.info(
+      `The scheduled emergency integration check completed recently (run ${latestRun.id}); no stale-run alert needed.`,
+    );
+    return {
+      created: false,
+      reason: "recent_completed_run",
+      run: latestRun,
+    };
+  }
+
+  const runMarker = latestRun ? String(latestRun.id) : "none";
+  const marker = `<!-- ${STALE_RUN_LABEL}:${runMarker} -->`;
+  const existing = await github.rest.issues.listForRepo({
+    owner,
+    repo,
+    state: "all",
+    creator: "github-actions[bot]",
+    per_page: 100,
+  });
+  if (existing.data.some((issue) => issue.body?.includes(marker))) {
+    core.info(`A stale-run alert already exists for scheduled run ${runMarker}.`);
+    return { created: false, reason: "duplicate", run: latestRun };
+  }
+
+  await ensureLabel(
+    github,
+    owner,
+    repo,
+    STALE_RUN_LABEL,
+    "The emergency production bypass integration check has gone stale",
+    "D93F0B",
+  );
+
+  const lastRunText = latestRun
+    ? `The last completed scheduled run was [run ${latestRun.id}](${workflowRunUrl({
+        context,
+        owner,
+        repo,
+        run: latestRun,
+      })}) at ${latestRun.completed_at ?? latestRun.updated_at ?? latestRun.created_at}.`
+    : "No completed scheduled run was found in the workflow history.";
+  const created = await github.rest.issues.create({
+    owner,
+    repo,
+    title: "[ALERT] Emergency bypass integration check is stale",
+    body: [
+      marker,
+      "## Emergency bypass integration check is stale",
+      "",
+      lastRunText,
+      "",
+      `The scheduled workflow has not completed within ${Math.round(
+        staleRunWindowMs / (24 * 60 * 60 * 1000),
+      )} days. Check whether GitHub scheduling is disabled or delayed, then run the integration check manually if needed.`,
+      "",
+      "This monitor only reads GitHub Actions run history and does not deploy or push to `main`.",
+    ].join("\n"),
+    assignees: [owner],
+    labels: [STALE_RUN_LABEL],
+  });
+  return { created: true, issue: created.data, run: latestRun };
+}
+
 module.exports = {
+  DEFAULT_STALE_RUN_WINDOW_MS,
+  INTEGRATION_WORKFLOW_FILE,
   LABEL,
+  STALE_RUN_LABEL,
   SAFEGUARD_LABEL,
   SAFEGUARD_MARKER,
   runEmergencyBypassAlert,
   runIntegrationCheck,
   runProductionSafeguardAlert,
   runSafeguardIntegrationCheck,
+  runStaleIntegrationCheck,
 };
