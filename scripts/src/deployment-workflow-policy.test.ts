@@ -551,6 +551,29 @@ test("production safeguard lookup finds a closed alert beyond the first issue pa
   assert.equal(harness.calls.updates[0]?.state, "open");
 });
 
+test("production safeguard lookup scans the next page and creates only one alert when no marker exists", async () => {
+  const harness = fakeSafeguardHarness(undefined, [
+    Array.from({ length: 100 }, (_, index) => ({
+      number: index + 1,
+      body: `unrelated issue ${index + 1}`,
+    })),
+    [{ number: 101, body: "another unrelated issue" }],
+  ]);
+
+  const result = await runProductionSafeguardAlert({
+    ...harness,
+    auditSucceeded: true,
+    drift: ["required validation context is missing: check"],
+  });
+
+  assert.equal(result.created, true);
+  assert.equal(harness.calls.creates.length, 1);
+  assert.equal(harness.calls.updates.length, 0);
+  assert.equal(harness.calls.listRequests.length, 2);
+  assert.equal(harness.calls.listRequests[0]?.page, 1);
+  assert.equal(harness.calls.listRequests[1]?.page, 2);
+});
+
 test("safeguard integration cleans up after issue verification fails", async () => {
   const harness = fakeSafeguardIntegrationHarness({ failIssueVerification: true });
 
