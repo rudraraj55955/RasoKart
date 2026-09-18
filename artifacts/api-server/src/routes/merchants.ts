@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, merchantsTable, usersTable, merchantPlansTable, plansTable, planHistoryTable, auditLogsTable, invoicesTable, apiKeysTable, credentialEventsTable, webhooksTable, webhookFailureAlertLogsTable, merchantKycTable, demoAccountRemovalsTable } from "@workspace/db";
+import { db, merchantsTable, usersTable, merchantPlansTable, plansTable, planHistoryTable, auditLogsTable, invoicesTable, apiKeysTable, credentialEventsTable, webhooksTable, webhookFailureAlertLogsTable, merchantKycTable, merchantKycVerificationsTable, merchantConnectionsTable, callbackLogsTable, transactionsTable, demoAccountRemovalsTable } from "@workspace/db";
 import { eq, ilike, and, or, count, sql, desc, lt, lte, gte, isNotNull, inArray, notInArray } from "drizzle-orm";
 import { maskIp } from "../helpers/apiKeyEmail";
 import { loadWebhookRetryConfig } from "../helpers/callbackRetry";
@@ -12,6 +12,7 @@ import { sendCallbackSecretResetEmail } from "../helpers/callbackSecretResetEmai
 import { notifyMerchantOfPlanChange, buildPlanAssignedHtml, buildPlanSuspendedHtml, buildPlanReinstatedHtml } from "../helpers/merchantNotifyEmail";
 import { ObjectStorageService, ObjectNotFoundError, InvalidImageError } from "../lib/objectStorage";
 import { consumeUploadIntent } from "../lib/uploadIntentStore";
+import { calculateMerchantReadiness, selectReadyProvider } from "../helpers/merchantReadiness";
 
 const objectStorageService = new ObjectStorageService();
 
@@ -524,6 +525,68 @@ router.patch("/me", async (req, res) => {
   }
 
   res.json(serializeMerchant(updated));
+});
+
+// GET /api/merchants/me/readiness — canonical, server-derived merchant readiness.
+// The merchant identity is always taken from the authenticated session; no
+// merchant-supplied identifier is accepted. Secrets, credentials, and UTRs are
+// deliberately excluded from the response.
+router.get("/me/readiness", async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+    if (user.role !== "merchant" || !user.merchantId) {
+      res.status(403).json({ error: "Merchant access only" });
+      return;
+    }
+    const merchantId = user.merchantId as number;
+    const [[merchant], [verification], [planRow], providerRows, [apiKey], [webhook], [callback], [historical]] = await Promise.all([
+      db.select({
+        id: merchantsTable.id, businessName: merchantsTable.businessName, contactName: merchantsTable.contactName, phone: merchantsTable.phone,
+        status: merchantsTable.status, forceApprovedAt: merchantsTable.forceApprovedAt,
+        verificationStatus: merchantsTable.verificationStatus, payinServiceEnabled: merchantsTable.payinServiceEnabled,
+        collectionServiceEnabled: merchantsTable.collectionServiceEnabled, callbackSecretConfigured: isNotNull(merchantsTable.callbackSecret),
+      }).from(merchantsTable).where(eq(merchantsTable.id, merchantId)).limit(1),
+      db.select({ emailVerified: merchantKycVerificationsTable.emailVerified, mobileVerified: merchantKycVerificationsTable.mobileVerified, verificationStatus: merchantKycVerificationsTable.verificationStatus })
+        .from(merchantKycVerificationsTable).where(eq(merchantKycVerificationsTable.merchantId, merchantId)).limit(1),
+      db.select({ mp: merchantPlansTable, planName: plansTable.name, apiAccess: plansTable.apiAccess, webhookAccess: plansTable.webhookAccess, providerAccess: plansTable.providerAccess })
+        .from(merchantPlansTable).leftJoin(plansTable, eq(plansTable.id, merchantPlansTable.planId))
+        .where(eq(merchantPlansTable.merchantId, merchantId)).limit(1),
+      db.select({ configured: merchantConnectionsTable.id, active: merchantConnectionsTable.isActive, connectionStatus: merchantConnectionsTable.connectionStatus, lastTestResult: merchantConnectionsTable.lastTestResult, lastTestedAt: merchantConnectionsTable.lastTestedAt, capabilityPayin: merchantConnectionsTable.capabilityPayin, updatedAt: merchantConnectionsTable.updatedAt })
+        .from(merchantConnectionsTable).where(eq(merchantConnectionsTable.merchantId, merchantId)).orderBy(desc(merchantConnectionsTable.updatedAt)),
+      db.select({ count: count(), lastUsedAt: sql<Date | null>`max(${apiKeysTable.lastUsedAt})` }).from(apiKeysTable)
+        .where(and(eq(apiKeysTable.merchantId, merchantId), eq(apiKeysTable.isActive, true))),
+      db.select({ configured: webhooksTable.id, active: webhooksTable.isActive }).from(webhooksTable).where(eq(webhooksTable.merchantId, merchantId)).limit(1),
+      db.select({ lastVerifiedAt: sql<Date | null>`max(${callbackLogsTable.createdAt})` }).from(callbackLogsTable)
+        .where(and(eq(callbackLogsTable.merchantId, merchantId), eq(callbackLogsTable.isTest, true), eq(callbackLogsTable.status, "success"), eq(callbackLogsTable.signatureVerified, true))),
+      db.select({ count: count(), totalAmount: sql<string>`coalesce(sum(${transactionsTable.amount}), 0)` }).from(transactionsTable)
+        .where(and(eq(transactionsTable.merchantId, merchantId), eq(transactionsTable.type, "deposit"), eq(transactionsTable.status, "success"))),
+    ]);
+    if (!merchant) { res.status(404).json({ error: "Merchant not found" }); return; }
+    const docs = await db.select({ docType: merchantKycTable.docType, status: merchantKycTable.status }).from(merchantKycTable).where(eq(merchantKycTable.merchantId, merchantId));
+    const plan = planRow ? {
+      assigned: true, status: planRow.mp.status, planId: planRow.mp.planId, planName: planRow.planName,
+      expiresAt: planRow.mp.expiresAt, apiAccess: planRow.apiAccess ?? false, webhookAccess: planRow.webhookAccess ?? false, providerAccess: planRow.providerAccess ?? false,
+    } : null;
+    const result = calculateMerchantReadiness({
+      merchant: { ...merchant, forceApproved: merchant.forceApprovedAt != null, callbackSecretConfigured: Boolean(merchant.callbackSecretConfigured) },
+      contact: { emailVerified: verification?.emailVerified === true, mobileVerified: verification?.mobileVerified === true },
+      kycDocuments: docs, requiredKycDocTypes: ["pan", "gst", "bank_details", "business_proof"],
+      kycVerificationStatus: verification?.verificationStatus ?? null, plan,
+      provider: (() => {
+        const selected = selectReadyProvider(providerRows.map(row => ({ ...row, configured: row.configured != null })));
+        return selected ? { configured: selected.configured, active: selected.active, connectionStatus: selected.connectionStatus, lastTestResult: selected.lastTestResult, lastTestedAt: selected.lastTestedAt, capabilityPayin: selected.capabilityPayin } : null;
+      })(),
+      apiKey: { active: Number(apiKey?.count ?? 0) > 0, count: Number(apiKey?.count ?? 0), lastUsedAt: apiKey?.lastUsedAt ?? null },
+      callback: { configured: Boolean(webhook?.configured) || Boolean(merchant.callbackSecretConfigured), verified: callback?.lastVerifiedAt != null, lastVerifiedAt: callback?.lastVerifiedAt ?? null },
+      historicalDeposits: { count: Number(historical?.count ?? 0), totalAmount: String(historical?.totalAmount ?? "0") },
+      // There is no persisted merchant test-payment/go-live evidence in the current schema.
+      // Keep this explicitly incomplete rather than inferring success from a live transaction.
+      testPayment: { supported: false, successful: false, lastStatus: null, lastAt: null },
+    });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
 });
 
 // GET /api/merchants/:id  (admin, or the merchant viewing their own profile)

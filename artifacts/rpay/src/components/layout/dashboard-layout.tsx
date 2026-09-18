@@ -2,7 +2,8 @@ import { ReactNode, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useHasPermission } from "@/hooks/use-has-permission";
 import { Spinner } from "@/components/ui/spinner";
-import { UserRole, useGetMyPlanUsage, useGetCallbackSecret, useListApiKeys, useGetSecurityComplianceSummary, useGetKycSummary, useListMerchantReportSchedules, useListNotifications, useGetMe, ListNotificationsIsRead, useGetReportDeliveryHealth, useGetReportSchedule, useGetGithubSyncStatus, useGetGithubSyncDivergence } from "@workspace/api-client-react";
+import { UserRole, useGetMyPlanUsage, useGetCallbackSecret, useGetSecurityComplianceSummary, useListMerchantReportSchedules, useListNotifications, useGetMe, ListNotificationsIsRead, useGetReportDeliveryHealth, useGetReportSchedule, useGetGithubSyncStatus, useGetGithubSyncDivergence } from "@workspace/api-client-react";
+import { useMerchantReadiness } from "@/hooks/use-merchant-readiness";
 
 import { SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarHeader, SidebarFooter, useSidebar } from "@/components/ui/sidebar";
 import { format } from "date-fns";
@@ -204,15 +205,9 @@ function SuspensionBanner() {
   );
 }
 
-const CALLBACK_BANNER_SESSION_KEY = "rasokart_callback_banner_dismissed";
-
 function CallbackSecretBanner() {
   const { user } = useAuth();
   const { data: callbackSecret } = useGetCallbackSecret();
-  const { data: apiKeys } = useListApiKeys();
-  const [dismissed, setDismissed] = useState(
-    () => sessionStorage.getItem(CALLBACK_BANNER_SESSION_KEY) === "1"
-  );
 
   const rotationDismissKey = user?.id && callbackSecret?.lastRotatedAt
     ? `rasokart_rotation_dismissed_${user.id}_${callbackSecret.lastRotatedAt}`
@@ -223,9 +218,6 @@ function CallbackSecretBanner() {
     setRotationDismissed(localStorage.getItem(rotationDismissKey) === "1");
   }, [rotationDismissKey]);
 
-  const hasActiveApiKey = Array.isArray(apiKeys) && apiKeys.some(k => k.isActive);
-  const showNotConfigured = !dismissed && callbackSecret != null && !callbackSecret.isSet && hasActiveApiKey;
-
   const secretAgeExceeds90Days = (() => {
     if (!callbackSecret?.isSet) return false;
     const lastRotated = callbackSecret.lastRotatedAt;
@@ -235,50 +227,15 @@ function CallbackSecretBanner() {
   })();
   const showRotationReminder = !rotationDismissed && secretAgeExceeds90Days;
 
-  function handleDismiss() {
-    sessionStorage.setItem(CALLBACK_BANNER_SESSION_KEY, "1");
-    setDismissed(true);
-  }
-
   function handleRotationDismiss() {
     if (rotationDismissKey) localStorage.setItem(rotationDismissKey, "1");
     setRotationDismissed(true);
   }
 
-  if (!showNotConfigured && !showRotationReminder) return null;
+  if (!showRotationReminder) return null;
 
   return (
     <>
-      {showNotConfigured && (
-        <Card className="border-orange-500/40 bg-orange-950/20 rounded-lg mb-6">
-          <CardContent className="py-3 flex items-start gap-3">
-            <ShieldAlert className="w-5 h-5 text-orange-400 shrink-0 mt-0.5" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm text-orange-400 font-medium">Callback Secret Not Configured</p>
-              <p className="text-xs text-orange-400/70">
-                You have an active API key but no callback signing secret. Without it, payment notifications on{" "}
-                <code className="font-mono bg-orange-900/30 px-1 rounded">POST /api/callbacks</code> cannot be verified and may be spoofed.
-              </p>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <Link href="/merchant/webhook">
-                <Button size="sm" variant="outline" className="border-orange-500/30 text-orange-400 hover:bg-orange-500/10 hidden sm:flex">
-                  Set Up Secret
-                </Button>
-              </Link>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-8 w-8 p-0 text-orange-400/60 hover:text-orange-400 hover:bg-orange-500/10"
-                onClick={handleDismiss}
-                aria-label="Dismiss callback secret warning"
-              >
-                <X className="w-4 h-4" />
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
       {showRotationReminder && (
         <Card className="border-amber-500/40 bg-amber-950/20 rounded-lg mb-6">
           <CardContent className="py-3 flex items-start gap-3">
@@ -320,13 +277,9 @@ interface DashboardLayoutProps {
 
 function MerchantSidebar() {
   const [location] = useLocation();
-  const { user } = useAuth();
   const { data: usage } = useGetMyPlanUsage();
-  const merchantId = (user as any)?.merchantId as number | undefined;
-  const { data: kycSummary } = useGetKycSummary(merchantId ?? 0, {
-    query: { enabled: !!merchantId, queryKey: ["/api/kyc/summary", merchantId] },
-  });
-  const isKycVerified = kycSummary?.isVerified === true;
+  const { data: readiness } = useMerchantReadiness();
+  const isKycVerified = readiness?.serverData.kyc.status === "approved";
   const { data: me } = useGetMe();
   const { data: reportSchedule } = useGetReportSchedule({
     query: { refetchInterval: 5 * 60 * 1000, queryKey: ["/api/reports/schedule"] },
@@ -387,11 +340,15 @@ function MerchantSidebar() {
       group: "Overview",
       items: [
         { title: "Dashboard", icon: LayoutDashboard, href: "/merchant/dashboard", locked: false, lockReason: null, badge: null },
-        { title: "My Plan", icon: CreditCard, href: "/merchant/plan", locked: false, lockReason: null, badge: null },
         { title: "Profile", icon: User, href: "/merchant/profile", locked: false, lockReason: null, badge: null },
-        { title: "Verification", icon: BadgeCheck, href: "/merchant/verification", locked: false, lockReason: null, badge: isKycVerified ? "Verified" : null },
-        { title: "Secure Onboarding", icon: ShieldCheck, href: "/merchant/onboarding", locked: false, lockReason: null, badge: null },
-        { title: "KYC Verification", icon: ShieldCheck, href: "/merchant/auto-kyc", locked: false, lockReason: null, badge: null },
+        { title: "KYC & Verification", icon: BadgeCheck, href: "/merchant/verification", locked: false, lockReason: null, badge: isKycVerified ? "Verified" : null },
+      ],
+    },
+    {
+      group: "Plans & Pricing",
+      items: [
+        { title: "My Plan", icon: CreditCard, href: "/merchant/plan", locked: false, lockReason: null, badge: null },
+        { title: "Plans & Pricing", icon: Package, href: "/merchant/products", locked: false, lockReason: null },
       ],
     },
     {
@@ -413,26 +370,18 @@ function MerchantSidebar() {
         { title: "Virtual Accounts", icon: Building2, href: "/merchant/virtual-accounts", locked: false, lockReason: null },
         { title: "Dynamic QR", icon: QrCode, href: "/merchant/qr-codes", locked: false, lockReason: null },
         { title: "Payment Links", icon: Link2, href: "/merchant/payment-links", locked: false, lockReason: null },
-        { title: "Plans & Pricing", icon: Package, href: "/merchant/products", locked: false, lockReason: null },
       ],
     },
     {
-      group: "Support",
+      group: "Payment Providers",
       items: [
-        { title: "Support", icon: Headphones, href: "/merchant/support", locked: false, lockReason: null },
-      ],
-    },
-    {
-      group: "API Services",
-      items: [
-        { title: "UPI Collection API", icon: Code2, href: "/upi-collection-api", locked: false, lockReason: null },
-      ],
-    },
-    {
-      group: "Integration",
-      items: [
-        { title: "RasoKart Services", icon: Layers, href: "/merchant/rasokart-services", locked: false, lockReason: null },
         { title: "Connect", icon: Plug, href: "/merchant/connect", locked: false, lockReason: null },
+        { title: "RasoKart Services", icon: Layers, href: "/merchant/rasokart-services", locked: false, lockReason: null },
+      ],
+    },
+    {
+      group: "Developer & API",
+      items: [
         {
           title: "API Keys", icon: KeyRound, href: "/merchant/api-keys",
           locked: usage !== undefined && !usage.apiAccess,
@@ -444,8 +393,15 @@ function MerchantSidebar() {
           lockReason: "Webhook access is not included in your current plan. Upgrade to unlock."
         },
         { title: "Callbacks", icon: FileText, href: "/merchant/callbacks", locked: false, lockReason: null },
-        { title: "Security Activity", icon: Shield, href: "/merchant/security", locked: false, lockReason: null },
         { title: "API Docs", icon: BookOpen, href: "/merchant/api-docs", locked: false, lockReason: null },
+        { title: "UPI Collection API", icon: Code2, href: "/upi-collection-api", locked: false, lockReason: null },
+        { title: "Security Activity", icon: Shield, href: "/merchant/security", locked: false, lockReason: null },
+      ],
+    },
+    {
+      group: "Support",
+      items: [
+        { title: "Support", icon: Headphones, href: "/merchant/support", locked: false, lockReason: null },
       ],
     },
   ];
