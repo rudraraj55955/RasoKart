@@ -615,6 +615,7 @@ async function runProviderAnalyticsAuditStaleCheck({
   now = Date.now(),
   staleRunWindowMs = DEFAULT_PROVIDER_AUDIT_STALE_WINDOW_MS,
   workflowRuns,
+  existingIssue,
   labelName = PROVIDER_AUDIT_STALE_LABEL,
   marker = PROVIDER_AUDIT_STALE_MARKER,
   titlePrefix = "",
@@ -637,12 +638,14 @@ async function runProviderAnalyticsAuditStaleCheck({
   const runIsRecent =
     latestRunTimestamp !== null &&
     now - latestRunTimestamp <= staleRunWindowMs;
-  const existing = await findSafeguardIssue(
-    github,
-    owner,
-    repo,
-    marker,
-  );
+  const existing =
+    existingIssue ??
+    (await findSafeguardIssue(
+      github,
+      owner,
+      repo,
+      marker,
+    ));
 
   if (runIsRecent) {
     if (!existing || existing.state === "closed") {
@@ -800,6 +803,7 @@ async function runProviderAnalyticsAuditIntegrationCheck({ github, context, core
       core,
       now,
       workflowRuns: [healthyRun],
+      existingIssue: stale.issue,
       labelName,
       marker,
       titlePrefix,
@@ -815,6 +819,7 @@ async function runProviderAnalyticsAuditIntegrationCheck({ github, context, core
       core,
       now,
       workflowRuns: [staleRun],
+      existingIssue: firstResolution.issue,
       labelName,
       marker,
       titlePrefix,
@@ -830,6 +835,7 @@ async function runProviderAnalyticsAuditIntegrationCheck({ github, context, core
       core,
       now,
       workflowRuns: [healthyRun],
+      existingIssue: reopened.issue,
       labelName,
       marker,
       titlePrefix,
