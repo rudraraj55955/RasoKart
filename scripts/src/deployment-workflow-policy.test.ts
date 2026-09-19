@@ -416,7 +416,9 @@ function fakeAlertHarness(
   return { github, context, core, calls };
 }
 
-function providerAuditIntegrationHarness(options: { failVerification?: boolean } = {}) {
+function providerAuditIntegrationHarness(
+  options: { failVerification?: boolean; hideCreatedIssueFromList?: boolean } = {},
+) {
   const calls = {
     workflowRuns: [] as Array<Record<string, unknown>>,
     creates: [] as Array<Record<string, unknown>>,
@@ -436,7 +438,9 @@ function providerAuditIntegrationHarness(options: { failVerification?: boolean }
         },
       },
       issues: {
-        listForRepo: async () => ({ data: issue ? [issue] : [] }),
+        listForRepo: async () => ({
+          data: issue && !options.hideCreatedIssueFromList ? [issue] : [],
+        }),
         getLabel: async () => {
           if (!labelExists) {
             const error = new Error("Not Found") as Error & { status?: number };
@@ -1442,8 +1446,8 @@ test("one failed manual provider alert check stays below the repeated-failure th
   assert.equal(harness.calls.updates.length, 0);
 });
 
-test("manual provider audit integration creates, verifies, reopens, resolves, and cleans up", async () => {
-  const harness = providerAuditIntegrationHarness();
+test("manual provider audit integration survives issue-list propagation lag and cleans up", async () => {
+  const harness = providerAuditIntegrationHarness({ hideCreatedIssueFromList: true });
   const result = await runProviderAnalyticsAuditIntegrationCheck(harness);
 
   assert.deepEqual(
