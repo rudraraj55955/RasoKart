@@ -531,7 +531,6 @@ async function runStaleIntegrationCheck({
     owner,
     repo,
     workflow_id: INTEGRATION_WORKFLOW_FILE,
-    event: "schedule",
     status: "completed",
     per_page: 100,
   });
@@ -546,7 +545,7 @@ async function runStaleIntegrationCheck({
 
   if (runIsRecent) {
     core.info(
-      `The scheduled emergency integration check completed recently (run ${latestRun.id}); no stale-run alert needed.`,
+      `The emergency integration check completed recently (run ${latestRun.id}); no stale-run alert needed.`,
     );
     return {
       created: false,
@@ -579,13 +578,13 @@ async function runStaleIntegrationCheck({
   );
 
   const lastRunText = latestRun
-    ? `The last completed scheduled run was [run ${latestRun.id}](${workflowRunUrl({
+    ? `The last completed integration-check run was [run ${latestRun.id}](${workflowRunUrl({
         context,
         owner,
         repo,
         run: latestRun,
       })}) at ${latestRun.completed_at ?? latestRun.updated_at ?? latestRun.created_at}.`
-    : "No completed scheduled run was found in the workflow history.";
+    : "No completed integration-check run was found in the workflow history.";
   const created = await github.rest.issues.create({
     owner,
     repo,
