@@ -1160,6 +1160,7 @@ test("stale-run monitor ignores normal scheduling delays", async () => {
   const harness = staleRunHarness([
     {
       id: 101,
+      event: "schedule",
       completed_at: "2026-09-15T05:00:00Z",
       html_url: "https://github.test/run/101",
     },
@@ -1202,10 +1203,37 @@ test("stale-run monitor treats recent manual integration checks as fresh", async
   assert.equal(harness.calls.creates.length, 0);
 });
 
+test("stale-run monitor ignores recent push runs when the integration check is overdue", async () => {
+  const harness = staleRunHarness([
+    {
+      id: 104,
+      event: "push",
+      completed_at: "2026-09-16T05:00:00Z",
+      html_url: "https://github.test/run/104",
+    },
+    {
+      id: 102,
+      event: "schedule",
+      completed_at: "2026-09-01T05:00:00Z",
+      html_url: "https://github.test/run/102",
+    },
+  ]);
+  const result = await runStaleIntegrationCheck({
+    ...harness,
+    now: Date.parse("2026-09-16T06:00:00Z"),
+    staleRunWindowMs: 8 * 24 * 60 * 60 * 1000,
+  });
+
+  assert.equal(result.created, true);
+  assert.equal(harness.calls.creates.length, 1);
+  assert.match(String(harness.calls.creates[0]?.body), /stale-run:102/);
+});
+
 test("stale-run monitor creates one owner-assigned alert for an overdue check", async () => {
   const harness = staleRunHarness([
     {
       id: 102,
+      event: "schedule",
       completed_at: "2026-09-01T05:00:00Z",
       html_url: "https://github.test/run/102",
     },
@@ -1241,7 +1269,7 @@ test("stale-run monitor alerts when the scheduled workflow has never completed",
 test("stale-run monitor deduplicates an existing alert for the same overdue run", async () => {
   const marker = `<!-- ${STALE_RUN_LABEL}:102 -->`;
   const harness = staleRunHarness(
-    [{ id: 102, completed_at: "2026-09-01T05:00:00Z" }],
+    [{ id: 102, event: "schedule", completed_at: "2026-09-01T05:00:00Z" }],
     [{ body: `Existing alert\n${marker}` }],
   );
   const result = await runStaleIntegrationCheck({
@@ -1253,7 +1281,7 @@ test("stale-run monitor deduplicates an existing alert for the same overdue run"
   assert.deepEqual(result, {
     created: false,
     reason: "duplicate",
-    run: { id: 102, completed_at: "2026-09-01T05:00:00Z" },
+    run: { id: 102, event: "schedule", completed_at: "2026-09-01T05:00:00Z" },
   });
   assert.equal(harness.calls.creates.length, 0);
 });
