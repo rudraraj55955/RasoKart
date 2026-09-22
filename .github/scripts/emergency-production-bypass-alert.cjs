@@ -535,6 +535,9 @@ async function runStaleIntegrationCheck({
     per_page: 100,
   });
   const runs = (runsResponse.data.workflow_runs ?? [])
+    .filter(
+      (run) => run?.event === "schedule" || run?.event === "workflow_dispatch",
+    )
     .slice()
     .sort((left, right) => (runTimestamp(right) ?? 0) - (runTimestamp(left) ?? 0));
   const latestRun = runs[0];
@@ -564,7 +567,7 @@ async function runStaleIntegrationCheck({
     per_page: 100,
   });
   if (existing.data.some((issue) => issue.body?.includes(marker))) {
-    core.info(`A stale-run alert already exists for scheduled run ${runMarker}.`);
+    core.info(`A stale-run alert already exists for integration-check run ${runMarker}.`);
     return { created: false, reason: "duplicate", run: latestRun };
   }
 
