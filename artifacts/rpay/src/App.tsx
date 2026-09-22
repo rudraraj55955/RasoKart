@@ -16,6 +16,7 @@ import { PageErrorBoundary } from "@/components/error-boundary";
 import { Spinner } from "@/components/ui/spinner";
 import { UserRole } from "@workspace/api-client-react";
 import { useNoIndexSync } from "@/lib/use-no-index";
+import { CANONICAL_LOGIN_ROUTE, LEGACY_MERCHANT_REDIRECTS } from "@/lib/merchant-route-redirects";
 import NotFound from "@/pages/not-found";
 import PayoutSlipPublic from "@/pages/payout-slip-public";
 import PayoutVerifyPublic from "@/pages/payout-verify-public";
@@ -460,6 +461,8 @@ function DocsSubdomainRedirect() {
   return null;
 }
 
+const RedirectToPayouts = () => <Redirect to={LEGACY_MERCHANT_REDIRECTS["/merchant/withdrawals"]} />;
+
 function Router() {
   useNoIndexSync();
   return (
@@ -489,6 +492,7 @@ function Router() {
       <Route path="/merchant/suspended" component={MerchantSuspended} />
 
       {/* Login aliases — smart: redirect if already authenticated for that role */}
+      <Route path="/login"><Redirect to={CANONICAL_LOGIN_ROUTE} /></Route>
       <Route path="/admin/login" component={SmartAdminLogin} />
       <Route path="/merchant/login" component={SmartMerchantLogin} />
       <Route path="/payout-admin/login" component={PayoutAdminLogin} />
@@ -595,7 +599,7 @@ function Router() {
       {/* Merchant Routes */}
       <Route path="/merchant/dashboard"><MerchantRoute component={MerchantDashboard} /></Route>
       <Route path="/merchant/transactions"><MerchantRoute component={MerchantTransactions} /></Route>
-      <Route path="/merchant/withdrawals"><Redirect to="/merchant/payouts" /></Route>
+      <Route path="/merchant/withdrawals"><MerchantRoute component={RedirectToPayouts} /></Route>
       <Route path="/merchant/payouts"><MerchantRoute component={MerchantPayouts} /></Route>
       <Route path="/merchant/api-keys"><MerchantRoute component={MerchantApiKeys} /></Route>
       <Route path="/merchant/webhook"><MerchantRoute component={MerchantWebhook} /></Route>

@@ -850,6 +850,32 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /merchants/me/readiness:
+    get:
+      operationId: getMerchantReadiness
+      tags: [merchants]
+      summary: Get canonical readiness for the authenticated merchant
+      description: Server-derived readiness state. The merchant is resolved from the authenticated session; no merchant ID is accepted.
+      responses:
+        "200":
+          description: Merchant readiness
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MerchantReadiness"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Merchant access only
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /merchants/{id}:
     get:
       operationId: getMerchant
@@ -13265,6 +13291,118 @@ components:
         createdAt:
           type: string
 
+    MerchantReadiness:
+      type: object
+      description: Canonical server-derived readiness state. Secrets, credentials, and UTRs are never returned.
+      required: [account, contact, kyc, plan, provider, apiKey, callback, collection, testPayment, goLive]
+      properties:
+        account:
+          type: object
+          additionalProperties: false
+          required: [status, profileComplete]
+          properties:
+            status: { type: string }
+            profileComplete: { type: boolean }
+        contact:
+          type: object
+          additionalProperties: false
+          required: [emailVerified, mobileVerified, complete]
+          properties:
+            emailVerified: { type: boolean }
+            mobileVerified: { type: boolean }
+            complete: { type: boolean }
+        kyc:
+          type: object
+          additionalProperties: false
+          required: [status, documents]
+          properties:
+            status: { type: string, enum: [approved, rejected, pending, not_started] }
+            documents:
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                required: [docType, status]
+                properties:
+                  docType: { type: string }
+                  status: { type: string }
+        plan:
+          type: object
+          additionalProperties: false
+          required: [assigned, status, planId, planName, expiresAt, isExpired, apiAccess, webhookAccess, providerAccess]
+          properties:
+            assigned: { type: boolean }
+            status: { type: ["string", "null"] }
+            planId: { type: ["integer", "null"] }
+            planName: { type: ["string", "null"] }
+            expiresAt: { type: ["string", "null"], format: date-time }
+            isExpired: { type: boolean }
+            apiAccess: { type: boolean }
+            webhookAccess: { type: boolean }
+            providerAccess: { type: boolean }
+        provider:
+          type: object
+          additionalProperties: false
+          required: [configured, active, connectionStatus, lastTestResult, lastTestedAt, capabilityPayin]
+          properties:
+            configured: { type: boolean }
+            active: { type: boolean }
+            connectionStatus: { type: ["string", "null"] }
+            lastTestResult: { type: ["string", "null"] }
+            lastTestedAt: { type: ["string", "null"], format: date-time }
+            capabilityPayin: { type: boolean }
+        apiKey:
+          type: object
+          additionalProperties: false
+          required: [active, count, lastUsedAt]
+          properties:
+            active: { type: boolean }
+            count: { type: integer }
+            lastUsedAt: { type: ["string", "null"], format: date-time }
+        callback:
+          type: object
+          additionalProperties: false
+          required: [configured, verificationStatus, lastVerifiedAt, required, apiKeyRequired]
+          properties:
+            configured: { type: boolean }
+            verificationStatus: { type: string, enum: [verified, unverified, not_configured] }
+            lastVerifiedAt: { type: ["string", "null"], format: date-time }
+            required: { type: boolean }
+            apiKeyRequired: { type: boolean }
+        collection:
+          type: object
+          additionalProperties: false
+          required: [enabled, live, state, historicalDeposits]
+          properties:
+            enabled: { type: boolean }
+            live: { type: boolean }
+            state: { type: string, enum: [live, paused_historical_only, paused] }
+            historicalDeposits:
+              type: object
+              additionalProperties: false
+              required: [count, totalAmount]
+              properties:
+                count: { type: integer }
+                totalAmount: { type: [string, number] }
+        testPayment:
+          type: object
+          additionalProperties: false
+          required: [supported, status, lastStatus, lastAt]
+          properties:
+            supported: { type: boolean }
+            status: { type: string, enum: [successful, incomplete, unsupported] }
+            lastStatus: { type: ["string", "null"] }
+            lastAt: { type: ["string", "null"], format: date-time }
+        goLive:
+          type: object
+          additionalProperties: false
+          required: [eligible, blockers, nextStep, checkedAt]
+          properties:
+            eligible: { type: boolean }
+            blockers: { type: array, items: { type: string } }
+            nextStep: { type: ["string", "null"] }
+            checkedAt: { type: string, format: date-time }
+
     Merchant:
       type: object
       required: [id, businessName, contactName, email, phone, status, createdAt]
@@ -15210,7 +15348,7 @@ components:
 
     DashboardStats:
       type: object
-      required: [totalDeposits, totalWithdrawals, pendingTransactions, successTransactions, failedTransactions, totalMerchants, pendingMerchants, totalBalance, todayDeposits, todayDepositAmount, qrCount, vaCount]
+      required: [totalDeposits, totalWithdrawals, pendingTransactions, successTransactions, failedTransactions, totalMerchants, pendingMerchants, totalBalance, todayDeposits, todayDepositAmount, todayPayouts, todayPayoutAmount, qrCount, vaCount]
       properties:
         totalDeposits:
           type: number
@@ -15231,6 +15369,10 @@ components:
         todayDeposits:
           type: integer
         todayDepositAmount:
+          type: number
+        todayPayouts:
+          type: integer
+        todayPayoutAmount:
           type: number
         qrCount:
           type: integer
@@ -15271,13 +15413,17 @@ components:
 
     ChartDataPoint:
       type: object
-      required: [date, deposits, withdrawals]
+      required: [date, deposits, withdrawals, failed, refunded]
       properties:
         date:
           type: string
         deposits:
           type: number
         withdrawals:
+          type: number
+        failed:
+          type: number
+        refunded:
           type: number
 
     MerchantProduct:

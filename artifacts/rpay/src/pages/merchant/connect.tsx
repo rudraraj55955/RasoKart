@@ -44,6 +44,10 @@ import {
   Lock, AlertCircle, History, UserCog, User,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  trackProviderConnectionSucceeded,
+  trackProviderTestSucceeded,
+} from "@/lib/analytics";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -1588,6 +1592,8 @@ function RazorpayPortalCard({
         password:    keySecret.trim(),
       });
       if (result.status === "CONNECTED") {
+        trackProviderTestSucceeded("razorpay", "api_key");
+        trackProviderConnectionSucceeded("razorpay", "api_key");
         toast.success("Razorpay account connected. Transactions will sync shortly.");
         // Wipe from state immediately after successful connect
         setKeyId("");
@@ -2008,6 +2014,7 @@ function PaytmPortalCard({
       qc.invalidateQueries({ queryKey: PORTAL_SESSIONS_QUERY_KEY });
 
       if (body.status === "CONNECTED") {
+        trackProviderConnectionSucceeded("paytm_merchant", "otp");
         setUiStep("connected");
         toast.success("Paytm Business account connected. Syncing transactions…");
         // Auto-sync
@@ -2057,6 +2064,7 @@ function PaytmPortalCard({
       qc.invalidateQueries({ queryKey: PORTAL_SESSIONS_QUERY_KEY });
 
       if (body.status === "CONNECTED") {
+        trackProviderConnectionSucceeded("paytm_merchant", "mpin");
         setUiStep("connected");
         toast.success("Paytm Business account connected. Syncing transactions…");
         setTimeout(() => handleSync(), 1500);
@@ -2107,6 +2115,7 @@ function PaytmPortalCard({
       qc.invalidateQueries({ queryKey: PORTAL_SESSIONS_QUERY_KEY });
 
       if (body.status === "CONNECTED") {
+        trackProviderConnectionSucceeded("paytm_merchant", "password");
         setUiStep("connected");
         toast.success("Paytm Business account connected. Syncing transactions…");
         setTimeout(() => handleSync(), 1500);
@@ -2192,6 +2201,7 @@ function PaytmPortalCard({
       qc.invalidateQueries({ queryKey: PORTAL_SESSIONS_QUERY_KEY });
 
       if (body.status === "CONNECTED") {
+        trackProviderConnectionSucceeded("paytm_merchant", "session_reconnect");
         setUiStep("connected");
         toast.success("Session reconnected successfully.");
       } else if (body.status === "AWAITING_OTP") {
@@ -2936,6 +2946,7 @@ function PineLabsOnePortalCard({
       qc.invalidateQueries({ queryKey: PORTAL_SESSIONS_QUERY_KEY });
 
       if (body.status === "CONNECTED") {
+        trackProviderConnectionSucceeded("pinelabs_one", "password");
         setUiStep("connected");
         toast.success("Pine Labs ONE account connected. Syncing transactions…");
         setTimeout(() => handleSync(), 1500);
@@ -2982,6 +2993,7 @@ function PineLabsOnePortalCard({
       qc.invalidateQueries({ queryKey: PORTAL_SESSIONS_QUERY_KEY });
 
       if (body.status === "CONNECTED") {
+        trackProviderConnectionSucceeded("pinelabs_one", "mpin");
         setUiStep("connected");
         toast.success("Pine Labs ONE account connected. Syncing transactions…");
         setTimeout(() => handleSync(), 1500);
@@ -3117,6 +3129,7 @@ function PineLabsOnePortalCard({
       qc.invalidateQueries({ queryKey: PORTAL_SESSIONS_QUERY_KEY });
 
       if (body.status === "CONNECTED") {
+        trackProviderConnectionSucceeded("pinelabs_one", "otp");
         setUiStep("connected");
         toast.success("Pine Labs ONE account connected. Syncing transactions…");
         setTimeout(() => handleSync(), 1500);
@@ -3190,6 +3203,7 @@ function PineLabsOnePortalCard({
       qc.invalidateQueries({ queryKey: PORTAL_SESSIONS_QUERY_KEY });
 
       if (body.status === "CONNECTED") {
+        trackProviderConnectionSucceeded("pinelabs_one", "session_reconnect");
         setUiStep("connected");
         toast.success("Session reconnected successfully.");
       } else if (body.status === "AWAITING_OTP") {

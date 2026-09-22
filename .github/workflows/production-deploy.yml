@@ -322,6 +322,29 @@ jobs:
       - name: Verify frontend health after deploy
         run: curl -fsS https://rasokart.com/ > /dev/null
 
+      - name: Setup Node 24 for post-deploy analytics smoke
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install analytics smoke dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium for analytics smoke
+        run: pnpm --filter @workspace/scripts exec playwright install --with-deps chromium
+
+      - name: Verify production analytics accepts events
+        run: pnpm --filter @workspace/scripts run smoke:production-analytics
+        env:
+          PRODUCTION_BASE_URL: https://rasokart.com
+          UMAMI_API_KEY: ${{ secrets.UMAMI_API_KEY }}
+          UMAMI_PROVIDER_REPORT_SEGMENT_ID: ${{ secrets.UMAMI_PROVIDER_REPORT_SEGMENT_ID }}
+
       - name: Cleanup SSH key
         if: always()
         run: rm -f ~/.ssh/deploy_key
@@ -464,6 +487,29 @@ jobs:
             exit 1
           fi
           echo "SHA assertion passed: $DEPLOYED_SHA is live"
+
+      - name: Setup Node 24 for post-deploy analytics smoke
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install analytics smoke dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium for analytics smoke
+        run: pnpm --filter @workspace/scripts exec playwright install --with-deps chromium
+
+      - name: Verify production analytics accepts events
+        run: pnpm --filter @workspace/scripts run smoke:production-analytics
+        env:
+          PRODUCTION_BASE_URL: https://rasokart.com
+          UMAMI_API_KEY: ${{ secrets.UMAMI_API_KEY }}
+          UMAMI_PROVIDER_REPORT_SEGMENT_ID: ${{ secrets.UMAMI_PROVIDER_REPORT_SEGMENT_ID }}
 
       - name: Cleanup SSH key
         if: always()
@@ -609,6 +655,29 @@ jobs:
             exit 1
           fi
           echo "SHA assertion passed: $DEPLOYED_SHA is live"
+
+      - name: Setup Node 24 for post-deploy analytics smoke
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install analytics smoke dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium for analytics smoke
+        run: pnpm --filter @workspace/scripts exec playwright install --with-deps chromium
+
+      - name: Verify production analytics accepts events
+        run: pnpm --filter @workspace/scripts run smoke:production-analytics
+        env:
+          PRODUCTION_BASE_URL: https://rasokart.com
+          UMAMI_API_KEY: ${{ secrets.UMAMI_API_KEY }}
+          UMAMI_PROVIDER_REPORT_SEGMENT_ID: ${{ secrets.UMAMI_PROVIDER_REPORT_SEGMENT_ID }}
 
       - name: Cleanup SSH key
         if: always()

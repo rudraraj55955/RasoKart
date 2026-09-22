@@ -7,10 +7,15 @@ import alertModule from "../../.github/scripts/emergency-production-bypass-alert
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const WORKFLOWS_DIR = join(ROOT, ".github/workflows");
+const PRODUCTION_ANALYTICS_SPEC = join(ROOT, "scripts/e2e/production-analytics-smoke.spec.ts");
+const SCRIPTS_PACKAGE = join(ROOT, "scripts/package.json");
 const GUARDED_WORKFLOW = "production-deploy.yml";
 const BYPASS_ALERT_WORKFLOW = "emergency-production-bypass-alert.yml";
 const BYPASS_ALERT_MONITOR_WORKFLOW = "emergency-production-bypass-alert-monitor.yml";
 const BRANCH_PROTECTION_AUDIT_WORKFLOW = "branch-protection-audit.yml";
+const PROVIDER_ANALYTICS_REPORT_AUDIT_WORKFLOW = "provider-analytics-report-audit.yml";
+const PROVIDER_ANALYTICS_REPORT_AUDIT_MONITOR_WORKFLOW =
+  "provider-analytics-report-audit-monitor.yml";
 const DEPLOY_JOBS = [
   "auto_frontend_deploy",
   "deploy_full_auto",
@@ -19,11 +24,21 @@ const DEPLOY_JOBS = [
 
 const {
   LABEL,
+  PROVIDER_AUDIT_STALE_LABEL,
+  PROVIDER_AUDIT_STALE_MARKER,
+  PROVIDER_INTEGRATION_CHECK_REMINDER_LABEL,
+  PROVIDER_INTEGRATION_CHECK_REMINDER_MARKER,
+  PROVIDER_INTEGRATION_CHECK_FAILURE_LABEL,
+  PROVIDER_INTEGRATION_CHECK_FAILURE_MARKER,
   STALE_RUN_LABEL,
   SAFEGUARD_LABEL,
   SAFEGUARD_MARKER,
   runEmergencyBypassAlert,
   runIntegrationCheck,
+  runProviderAnalyticsAuditIntegrationCheck,
+  runProviderAnalyticsAuditIntegrationCheckFailureAlert,
+  runProviderAnalyticsAuditIntegrationCheckReminder,
+  runProviderAnalyticsAuditStaleCheck,
   runProductionSafeguardAlert,
   runSafeguardIntegrationCheck,
   runStaleIntegrationCheck,
@@ -178,6 +193,91 @@ test("the guarded validation job runs this policy check before deployment", () =
   assert.match(validate, /test:deployment-workflow-policy/);
 });
 
+test("every production deployment verifies analytics after the site is available", () => {
+  const source = readWorkflow(GUARDED_WORKFLOW);
+
+  for (const jobName of DEPLOY_JOBS) {
+    const deploy = jobBlock(source, jobName);
+    const availabilityCheck = jobName === "auto_frontend_deploy"
+      ? deploy.indexOf("Verify frontend health after deploy")
+      : deploy.indexOf("Assert deployed commit SHA matches pushed commit");
+    const analyticsSmoke = deploy.indexOf("smoke:production-analytics");
+
+    assert.notEqual(availabilityCheck, -1, `${jobName} must verify the deployed site is available`);
+    assert.notEqual(analyticsSmoke, -1, `${jobName} must run the production analytics smoke`);
+    assert.ok(
+      analyticsSmoke > availabilityCheck,
+      `${jobName} must run the analytics smoke after availability verification`,
+    );
+  }
+});
+
+test("provider analytics reports are audited on a schedule without write access", () => {
+  const source = readWorkflow(PROVIDER_ANALYTICS_REPORT_AUDIT_WORKFLOW);
+  const trigger = topLevelSection(source, "on");
+  const verify = jobBlock(source, "verify");
+
+  assert.match(trigger, /^\s{2}schedule:/m, "provider report audit must run on a schedule");
+  assert.match(verify, /smoke:production-analytics:dashboard/);
+  assert.match(verify, /UMAMI_API_KEY:\s*\$\{\{\s*secrets\.UMAMI_API_KEY\s*\}\}/);
+  assert.match(
+    verify,
+    /UMAMI_PROVIDER_REPORT_SEGMENT_ID:\s*\$\{\{\s*secrets\.UMAMI_PROVIDER_REPORT_SEGMENT_ID\s*\}\}/,
+  );
+  assert.doesNotMatch(source, /contents:\s*write/);
+  assert.doesNotMatch(source, /\bgit\s+push\b/);
+});
+
+test("provider analytics audit stale-run monitor is independent and has metadata-only access", () => {
+  const source = readWorkflow(PROVIDER_ANALYTICS_REPORT_AUDIT_MONITOR_WORKFLOW);
+  const trigger = topLevelSection(source, "on");
+  const monitor = jobBlock(source, "monitor");
+
+  assert.match(trigger, /^\s{2}schedule:/m);
+  assert.match(source, /actions:\s*read/);
+  assert.match(source, /issues:\s*write/);
+  assert.match(monitor, /runProviderAnalyticsAuditStaleCheck/);
+  assert.match(monitor, /runProviderAnalyticsAuditIntegrationCheck/);
+  assert.match(monitor, /runProviderAnalyticsAuditIntegrationCheckReminder/);
+  assert.match(source, /runProviderAnalyticsAuditIntegrationCheckFailureAlert/);
+  assert.match(source, /needs\.monitor\.result/);
+  assert.match(
+    jobBlock(source, "integration_check_failure_alert"),
+    /github\.event_name == 'workflow_dispatch'/,
+  );
+  assert.match(source, /run-name:.*Provider alert integration check/);
+  assert.match(trigger, /integration_check:/);
+  assert.match(monitor, /context\.eventName === "workflow_dispatch"/);
+  assert.doesNotMatch(source, /UMAMI_/);
+  assert.doesNotMatch(source, /contents:\s*write/);
+  assert.doesNotMatch(source, /\bgit\s+push\b/);
+  assert.doesNotMatch(source, /\bdeploy(?:ment)?\b/i);
+});
+
+test("the dashboard-only analytics command emits marked events before verifying reports", () => {
+  const packageSource = readFileSync(SCRIPTS_PACKAGE, "utf8");
+  const specSource = readFileSync(PRODUCTION_ANALYTICS_SPEC, "utf8");
+  const dashboardTestTitle =
+    "automated dashboard verification excludes smoke events from provider reports";
+  const dashboardTestStart = specSource.indexOf(`test("${dashboardTestTitle}"`);
+  const eventEmission = specSource.indexOf("await sendAndVerify(page, event)", dashboardTestStart);
+  const dashboardVerification = specSource.indexOf(
+    "await verifyEventsInDashboard(",
+    dashboardTestStart,
+  );
+
+  assert.match(
+    packageSource,
+    /smoke:production-analytics:dashboard[^\n]+--grep \\"automated dashboard verification excludes smoke events\\"/,
+    "dashboard command must select the self-contained report audit test",
+  );
+  assert.notEqual(dashboardTestStart, -1, "dashboard audit test must exist");
+  assert.ok(
+    eventEmission > dashboardTestStart && eventEmission < dashboardVerification,
+    "dashboard audit must emit its own marked events before waiting for them and checking reports",
+  );
+});
+
 test("the required validation check fails rather than skips when classification fails", () => {
   const source = readWorkflow(GUARDED_WORKFLOW);
   const validate = jobBlock(source, "validate");
@@ -314,6 +414,89 @@ function fakeAlertHarness(
   };
   const core = { info: () => undefined };
   return { github, context, core, calls };
+}
+
+function providerAuditIntegrationHarness(
+  options: { failVerification?: boolean; hideCreatedIssueFromList?: boolean } = {},
+) {
+  const calls = {
+    workflowRuns: [] as Array<Record<string, unknown>>,
+    creates: [] as Array<Record<string, unknown>>,
+    updates: [] as Array<Record<string, unknown>>,
+    labelCreates: [] as Array<Record<string, unknown>>,
+    labelDeletes: [] as Array<Record<string, unknown>>,
+  };
+  let labelExists = false;
+  let issue: Record<string, unknown> | undefined;
+  let failVerification = options.failVerification ?? false;
+  const github = {
+    rest: {
+      actions: {
+        listWorkflowRuns: async (request: Record<string, unknown>) => {
+          calls.workflowRuns.push(request);
+          throw new Error("integration check must not read workflow history");
+        },
+      },
+      issues: {
+        listForRepo: async () => ({
+          data: issue && !options.hideCreatedIssueFromList ? [issue] : [],
+        }),
+        getLabel: async () => {
+          if (!labelExists) {
+            const error = new Error("Not Found") as Error & { status?: number };
+            error.status = 404;
+            throw error;
+          }
+          return { data: { name: "temporary-label" } };
+        },
+        createLabel: async (request: Record<string, unknown>) => {
+          labelExists = true;
+          calls.labelCreates.push(request);
+          return { data: { name: request.name } };
+        },
+        deleteLabel: async (request: Record<string, unknown>) => {
+          labelExists = false;
+          calls.labelDeletes.push(request);
+        },
+        create: async (request: Record<string, unknown>) => {
+          issue = { number: 92, ...request };
+          calls.creates.push(request);
+          return { data: issue };
+        },
+        update: async (request: Record<string, unknown>) => {
+          issue = { ...issue, ...request };
+          calls.updates.push(request);
+          return { data: issue };
+        },
+        get: async () => {
+          if (failVerification) {
+            failVerification = false;
+            throw new Error("simulated provider alert verification failure");
+          }
+          return {
+            data: issue
+              ? {
+                  ...issue,
+                  assignees: (issue.assignees as string[]).map((login) => ({ login })),
+                }
+              : issue,
+          };
+        },
+      },
+    },
+  };
+  return {
+    github,
+    context: {
+      repo: { owner: "repo-owner", repo: "repo-name" },
+      serverUrl: "https://github.test",
+      runId: 654,
+    },
+    core: { info: () => undefined },
+    calls,
+    getIssue: () => issue,
+    hasLabel: () => labelExists,
+  };
 }
 
 function fakeSafeguardHarness(
@@ -928,6 +1111,51 @@ function staleRunHarness(runs: unknown[], existingIssues: unknown[] = []) {
   return { github, context, core, calls };
 }
 
+function providerAuditStaleHarness(runs: unknown[], existingIssue?: Record<string, unknown>) {
+  const calls = {
+    workflowRuns: [] as Array<Record<string, unknown>>,
+    creates: [] as Array<Record<string, unknown>>,
+    updates: [] as Array<Record<string, unknown>>,
+  };
+  const github = {
+    rest: {
+      actions: {
+        listWorkflowRuns: async (request: Record<string, unknown>) => {
+          calls.workflowRuns.push(request);
+          return { data: { workflow_runs: runs } };
+        },
+      },
+      issues: {
+        listForRepo: async () => ({ data: existingIssue ? [existingIssue] : [] }),
+        getLabel: async () => ({ data: { name: PROVIDER_AUDIT_STALE_LABEL } }),
+        createLabel: async () => ({ data: { name: PROVIDER_AUDIT_STALE_LABEL } }),
+        create: async (request: Record<string, unknown>) => {
+          calls.creates.push(request);
+          return { data: { number: 91, ...request } };
+        },
+        update: async (request: Record<string, unknown>) => {
+          calls.updates.push(request);
+          return { data: { number: 91, ...request } };
+        },
+      },
+    },
+  };
+  const context = {
+    repo: { owner: "repo-owner", repo: "repo-name" },
+    serverUrl: "https://github.test",
+  };
+  const core = { info: () => undefined };
+  return { github, context, core, calls };
+}
+
+function providerIntegrationReminderHarness(
+  runs: unknown[],
+  existingIssue?: Record<string, unknown>,
+) {
+  const harness = providerAuditStaleHarness(runs, existingIssue);
+  return harness;
+}
+
 test("stale-run monitor ignores normal scheduling delays", async () => {
   const harness = staleRunHarness([
     {
@@ -1009,6 +1237,250 @@ test("stale-run monitor deduplicates an existing alert for the same overdue run"
     run: { id: 102, completed_at: "2026-09-01T05:00:00Z" },
   });
   assert.equal(harness.calls.creates.length, 0);
+});
+
+test("provider audit monitor creates one owner alert when completed runs are overdue", async () => {
+  const harness = providerAuditStaleHarness([
+    {
+      id: 201,
+      conclusion: "failure",
+      completed_at: "2026-09-01T04:30:00Z",
+      html_url: "https://github.test/run/201",
+    },
+  ]);
+  const result = await runProviderAnalyticsAuditStaleCheck({
+    ...harness,
+    now: Date.parse("2026-09-16T06:00:00Z"),
+  });
+
+  assert.equal(result.created, true);
+  assert.deepEqual(harness.calls.workflowRuns[0], {
+    owner: "repo-owner",
+    repo: "repo-name",
+    workflow_id: "provider-analytics-report-audit.yml",
+    status: "completed",
+    per_page: 100,
+  });
+  assert.deepEqual(harness.calls.creates[0]?.assignees, ["repo-owner"]);
+  assert.deepEqual(harness.calls.creates[0]?.labels, [PROVIDER_AUDIT_STALE_LABEL]);
+  assert.match(String(harness.calls.creates[0]?.body), /successful or failed audit run/);
+  assert.match(String(harness.calls.creates[0]?.body), /cannot deploy, push code/);
+  assert.doesNotMatch(String(harness.calls.creates[0]?.body), /UMAMI_/);
+});
+
+test("provider audit monitor reuses its alert while stale and resolves it after a completed run", async () => {
+  const staleIssue = {
+    number: 91,
+    state: "open",
+    body: PROVIDER_AUDIT_STALE_MARKER,
+  };
+  const staleHarness = providerAuditStaleHarness(
+    [{ id: 201, completed_at: "2026-09-01T04:30:00Z" }],
+    staleIssue,
+  );
+  const staleResult = await runProviderAnalyticsAuditStaleCheck({
+    ...staleHarness,
+    now: Date.parse("2026-09-16T06:00:00Z"),
+  });
+
+  assert.equal(staleResult.created, false);
+  assert.equal(staleResult.updated, true);
+  assert.equal(staleHarness.calls.creates.length, 0);
+  assert.equal(staleHarness.calls.updates[0]?.issue_number, 91);
+  assert.equal(staleHarness.calls.updates[0]?.state, "open");
+
+  const healthyHarness = providerAuditStaleHarness(
+    [{ id: 202, conclusion: "success", completed_at: "2026-09-15T04:30:00Z" }],
+    staleIssue,
+  );
+  const healthyResult = await runProviderAnalyticsAuditStaleCheck({
+    ...healthyHarness,
+    now: Date.parse("2026-09-16T06:00:00Z"),
+  });
+
+  assert.equal(healthyResult.resolved, true);
+  assert.equal(healthyHarness.calls.updates[0]?.issue_number, 91);
+  assert.equal(healthyHarness.calls.updates[0]?.state, "closed");
+  assert.match(String(healthyHarness.calls.updates[0]?.body), /audit resumed/);
+});
+
+test("provider alert integration reminder opens after 30 days without a successful manual check", async () => {
+  const harness = providerIntegrationReminderHarness([
+    {
+      id: 301,
+      conclusion: "success",
+      display_title: "Provider alert integration check",
+      completed_at: "2026-08-01T04:30:00Z",
+    },
+    {
+      id: 302,
+      conclusion: "success",
+      display_title: "Provider analytics audit monitor",
+      completed_at: "2026-09-15T04:30:00Z",
+    },
+  ]);
+  const result = await runProviderAnalyticsAuditIntegrationCheckReminder({
+    ...harness,
+    now: Date.parse("2026-09-16T06:00:00Z"),
+  });
+
+  assert.equal(result.created, true);
+  assert.deepEqual(harness.calls.workflowRuns[0], {
+    owner: "repo-owner",
+    repo: "repo-name",
+    workflow_id: "provider-analytics-report-audit-monitor.yml",
+    event: "workflow_dispatch",
+    status: "completed",
+    per_page: 100,
+  });
+  assert.deepEqual(harness.calls.creates[0]?.assignees, ["repo-owner"]);
+  assert.deepEqual(
+    harness.calls.creates[0]?.labels,
+    [PROVIDER_INTEGRATION_CHECK_REMINDER_LABEL],
+  );
+  assert.match(
+    String(harness.calls.creates[0]?.body),
+    new RegExp(PROVIDER_INTEGRATION_CHECK_REMINDER_MARKER),
+  );
+  assert.match(String(harness.calls.creates[0]?.body), /cannot deploy, push code/);
+  assert.doesNotMatch(String(harness.calls.creates[0]?.body), /UMAMI_/);
+});
+
+test("provider alert integration reminder resolves after a recent successful manual check", async () => {
+  const existingIssue = {
+    number: 91,
+    state: "open",
+    body: PROVIDER_INTEGRATION_CHECK_REMINDER_MARKER,
+  };
+  const harness = providerIntegrationReminderHarness(
+    [{
+      id: 303,
+      conclusion: "success",
+      display_title: "Provider alert integration check",
+      completed_at: "2026-09-15T04:30:00Z",
+    }],
+    existingIssue,
+  );
+  const result = await runProviderAnalyticsAuditIntegrationCheckReminder({
+    ...harness,
+    now: Date.parse("2026-09-16T06:00:00Z"),
+  });
+
+  assert.equal(result.resolved, true);
+  assert.equal(harness.calls.creates.length, 0);
+  assert.equal(harness.calls.updates[0]?.issue_number, 91);
+  assert.equal(harness.calls.updates[0]?.state, "closed");
+});
+
+test("repeated failed manual provider alert checks create and update an owner alert", async () => {
+  const priorFailure = {
+    id: 304,
+    conclusion: "failure",
+    display_title: "Provider alert integration check",
+    completed_at: "2026-09-15T04:30:00Z",
+  };
+  const harness = providerIntegrationReminderHarness([priorFailure]);
+  const first = await runProviderAnalyticsAuditIntegrationCheckFailureAlert({
+    ...harness,
+    currentConclusion: "failure",
+  });
+
+  assert.equal(first.created, true);
+  assert.equal(first.consecutiveFailures, 2);
+  assert.deepEqual(harness.calls.creates[0]?.assignees, ["repo-owner"]);
+  assert.deepEqual(harness.calls.creates[0]?.labels, [PROVIDER_INTEGRATION_CHECK_FAILURE_LABEL]);
+  assert.match(String(harness.calls.creates[0]?.body), new RegExp(PROVIDER_INTEGRATION_CHECK_FAILURE_MARKER));
+  assert.match(String(harness.calls.creates[0]?.body), /cannot deploy, push code/);
+
+  const existingIssue = {
+    number: 91,
+    state: "open",
+    body: PROVIDER_INTEGRATION_CHECK_FAILURE_MARKER,
+  };
+  const updateHarness = providerIntegrationReminderHarness(
+    [
+      priorFailure,
+      {
+        ...priorFailure,
+        id: 305,
+        completed_at: "2026-09-14T04:30:00Z",
+      },
+    ],
+    existingIssue,
+  );
+  const updated = await runProviderAnalyticsAuditIntegrationCheckFailureAlert({
+    ...updateHarness,
+    currentConclusion: "failure",
+  });
+  assert.equal(updated.updated, true);
+  assert.equal(updated.consecutiveFailures, 3);
+  assert.equal(updateHarness.calls.updates[0]?.state, "open");
+});
+
+test("a successful manual provider alert check resolves the repeated failure alert", async () => {
+  const existingIssue = {
+    number: 91,
+    state: "open",
+    body: PROVIDER_INTEGRATION_CHECK_FAILURE_MARKER,
+  };
+  const harness = providerIntegrationReminderHarness([], existingIssue);
+  const result = await runProviderAnalyticsAuditIntegrationCheckFailureAlert({
+    ...harness,
+    currentConclusion: "success",
+  });
+
+  assert.equal(result.resolved, true);
+  assert.equal(harness.calls.updates[0]?.state, "closed");
+  assert.deepEqual(harness.calls.updates[0]?.assignees, ["repo-owner"]);
+});
+
+test("one failed manual provider alert check stays below the repeated-failure threshold", async () => {
+  const harness = providerIntegrationReminderHarness([]);
+  const result = await runProviderAnalyticsAuditIntegrationCheckFailureAlert({
+    ...harness,
+    currentConclusion: "failure",
+  });
+
+  assert.equal(result.reason, "below_threshold");
+  assert.equal(harness.calls.creates.length, 0);
+  assert.equal(harness.calls.updates.length, 0);
+});
+
+test("manual provider audit integration survives issue-list propagation lag and cleans up", async () => {
+  const harness = providerAuditIntegrationHarness({ hideCreatedIssueFromList: true });
+  const result = await runProviderAnalyticsAuditIntegrationCheck(harness);
+
+  assert.deepEqual(
+    { created: result.created, reopened: result.reopened, resolved: result.resolved },
+    { created: true, reopened: true, resolved: true },
+  );
+  assert.equal(harness.calls.workflowRuns.length, 0);
+  assert.equal(harness.calls.creates.length, 1);
+  assert.match(String(harness.calls.creates[0]?.title), /^\[INTEGRATION CHECK\]/);
+  assert.deepEqual(harness.calls.creates[0]?.assignees, ["repo-owner"]);
+  assert.deepEqual(harness.calls.creates[0]?.labels, ["provider-audit-stale-integration-654"]);
+  assert.deepEqual(
+    harness.calls.updates.map((request) => request.state),
+    ["closed", "open", "closed"],
+  );
+  assert.equal(harness.calls.labelCreates.length, 1);
+  assert.equal(harness.calls.labelDeletes.length, 1);
+  assert.equal(harness.hasLabel(), false);
+  assert.equal(harness.getIssue()?.state, "closed");
+});
+
+test("manual provider audit integration cleans up its issue and label after verification failure", async () => {
+  const harness = providerAuditIntegrationHarness({ failVerification: true });
+
+  await assert.rejects(
+    runProviderAnalyticsAuditIntegrationCheck(harness),
+    /simulated provider alert verification failure/,
+  );
+  assert.equal(harness.calls.workflowRuns.length, 0);
+  assert.equal(harness.calls.updates.at(-1)?.state, "closed");
+  assert.equal(harness.calls.labelDeletes.length, 1);
+  assert.equal(harness.hasLabel(), false);
+  assert.equal(harness.getIssue()?.state, "closed");
 });
 
 test("branch and deployment safeguards are audited on a schedule and on demand", () => {
