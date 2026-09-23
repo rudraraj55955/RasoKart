@@ -2,11 +2,11 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
 import { setAuthTokenGetter } from "@workspace/api-client-react";
-import { TOKEN_KEY } from "./lib/auth";
+import { getToken } from "./lib/auth";
 import { ErrorBoundary } from "./components/error-boundary";
 
-// Wire up JWT auth token from localStorage for all API calls
-setAuthTokenGetter(() => localStorage.getItem(TOKEN_KEY));
+// Wire up JWT auth token using the same local/session fallback as route guards
+setAuthTokenGetter(() => getToken());
 
 // Force dark mode always
 document.documentElement.classList.add("dark");
