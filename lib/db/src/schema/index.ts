@@ -108,3 +108,5 @@ export * from "./portalTransactions";
 export * from "./portalWalletCredits";
 export * from "./merchantPortalSessions";
 export * from "./merchantPortalTransactions";
+
+export * from "./whiteLabelTenants";
