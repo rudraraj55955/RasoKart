@@ -123,6 +123,7 @@ import AdminReconciliation from "@/pages/admin/reconciliation";
 import AdminPaymentLinks from "@/pages/admin/payment-links";
 import AdminSettings from "@/pages/admin/settings";
 import AdminCompanyBranding from "@/pages/admin/company-branding";
+import AdminWhiteLabels from "@/pages/admin/white-labels";
 import AdminOtpSettings from "@/pages/admin/otp-settings";
 import AdminOtpEmailSettings from "@/pages/admin/otp-email-settings";
 import AdminEmailDelivery from "@/pages/admin/email-delivery";
@@ -552,6 +553,7 @@ function Router() {
       <Route path="/admin/payment-links"><AdminRoute component={AdminPaymentLinks} /></Route>
       <Route path="/admin/settings"><AdminRoute component={AdminSettings} /></Route>
       <Route path="/admin/company-branding"><AdminRoute component={AdminCompanyBranding} /></Route>
+      <Route path="/admin/white-labels"><AdminRoute component={AdminWhiteLabels} /></Route>
       <Route path="/admin/otp-settings"><AdminRoute component={AdminOtpSettings} /></Route>
       <Route path="/admin/otp-email-settings"><AdminRoute component={AdminOtpEmailSettings} /></Route>
       <Route path="/admin/email-delivery"><AdminRoute component={AdminEmailDelivery} /></Route>
