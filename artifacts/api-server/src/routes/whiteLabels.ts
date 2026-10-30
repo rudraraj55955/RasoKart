@@ -1,7 +1,10 @@
 import { Router } from "express";
+import { randomBytes } from "node:crypto";
 import { db, whiteLabelTenantsTable, whiteLabelBrandingTable, whiteLabelDomainsTable, whiteLabelMerchantAssignmentsTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { normalizeTenantHostname } from "../lib/whiteLabelDomain";
+import { checkOwnershipTxt, hashOwnershipToken, ownershipTxtName, ownershipTokenMatches } from "../lib/whiteLabelDns";
+import { and } from "drizzle-orm";
 import { requireAuth, requireSuperAdmin } from "../middlewares/auth";
 
 const router = Router();
@@ -82,10 +85,15 @@ router.post("/:id/domains", async (req, res) => {
     const [tenant] = await db.select({ id: whiteLabelTenantsTable.id })
       .from(whiteLabelTenantsTable).where(eq(whiteLabelTenantsTable.id, id)).limit(1);
     if (!tenant) { res.status(404).json({ error: "Company not found" }); return; }
+    const challenge = `rk-wl-${randomBytes(32).toString("hex")}`;
     const [domain] = await db.insert(whiteLabelDomainsTable).values({
-      tenantId: id, hostname, portalKind: "admin", ownershipStatus: "pending", tlsStatus: "pending",
+      tenantId: id, hostname, portalKind: "admin", ownershipStatus: "pending",
+      tlsStatus: "pending", verificationTokenHash: hashOwnershipToken(challenge),
     }).returning();
-    res.status(201).json({ data: domain, message: "Domain saved as pending; not routed or verified" });
+    // The secret is delivered once. DNS challenge does not authorize payment activity.
+    res.status(201).json({ data: { id: domain!.id, hostname, ownershipStatus: "pending", tlsStatus: "pending" },
+      dns: { type: "TXT", name: ownershipTxtName(hostname), value: challenge },
+      message: "Add the TXT record, then run verification. SSL and routing remain disabled." });
   } catch (err: any) {
     if (err?.code === "23505") { res.status(409).json({ error: "Domain already registered" }); return; }
     req.log.error({ err }, "white_label_domain_create_failed");
@@ -105,6 +113,39 @@ router.get("/:id/domains", async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "white_label_domains_list_failed");
     res.status(503).json({ error: "Unable to list domains" });
+  }
+});
+router.post("/:id/domains/:domainId/verify", async (req, res) => {
+  const tenantId = Number(req.params.id);
+  const domainId = Number(req.params.domainId);
+  if (![tenantId, domainId].every(n => Number.isSafeInteger(n) && n > 0)) {
+    res.status(400).json({ error: "Invalid domain or tenant" }); return;
+  }
+  try {
+    const [domain] = await db.select().from(whiteLabelDomainsTable)
+      .where(and(eq(whiteLabelDomainsTable.id, domainId), eq(whiteLabelDomainsTable.tenantId, tenantId))).limit(1);
+    if (!domain) { res.status(404).json({ error: "Domain not found" }); return; }
+    if (domain.ownershipStatus === "verified") {
+      res.json({ verified: true, tlsStatus: domain.tlsStatus }); return;
+    }
+    // The challenge is stored hashed. TXT lookup can compare to plaintext only if
+    // caller submits the once-shown challenge, which is authenticated and hash-checked.
+    const challenge = req.body?.challenge;
+    if (typeof challenge !== "string" ||
+        !/^rk-wl-[a-f0-9]{64}$/.test(challenge) ||
+        !ownershipTokenMatches(challenge, domain.verificationTokenHash)) {
+      res.status(400).json({ error: "Invalid verification challenge" }); return;
+    }
+    const verified = await checkOwnershipTxt(domain.hostname, challenge);
+    if (!verified) { res.status(409).json({ verified: false, error: "DNS TXT record not found or mismatched" }); return; }
+    await db.update(whiteLabelDomainsTable)
+      .set({ ownershipStatus: "verified", verifiedAt: new Date() })
+      .where(and(eq(whiteLabelDomainsTable.id, domainId), eq(whiteLabelDomainsTable.tenantId, tenantId),
+        eq(whiteLabelDomainsTable.ownershipStatus, "pending")));
+    res.json({ verified: true, tlsStatus: "pending", message: "DNS ownership verified; SSL and routing remain disabled." });
+  } catch (err) {
+    req.log.error({ err }, "white_label_domain_verify_failed");
+    res.status(503).json({ error: "DNS verification unavailable" });
   }
 });
 router.get("/:id/merchant-assignments", async (req, res) => {

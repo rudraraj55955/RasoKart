@@ -19,6 +19,8 @@ export default function AdminWhiteLabels() {
   const [error, setError] = useState("");
   const [selectedTenant, setSelectedTenant] = useState<number | null>(null);
   const [hostname, setHostname] = useState("");
+  const [dnsChallenge, setDnsChallenge] = useState<{ domainId: number; name: string; value: string } | null>(null);
+  const [verifying, setVerifying] = useState(false);
   const [domains, setDomains] = useState<Domain[]>([]);
   const [domainLoading, setDomainLoading] = useState(false);
   const [domainSaving, setDomainSaving] = useState(false);
@@ -50,6 +52,8 @@ export default function AdminWhiteLabels() {
       if (!response.ok) throw new Error(body.error ?? "Unable to add domain");
       toast.success("Domain registered as pending; DNS and SSL verification still required.");
       setHostname("");
+      setDnsChallenge(body?.dns && body?.data?.id
+        ? { domainId: body.data.id, name: body.dns.name, value: body.dns.value } : null);
       await loadDomains(selectedTenant);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Unable to add domain");
@@ -101,7 +105,7 @@ export default function AdminWhiteLabels() {
       {error && <p role="alert" className="text-destructive">{error}</p>}
       {loading ? <p>Loading...</p> : tenants.length === 0 ? <p className="text-muted-foreground">No companies yet.</p> :
       <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="p-2">Company</th><th className="p-2">Slug</th><th className="p-2">Status</th><th className="p-2">Domains</th></tr></thead><tbody>
-        {tenants.map(t=><tr className="border-b" key={t.id}><td className="p-2">{t.displayName}</td><td className="p-2">{t.slug}</td><td className="p-2">{t.status}</td><td className="p-2"><Button size="sm" variant="outline" onClick={() => { setSelectedTenant(t.id); setHostname(""); setDomains([]); void loadDomains(t.id); }}>Manage Domains</Button></td></tr>)}
+        {tenants.map(t=><tr className="border-b" key={t.id}><td className="p-2">{t.displayName}</td><td className="p-2">{t.slug}</td><td className="p-2">{t.status}</td><td className="p-2"><Button size="sm" variant="outline" onClick={() => { setSelectedTenant(t.id); setHostname(""); setDnsChallenge(null); setDomains([]); void loadDomains(t.id); }}>Manage Domains</Button></td></tr>)}
       </tbody></table></div>}
     </CardContent></Card>
     {selectedTenant !== null && <Card>
@@ -114,6 +118,27 @@ export default function AdminWhiteLabels() {
           <Button type="submit" disabled={domainSaving}>{domainSaving ? "Saving..." : "Add Pending Domain"}</Button>
         </form>
         <p className="text-xs text-muted-foreground">Adding a domain does not change DNS, issue a certificate, verify ownership or enable live routing.</p>
+        {dnsChallenge && <div className="rounded border p-3 space-y-2 text-sm">
+          <p className="font-semibold">Add this TXT record in your domain DNS (challenge displayed once):</p>
+          <p>Type: TXT</p>
+          <p className="break-all">Name: <code>{dnsChallenge.name}</code></p>
+          <p className="break-all">Value: <code>{dnsChallenge.value}</code></p>
+          <Button type="button" variant="outline" disabled={verifying} onClick={async () => {
+            if (selectedTenant === null) return;
+            setVerifying(true);
+            try {
+              const response = await fetch(`/api/admin/white-labels/${selectedTenant}/domains/${dnsChallenge.domainId}/verify`, {
+                method: "POST", headers: { Authorization: `Bearer ${getToken()}`, "Content-Type": "application/json" },
+                body: JSON.stringify({ challenge: dnsChallenge.value }),
+              });
+              const result = await response.json();
+              if (!response.ok) throw new Error(result.error ?? "Verification failed");
+              toast.success("DNS ownership verified. SSL and routing remain pending.");
+              setDnsChallenge(null); await loadDomains(selectedTenant);
+            } catch (err) { toast.error(err instanceof Error ? err.message : "DNS verification failed"); }
+            finally { setVerifying(false); }
+          }}>{verifying ? "Verifying..." : "Verify DNS TXT"}</Button>
+        </div>}
         {domainLoading ? <p>Loading domains...</p> : domains.length ? <div className="space-y-2">
           {domains.map(domain => <div key={domain.id} className="rounded border p-3 text-sm">
             <strong>{domain.hostname}</strong><span className="ml-3 text-muted-foreground">
