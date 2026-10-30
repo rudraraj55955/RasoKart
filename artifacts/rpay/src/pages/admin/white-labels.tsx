@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 
 type Tenant = { id: number; slug: string; displayName: string; status: string; createdAt: string };
+type Domain = { id: number; hostname: string; ownershipStatus: string; tlsStatus: string };
 
 export default function AdminWhiteLabels() {
   const { data: me, isLoading: authLoading } = useGetMe();
@@ -16,6 +17,44 @@ export default function AdminWhiteLabels() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [selectedTenant, setSelectedTenant] = useState<number | null>(null);
+  const [hostname, setHostname] = useState("");
+  const [domains, setDomains] = useState<Domain[]>([]);
+  const [domainLoading, setDomainLoading] = useState(false);
+  const [domainSaving, setDomainSaving] = useState(false);
+  const loadDomains = async (tenantId: number) => {
+    setDomainLoading(true);
+    try {
+      const response = await fetch(`/api/admin/white-labels/${tenantId}/domains`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!response.ok) throw new Error("Unable to load domains");
+      const body = await response.json();
+      setDomains(body.data ?? []);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Unable to load domains");
+      setDomains([]);
+    } finally { setDomainLoading(false); }
+  };
+  const addDomain = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!allowed || selectedTenant === null || domainSaving) return;
+    setDomainSaving(true);
+    try {
+      const response = await fetch(`/api/admin/white-labels/${selectedTenant}/domains`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${getToken()}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ hostname: hostname.trim().toLowerCase() }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "Unable to add domain");
+      toast.success("Domain registered as pending; DNS and SSL verification still required.");
+      setHostname("");
+      await loadDomains(selectedTenant);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Unable to add domain");
+    } finally { setDomainSaving(false); }
+  };
   const allowed = me?.isSuperAdmin === true;
   const load = async () => {
     setLoading(true);
@@ -61,9 +100,28 @@ export default function AdminWhiteLabels() {
     <Card><CardHeader><CardTitle>Companies ({tenants.length})</CardTitle></CardHeader><CardContent>
       {error && <p role="alert" className="text-destructive">{error}</p>}
       {loading ? <p>Loading...</p> : tenants.length === 0 ? <p className="text-muted-foreground">No companies yet.</p> :
-      <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="p-2">Company</th><th className="p-2">Slug</th><th className="p-2">Status</th></tr></thead><tbody>
-        {tenants.map(t=><tr className="border-b" key={t.id}><td className="p-2">{t.displayName}</td><td className="p-2">{t.slug}</td><td className="p-2">{t.status}</td></tr>)}
+      <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="p-2">Company</th><th className="p-2">Slug</th><th className="p-2">Status</th><th className="p-2">Domains</th></tr></thead><tbody>
+        {tenants.map(t=><tr className="border-b" key={t.id}><td className="p-2">{t.displayName}</td><td className="p-2">{t.slug}</td><td className="p-2">{t.status}</td><td className="p-2"><Button size="sm" variant="outline" onClick={() => { setSelectedTenant(t.id); setHostname(""); setDomains([]); void loadDomains(t.id); }}>Manage Domains</Button></td></tr>)}
       </tbody></table></div>}
     </CardContent></Card>
+    {selectedTenant !== null && <Card>
+      <CardHeader><CardTitle>Custom Domains — Company #{selectedTenant}</CardTitle></CardHeader>
+      <CardContent className="space-y-3">
+        <form onSubmit={addDomain} className="flex flex-wrap gap-2">
+          <Input className="min-w-52 flex-1" aria-label="Custom domain hostname"
+            placeholder="pay.example.com" value={hostname} maxLength={253}
+            onChange={e => setHostname(e.target.value)} required />
+          <Button type="submit" disabled={domainSaving}>{domainSaving ? "Saving..." : "Add Pending Domain"}</Button>
+        </form>
+        <p className="text-xs text-muted-foreground">Adding a domain does not change DNS, issue a certificate, verify ownership or enable live routing.</p>
+        {domainLoading ? <p>Loading domains...</p> : domains.length ? <div className="space-y-2">
+          {domains.map(domain => <div key={domain.id} className="rounded border p-3 text-sm">
+            <strong>{domain.hostname}</strong><span className="ml-3 text-muted-foreground">
+              Ownership: {domain.ownershipStatus} · SSL: {domain.tlsStatus}
+            </span>
+          </div>)}
+        </div> : <p className="text-sm text-muted-foreground">No domains registered.</p>}
+      </CardContent>
+    </Card>}
   </div>;
 }
