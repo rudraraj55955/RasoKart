@@ -1,6 +1,7 @@
 import { Router } from "express";
-import { db, whiteLabelTenantsTable, whiteLabelBrandingTable } from "@workspace/db";
+import { db, whiteLabelTenantsTable, whiteLabelBrandingTable, whiteLabelDomainsTable, whiteLabelMerchantAssignmentsTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
+import { normalizeTenantHostname } from "../lib/whiteLabelDomain";
 import { requireAuth, requireSuperAdmin } from "../middlewares/auth";
 
 const router = Router();
@@ -66,6 +67,57 @@ router.get("/:id", async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "white_label_detail_failed");
     res.status(503).json({ error: "White-label management unavailable" });
+  }
+});
+/** Record a requested domain as pending only; DNS and TLS cannot be enabled here. */
+router.post("/:id/domains", async (req, res) => {
+  const id = Number(req.params.id);
+  const hostname = typeof req.body?.hostname === "string"
+    ? normalizeTenantHostname(req.body.hostname) : null;
+  if (!Number.isSafeInteger(id) || id < 1 || !hostname ||
+      hostname === "rasokart.com" || hostname.endsWith(".rasokart.com")) {
+    res.status(400).json({ error: "Invalid or reserved domain" }); return;
+  }
+  try {
+    const [tenant] = await db.select({ id: whiteLabelTenantsTable.id })
+      .from(whiteLabelTenantsTable).where(eq(whiteLabelTenantsTable.id, id)).limit(1);
+    if (!tenant) { res.status(404).json({ error: "Company not found" }); return; }
+    const [domain] = await db.insert(whiteLabelDomainsTable).values({
+      tenantId: id, hostname, portalKind: "admin", ownershipStatus: "pending", tlsStatus: "pending",
+    }).returning();
+    res.status(201).json({ data: domain, message: "Domain saved as pending; not routed or verified" });
+  } catch (err: any) {
+    if (err?.code === "23505") { res.status(409).json({ error: "Domain already registered" }); return; }
+    req.log.error({ err }, "white_label_domain_create_failed");
+    res.status(503).json({ error: "Domain registration unavailable" });
+  }
+});
+router.get("/:id/domains", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id < 1) { res.status(400).json({ error: "Invalid tenant id" }); return; }
+  try {
+    const rows = await db.select({
+      id: whiteLabelDomainsTable.id, hostname: whiteLabelDomainsTable.hostname,
+      ownershipStatus: whiteLabelDomainsTable.ownershipStatus,
+      tlsStatus: whiteLabelDomainsTable.tlsStatus,
+    }).from(whiteLabelDomainsTable).where(eq(whiteLabelDomainsTable.tenantId, id));
+    res.json({ data: rows });
+  } catch (err) {
+    req.log.error({ err }, "white_label_domains_list_failed");
+    res.status(503).json({ error: "Unable to list domains" });
+  }
+});
+router.get("/:id/merchant-assignments", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id < 1) { res.status(400).json({ error: "Invalid tenant id" }); return; }
+  try {
+    const rows = await db.select({ merchantId: whiteLabelMerchantAssignmentsTable.merchantId })
+      .from(whiteLabelMerchantAssignmentsTable)
+      .where(eq(whiteLabelMerchantAssignmentsTable.tenantId, id)).limit(100);
+    res.json({ data: rows });
+  } catch (err) {
+    req.log.error({ err }, "white_label_assignments_list_failed");
+    res.status(503).json({ error: "Unable to list assignments" });
   }
 });
 export default router;
