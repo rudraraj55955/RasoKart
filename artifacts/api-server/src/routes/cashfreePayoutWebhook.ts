@@ -8,6 +8,7 @@ import { normalizeCashfreePayoutStatus } from "../helpers/cashfreePayout";
 import { mutateWallet } from "./wallets";
 import { decryptSecret } from "../helpers/cryptoUtils";
 import { maybeAlertPayoutWebhookNoSecret } from "../helpers/payoutWebhookNoSecretAlert";
+import { evaluatePayoutWebhookEvent } from "../lib/whiteLabelWebhookEventGuard";
 
 const router = Router();
 
@@ -373,10 +374,38 @@ router.post("/", async (req, res) => {
       return;
     }
 
+    // Reject contradictory signed identifiers before any legacy payout or wallet
+    // mutation. The provider may omit one identifier; present values must agree
+    // with the stored record. This does not enable White-Label financial writes.
+    if (payout && (
+      (transferId && payout.transferId !== transferId) ||
+      (cfTransferId && payout.cashfreeTransferId && payout.cashfreeTransferId !== cfTransferId)
+    )) {
+      logger.warn({ endpoint, payoutId: payout.id }, "cashfree_payout_webhook_identifier_conflict");
+      processingResult = "rejected";
+      safeError = "Webhook transfer identifiers conflict with stored payout";
+      await insertLog({ endpoint, eventType, status: statusRaw, signatureVerified,
+        payoutId: payout.id, transferId, cfTransferId, utr, safeError, processingResult, rawPayload: rawBody });
+      return;
+    }
+
     // ── Update cashfreePayoutsTable (legacy path) ─────────────────────────────
     if (payout) {
       payoutId = payout.id;
-      if (normalizedStatus !== payout.status || (normalizedStatus === "SUCCESS" && utr && !payout.utr)) {
+      // A late signed event must not downgrade an already terminal payout.
+      // An identical SUCCESS event may still enrich a missing UTR; the
+      // withdrawal ledger path below retains its own processing checks.
+      const eventDecision = transferId
+        ? evaluatePayoutWebhookEvent(
+          { transferId: payout.transferId, providerTransferId: payout.cashfreeTransferId, status: payout.status },
+          { transferId, providerTransferId: cfTransferId, status: normalizedStatus },
+        )
+        : "accept";
+      if (eventDecision === "stale") {
+        logger.warn({ endpoint, payoutId: payout.id, status: normalizedStatus }, "cashfree_payout_webhook_stale_transition_ignored");
+      }
+      if (eventDecision !== "stale" &&
+          (normalizedStatus !== payout.status || (normalizedStatus === "SUCCESS" && utr && !payout.utr))) {
         const baseSet = {
           status: normalizedStatus,
           cashfreeTransferId: cfTransferId ?? payout.cashfreeTransferId ?? null,
@@ -413,49 +442,51 @@ router.post("/", async (req, res) => {
 
       // Idempotent guard — WHERE clause on current transferStatus prevents
       // concurrent webhook deliveries from double-updating the same withdrawal.
-      const [updatedWd] = await db
-        .update(withdrawalsTable)
-        .set({
-          transferStatus: newWdTransferStatus,
-          utr: newWdUtr,
-          failureReason: newWdFailureReason,
-          completedAt: isWdTerminal ? new Date() : withdrawal.completedAt,
-        })
-        .where(
-          and(
-            eq(withdrawalsTable.id, withdrawal.id),
-            eq(withdrawalsTable.transferStatus, withdrawal.transferStatus),
+      await db.transaction(async tx => {
+        const [updatedWd] = await tx
+          .update(withdrawalsTable)
+          .set({
+            transferStatus: newWdTransferStatus,
+            utr: newWdUtr,
+            failureReason: newWdFailureReason,
+            completedAt: isWdTerminal ? new Date() : withdrawal.completedAt,
+          })
+          .where(
+            and(
+              eq(withdrawalsTable.id, withdrawal.id),
+              eq(withdrawalsTable.transferStatus, withdrawal.transferStatus),
+            )
           )
-        )
-        .returning();
+          .returning();
 
-      if (updatedWd) {
-        logger.info({ endpoint, withdrawalId: withdrawal.id, transferId, cfTransferId, prevTransferStatus, newTransferStatus: newWdTransferStatus, utr }, "payout_withdrawal_status_updated_via_webhook");
+        if (updatedWd) {
+          logger.info({ endpoint, withdrawalId: withdrawal.id, transferId, cfTransferId, prevTransferStatus, newTransferStatus: newWdTransferStatus, utr }, "payout_withdrawal_status_updated_via_webhook");
 
-        // Wallet mutations — only executed once per state transition (idempotency
-        // enforced by the conditional WHERE above).
-        if (normalizedStatus === "SUCCESS") {
-          if (["FAILED", "REVERSED"].includes(prevTransferStatus)) {
+          // Wallet mutations — only executed once per state transition (idempotency
+          // enforced by the conditional WHERE above).
+          if (normalizedStatus === "SUCCESS") {
+            if (["FAILED", "REVERSED"].includes(prevTransferStatus)) {
+              await mutateWallet(
+                withdrawal.merchantId,
+                { availableDelta: -wAmt, totalPayoutDelta: wAmt, totalReversalsDelta: -wAmt },
+                { txnType: "payout_success_correction", bucket: "available", amount: -wAmt, referenceType: "withdrawal", referenceId: withdrawal.id, description: `Payout #${withdrawal.id} — provider SUCCESS via webhook (was locally ${prevTransferStatus}) — ₹${wAmt} corrected`, createdBy: null }, tx
+              );
+            } else {
+              await mutateWallet(
+                withdrawal.merchantId,
+                { holdDelta: -wAmt, totalPayoutDelta: wAmt },
+                { txnType: "payout_success", bucket: "hold", amount: -wAmt, referenceType: "withdrawal", referenceId: withdrawal.id, description: `Payout #${withdrawal.id} confirmed successful via webhook — ₹${wAmt} settled`, createdBy: null }, tx
+              );
+            }
+          } else if (normalizedStatus === "FAILED" && !["FAILED", "REVERSED"].includes(prevTransferStatus)) {
             await mutateWallet(
               withdrawal.merchantId,
-              { availableDelta: -wAmt, totalPayoutDelta: wAmt, totalReversalsDelta: -wAmt },
-              { txnType: "payout_success_correction", bucket: "available", amount: -wAmt, referenceType: "withdrawal", referenceId: withdrawal.id, description: `Payout #${withdrawal.id} — provider SUCCESS via webhook (was locally ${prevTransferStatus}) — ₹${wAmt} corrected`, createdBy: null }
-            );
-          } else {
-            await mutateWallet(
-              withdrawal.merchantId,
-              { holdDelta: -wAmt, totalPayoutDelta: wAmt },
-              { txnType: "payout_success", bucket: "hold", amount: -wAmt, referenceType: "withdrawal", referenceId: withdrawal.id, description: `Payout #${withdrawal.id} confirmed successful via webhook — ₹${wAmt} settled`, createdBy: null }
+              { holdDelta: -wAmt, availableDelta: wAmt, totalReversalsDelta: wAmt },
+              { txnType: "payout_failed_release", bucket: "hold", amount: wAmt, referenceType: "withdrawal", referenceId: withdrawal.id, description: `Payout #${withdrawal.id} confirmed failed via webhook — ₹${wAmt} released back`, createdBy: null }, tx
             );
           }
-        } else if (normalizedStatus === "FAILED" && !["FAILED", "REVERSED"].includes(prevTransferStatus)) {
-          await mutateWallet(
-            withdrawal.merchantId,
-            { holdDelta: -wAmt, availableDelta: wAmt, totalReversalsDelta: wAmt },
-            { txnType: "payout_failed_release", bucket: "hold", amount: wAmt, referenceType: "withdrawal", referenceId: withdrawal.id, description: `Payout #${withdrawal.id} confirmed failed via webhook — ₹${wAmt} released back`, createdBy: null }
-          );
         }
-      }
+      });
     }
 
     processingResult = "processed";
