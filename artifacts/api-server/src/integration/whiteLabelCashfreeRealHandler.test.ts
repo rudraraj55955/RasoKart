@@ -157,6 +157,85 @@ test("actual Cashfree webhook HTTP handler rejects unauthenticated payout on iso
     }
     assert.equal(unmatched.rows.length, 2);
     assert.ok(unmatched.rows.every(r => r.processing_result === "unmatched"));
+    // Matched withdrawals, wallet balance and ledger with synthetic provider
+    // events. Tables are local-only; no merchant or Cashfree API is called.
+    await pool.query(`CREATE TABLE IF NOT EXISTS merchant_wallets (
+      id serial PRIMARY KEY, merchant_id integer UNIQUE NOT NULL,
+      currency text NOT NULL DEFAULT 'INR',
+      available_balance numeric(18,2) NOT NULL DEFAULT 0,
+      pending_balance numeric(18,2) NOT NULL DEFAULT 0,
+      hold_balance numeric(18,2) NOT NULL DEFAULT 0,
+      settlement_balance numeric(18,2) NOT NULL DEFAULT 0,
+      payout_balance numeric(18,2) NOT NULL DEFAULT 0,
+      total_collection numeric(18,2) NOT NULL DEFAULT 0,
+      total_payout numeric(18,2) NOT NULL DEFAULT 0,
+      total_charges numeric(18,2) NOT NULL DEFAULT 0,
+      total_refunds numeric(18,2) NOT NULL DEFAULT 0,
+      total_reversals numeric(18,2) NOT NULL DEFAULT 0,
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS wallet_ledger (
+      id serial PRIMARY KEY, merchant_id integer NOT NULL,
+      txn_type text NOT NULL, bucket text NOT NULL,
+      amount numeric(18,2) NOT NULL, available_before numeric(18,2) NOT NULL DEFAULT 0,
+      available_after numeric(18,2) NOT NULL DEFAULT 0,
+      pending_before numeric(18,2) NOT NULL DEFAULT 0,
+      pending_after numeric(18,2) NOT NULL DEFAULT 0,
+      reference_type text, reference_id integer, description text NOT NULL,
+      created_by integer, created_at timestamptz NOT NULL DEFAULT now()
+    )`);
+    const marker = Date.now().toString(36);
+    const merchantId = Math.floor(Date.now() / 1000);
+    const ids: number[] = [];
+    try {
+      await pool.query("INSERT INTO merchant_wallets(merchant_id,hold_balance) VALUES($1,200)", [merchantId]);
+      for (const outcome of ["SUCCESS", "FAILED"] as const) {
+        const transfer = "wl_withdrawal_" + outcome + "_" + marker;
+        const added = await pool.query(
+          `INSERT INTO withdrawals(merchant_id,amount,currency,status,transfer_status,
+            provider_reference_id,bank_account,bank_name,ifsc_code,account_holder,payout_mode)
+            VALUES($1,100,'INR','approved','PENDING',$2,'TEST','TEST','TEST','TEST','IMPS') RETURNING id`,
+          [merchantId, transfer],
+        );
+        const id = added.rows[0].id as number;
+        ids.push(id);
+        const send = async () => {
+          const raw = JSON.stringify({ type: "TRANSFER_" + outcome, data: { transfer: {
+            transfer_id: transfer, transfer_status: outcome,
+          } } });
+          const stamp = String(Math.floor(Date.now() / 1000));
+          const sig = createHmac("sha256", "synthetic_local_test_secret_123").update(stamp + raw).digest("base64");
+          const result = await fetch(`http://127.0.0.1:${address.port}/api/cashfree-payout/webhook`, {
+            method:"POST", headers: { "Content-Type":"application/json",
+              "x-webhook-timestamp":stamp, "x-webhook-signature":sig }, body:raw,
+          });
+          assert.equal(result.status, 200);
+        };
+        await send();
+        for(let attempt=0; attempt<60; attempt++) {
+          const state = await pool.query("SELECT transfer_status FROM withdrawals WHERE id=$1", [id]);
+          const ledger = await pool.query("SELECT count(*)::int AS n FROM wallet_ledger WHERE reference_type='withdrawal' AND reference_id=$1", [id]);
+          if (state.rows[0]?.transfer_status === outcome && ledger.rows[0].n === 1) break;
+          await new Promise(resolve => setTimeout(resolve,25));
+        }
+        await send(); // duplicate should not change wallet a second time
+        const check = await pool.query("SELECT transfer_status FROM withdrawals WHERE id=$1",[id]);
+        assert.equal(check.rows[0].transfer_status,outcome);
+      }
+      for (let attempt=0; attempt<60; attempt++) {
+        const result = await pool.query("SELECT count(*)::int AS n FROM wallet_ledger WHERE merchant_id=$1",[merchantId]);
+        if (result.rows[0].n === 2) break;
+        await new Promise(resolve => setTimeout(resolve,25));
+      }
+      const ledger = await pool.query("SELECT txn_type FROM wallet_ledger WHERE merchant_id=$1 ORDER BY id",[merchantId]);
+      assert.deepEqual(ledger.rows.map(r=>r.txn_type),["payout_success","payout_failed_release"]);
+      const wallet = await pool.query("SELECT available_balance,hold_balance,total_payout,total_reversals FROM merchant_wallets WHERE merchant_id=$1",[merchantId]);
+      assert.deepEqual(wallet.rows[0], {available_balance:"100.00",hold_balance:"0.00",total_payout:"100.00",total_reversals:"100.00"});
+    } finally {
+      await pool.query("DELETE FROM wallet_ledger WHERE merchant_id=$1",[merchantId]);
+      await pool.query("DELETE FROM merchant_wallets WHERE merchant_id=$1",[merchantId]);
+      for (const id of ids) await pool.query("DELETE FROM withdrawals WHERE id=$1",[id]);
+    }
     // Exercise a MATCHED legacy payout via the real signed HTTP handler.
     // No withdrawal or wallet row is created; this is not a live money flow.
     const testTransfer = "wl_matched_test_" + Date.now().toString(36);
