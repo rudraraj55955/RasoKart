@@ -110,3 +110,5 @@ export * from "./merchantPortalSessions";
 export * from "./merchantPortalTransactions";
 
 export * from "./whiteLabelTenants";
+
+export * from "./whiteLabelFinanceCommands";

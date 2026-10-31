@@ -23,3 +23,12 @@ A public tenant domain may select a *candidate* tenant, but user authentication,
 
 ## Scope of this first commit
 Only additive schema definitions and rollout controls. No live endpoints, production database migrations, or tenant UI are enabled by this commit.
+
+## Idempotent money-moving command release gate
+- Proposed tables: white_label_finance_commands (unique tenant/merchant/operation/key) and white_label_finance_audit.
+- **These tables are definitions only**, and no payment write handler uses them yet.
+- Reserve inside a single DB transaction; enforce payload-hash mismatch as conflict.
+- Handle concurrent duplicate requests by replaying only a completed matching result; in-progress requests return retryable conflict.
+- Commit ledger, provider request outbox and command result atomically where possible; use provider idempotency keys and reconcile ambiguous provider outcomes before retrying.
+- Audit both denied and accepted actions with sanitized metadata, no bank numbers or secrets.
+- Add real PostgreSQL concurrency, crash recovery, rollback and negative tenant tests before any financial writes are enabled.
