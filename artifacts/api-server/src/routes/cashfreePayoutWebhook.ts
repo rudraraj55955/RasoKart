@@ -442,49 +442,51 @@ router.post("/", async (req, res) => {
 
       // Idempotent guard — WHERE clause on current transferStatus prevents
       // concurrent webhook deliveries from double-updating the same withdrawal.
-      const [updatedWd] = await db
-        .update(withdrawalsTable)
-        .set({
-          transferStatus: newWdTransferStatus,
-          utr: newWdUtr,
-          failureReason: newWdFailureReason,
-          completedAt: isWdTerminal ? new Date() : withdrawal.completedAt,
-        })
-        .where(
-          and(
-            eq(withdrawalsTable.id, withdrawal.id),
-            eq(withdrawalsTable.transferStatus, withdrawal.transferStatus),
+      await db.transaction(async tx => {
+        const [updatedWd] = await tx
+          .update(withdrawalsTable)
+          .set({
+            transferStatus: newWdTransferStatus,
+            utr: newWdUtr,
+            failureReason: newWdFailureReason,
+            completedAt: isWdTerminal ? new Date() : withdrawal.completedAt,
+          })
+          .where(
+            and(
+              eq(withdrawalsTable.id, withdrawal.id),
+              eq(withdrawalsTable.transferStatus, withdrawal.transferStatus),
+            )
           )
-        )
-        .returning();
+          .returning();
 
-      if (updatedWd) {
-        logger.info({ endpoint, withdrawalId: withdrawal.id, transferId, cfTransferId, prevTransferStatus, newTransferStatus: newWdTransferStatus, utr }, "payout_withdrawal_status_updated_via_webhook");
+        if (updatedWd) {
+          logger.info({ endpoint, withdrawalId: withdrawal.id, transferId, cfTransferId, prevTransferStatus, newTransferStatus: newWdTransferStatus, utr }, "payout_withdrawal_status_updated_via_webhook");
 
-        // Wallet mutations — only executed once per state transition (idempotency
-        // enforced by the conditional WHERE above).
-        if (normalizedStatus === "SUCCESS") {
-          if (["FAILED", "REVERSED"].includes(prevTransferStatus)) {
+          // Wallet mutations — only executed once per state transition (idempotency
+          // enforced by the conditional WHERE above).
+          if (normalizedStatus === "SUCCESS") {
+            if (["FAILED", "REVERSED"].includes(prevTransferStatus)) {
+              await mutateWallet(
+                withdrawal.merchantId,
+                { availableDelta: -wAmt, totalPayoutDelta: wAmt, totalReversalsDelta: -wAmt },
+                { txnType: "payout_success_correction", bucket: "available", amount: -wAmt, referenceType: "withdrawal", referenceId: withdrawal.id, description: `Payout #${withdrawal.id} — provider SUCCESS via webhook (was locally ${prevTransferStatus}) — ₹${wAmt} corrected`, createdBy: null }, tx
+              );
+            } else {
+              await mutateWallet(
+                withdrawal.merchantId,
+                { holdDelta: -wAmt, totalPayoutDelta: wAmt },
+                { txnType: "payout_success", bucket: "hold", amount: -wAmt, referenceType: "withdrawal", referenceId: withdrawal.id, description: `Payout #${withdrawal.id} confirmed successful via webhook — ₹${wAmt} settled`, createdBy: null }, tx
+              );
+            }
+          } else if (normalizedStatus === "FAILED" && !["FAILED", "REVERSED"].includes(prevTransferStatus)) {
             await mutateWallet(
               withdrawal.merchantId,
-              { availableDelta: -wAmt, totalPayoutDelta: wAmt, totalReversalsDelta: -wAmt },
-              { txnType: "payout_success_correction", bucket: "available", amount: -wAmt, referenceType: "withdrawal", referenceId: withdrawal.id, description: `Payout #${withdrawal.id} — provider SUCCESS via webhook (was locally ${prevTransferStatus}) — ₹${wAmt} corrected`, createdBy: null }
-            );
-          } else {
-            await mutateWallet(
-              withdrawal.merchantId,
-              { holdDelta: -wAmt, totalPayoutDelta: wAmt },
-              { txnType: "payout_success", bucket: "hold", amount: -wAmt, referenceType: "withdrawal", referenceId: withdrawal.id, description: `Payout #${withdrawal.id} confirmed successful via webhook — ₹${wAmt} settled`, createdBy: null }
+              { holdDelta: -wAmt, availableDelta: wAmt, totalReversalsDelta: wAmt },
+              { txnType: "payout_failed_release", bucket: "hold", amount: wAmt, referenceType: "withdrawal", referenceId: withdrawal.id, description: `Payout #${withdrawal.id} confirmed failed via webhook — ₹${wAmt} released back`, createdBy: null }, tx
             );
           }
-        } else if (normalizedStatus === "FAILED" && !["FAILED", "REVERSED"].includes(prevTransferStatus)) {
-          await mutateWallet(
-            withdrawal.merchantId,
-            { holdDelta: -wAmt, availableDelta: wAmt, totalReversalsDelta: wAmt },
-            { txnType: "payout_failed_release", bucket: "hold", amount: wAmt, referenceType: "withdrawal", referenceId: withdrawal.id, description: `Payout #${withdrawal.id} confirmed failed via webhook — ₹${wAmt} released back`, createdBy: null }
-          );
         }
-      }
+      });
     }
 
     processingResult = "processed";
