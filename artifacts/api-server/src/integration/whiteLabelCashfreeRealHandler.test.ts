@@ -218,7 +218,9 @@ test("actual Cashfree webhook HTTP handler rejects unauthenticated payout on iso
           if (state.rows[0]?.transfer_status === outcome && ledger.rows[0].n === 1) break;
           await new Promise(resolve => setTimeout(resolve,25));
         }
-        await send(); // duplicate should not change wallet a second time
+        // Ten simultaneous signed redeliveries exercise the actual handler's
+        // conditional withdrawal update and shared wallet transaction.
+        await Promise.all(Array.from({ length: 10 }, () => send()));
         const check = await pool.query("SELECT transfer_status FROM withdrawals WHERE id=$1",[id]);
         assert.equal(check.rows[0].transfer_status,outcome);
       }
