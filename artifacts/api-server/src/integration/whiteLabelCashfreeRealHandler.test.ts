@@ -157,6 +157,44 @@ test("actual Cashfree webhook HTTP handler rejects unauthenticated payout on iso
     }
     assert.equal(unmatched.rows.length, 2);
     assert.ok(unmatched.rows.every(r => r.processing_result === "unmatched"));
+    // Exercise a MATCHED legacy payout via the real signed HTTP handler.
+    // No withdrawal or wallet row is created; this is not a live money flow.
+    const testTransfer = "wl_matched_test_" + Date.now().toString(36);
+    const record = await pool.query(
+      "INSERT INTO cashfree_payouts(transfer_id,beneficiary_name,amount,status,initiated_by_email) VALUES($1,'Test Beneficiary',100,'PENDING','test@example.invalid') RETURNING id",
+      [testTransfer],
+    );
+    const payoutId = record.rows[0].id as number;
+    try {
+      const signedEvent = async (outcome: "SUCCESS" | "FAILED") => {
+        const text = JSON.stringify({ type: "TRANSFER_" + outcome,
+          data: { transfer: { transfer_id: testTransfer, transfer_status: outcome } } });
+        const ts = String(Math.floor(Date.now() / 1000));
+        const mac = createHmac("sha256", "synthetic_local_test_secret_123").update(ts + text).digest("base64");
+        const reply = await fetch(`http://127.0.0.1:${address.port}/api/cashfree-payout/webhook`, {
+          method: "POST", headers: { "Content-Type": "application/json",
+            "x-webhook-timestamp": ts, "x-webhook-signature": mac }, body: text,
+        });
+        assert.equal(reply.status, 200);
+      };
+      const awaitStatus = async (target: string) => {
+        for (let attempt = 0; attempt < 40; attempt++) {
+          const row = await pool.query("SELECT status FROM cashfree_payouts WHERE id=$1", [payoutId]);
+          if (row.rows[0]?.status === target) return;
+          await new Promise(resolve => setTimeout(resolve, 25));
+        }
+        assert.fail("Payout did not reach " + target);
+      };
+      await signedEvent("SUCCESS");
+      await awaitStatus("SUCCESS");
+      await signedEvent("SUCCESS"); // replay must not generate a new transition
+      await signedEvent("FAILED"); // terminal downgrade must be ignored
+      const status = await pool.query("SELECT status FROM cashfree_payouts WHERE id=$1", [payoutId]);
+      assert.equal(status.rows[0].status, "SUCCESS");
+    } finally {
+      await pool.query("DELETE FROM cashfree_payouts WHERE id=$1", [payoutId]);
+    }
+
   } finally {
     await new Promise<void>((resolve, reject) => server.close(err => err ? reject(err) : resolve()));
     await pool.end();
