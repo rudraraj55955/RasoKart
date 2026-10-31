@@ -8,6 +8,7 @@ import { normalizeCashfreePayoutStatus } from "../helpers/cashfreePayout";
 import { mutateWallet } from "./wallets";
 import { decryptSecret } from "../helpers/cryptoUtils";
 import { maybeAlertPayoutWebhookNoSecret } from "../helpers/payoutWebhookNoSecretAlert";
+import { evaluatePayoutWebhookEvent } from "../lib/whiteLabelWebhookEventGuard";
 
 const router = Router();
 
@@ -391,7 +392,20 @@ router.post("/", async (req, res) => {
     // ── Update cashfreePayoutsTable (legacy path) ─────────────────────────────
     if (payout) {
       payoutId = payout.id;
-      if (normalizedStatus !== payout.status || (normalizedStatus === "SUCCESS" && utr && !payout.utr)) {
+      // A late signed event must not downgrade an already terminal payout.
+      // An identical SUCCESS event may still enrich a missing UTR; the
+      // withdrawal ledger path below retains its own processing checks.
+      const eventDecision = transferId
+        ? evaluatePayoutWebhookEvent(
+          { transferId: payout.transferId, providerTransferId: payout.cashfreeTransferId, status: payout.status },
+          { transferId, providerTransferId: cfTransferId, status: normalizedStatus },
+        )
+        : "accept";
+      if (eventDecision === "stale") {
+        logger.warn({ endpoint, payoutId: payout.id, status: normalizedStatus }, "cashfree_payout_webhook_stale_transition_ignored");
+      }
+      if (eventDecision !== "stale" &&
+          (normalizedStatus !== payout.status || (normalizedStatus === "SUCCESS" && utr && !payout.utr))) {
         const baseSet = {
           status: normalizedStatus,
           cashfreeTransferId: cfTransferId ?? payout.cashfreeTransferId ?? null,
