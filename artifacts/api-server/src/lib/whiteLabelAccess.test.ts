@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { canAccessTenant, canAccessTenantMerchant } from "./whiteLabelAccess.ts";
+import { canAccessTenant, canAccessTenantMerchant } from "./whiteLabelAccess";
 const memberships = [
   { userId: 1, tenantId: 10, role: "admin" as const, status: "active" as const },
   { userId: 2, tenantId: 20, role: "owner" as const, status: "active" as const },

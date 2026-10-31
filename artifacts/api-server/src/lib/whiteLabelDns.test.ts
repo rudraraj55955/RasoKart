@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ownershipTxtName, hashOwnershipToken, ownershipTokenMatches, checkOwnershipTxt } from "./whiteLabelDns.ts";
+import { ownershipTxtName, hashOwnershipToken, ownershipTokenMatches, checkOwnershipTxt } from "./whiteLabelDns";
 const token = "rk-wl-" + "a".repeat(64);
 test("TXT record name is exact hostname scoped", () => {
   assert.equal(ownershipTxtName("Pay.Company.Example"), "_rasokart-verification.pay.company.example");

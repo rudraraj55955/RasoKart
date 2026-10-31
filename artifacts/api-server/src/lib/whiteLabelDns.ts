@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { resolveTxt } from "node:dns/promises";
-import { normalizeTenantHostname } from "./whiteLabelDomain.ts";
+import { normalizeTenantHostname } from "./whiteLabelDomain";
 
 export function ownershipTxtName(hostname: string): string | null {
   const safe = normalizeTenantHostname(hostname);

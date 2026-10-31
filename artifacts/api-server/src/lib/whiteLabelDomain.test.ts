@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { normalizeTenantHostname, resolveVerifiedWhiteLabelDomain } from "./whiteLabelDomain.ts";
+import { normalizeTenantHostname, resolveVerifiedWhiteLabelDomain } from "./whiteLabelDomain";
 
 const verified = {
   hostname: "pay.company.example",
