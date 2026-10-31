@@ -373,6 +373,21 @@ router.post("/", async (req, res) => {
       return;
     }
 
+    // Reject contradictory signed identifiers before any legacy payout or wallet
+    // mutation. The provider may omit one identifier; present values must agree
+    // with the stored record. This does not enable White-Label financial writes.
+    if (payout && (
+      (transferId && payout.transferId !== transferId) ||
+      (cfTransferId && payout.cashfreeTransferId && payout.cashfreeTransferId !== cfTransferId)
+    )) {
+      logger.warn({ endpoint, payoutId: payout.id }, "cashfree_payout_webhook_identifier_conflict");
+      processingResult = "rejected";
+      safeError = "Webhook transfer identifiers conflict with stored payout";
+      await insertLog({ endpoint, eventType, status: statusRaw, signatureVerified,
+        payoutId: payout.id, transferId, cfTransferId, utr, safeError, processingResult, rawPayload: rawBody });
+      return;
+    }
+
     // ── Update cashfreePayoutsTable (legacy path) ─────────────────────────────
     if (payout) {
       payoutId = payout.id;
