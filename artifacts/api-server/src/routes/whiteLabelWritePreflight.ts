@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../middlewares/auth";
+import { validFinanceIdempotencyKey } from "../lib/whiteLabelIdempotency";
 import { requireWhiteLabelTenantAccess } from "../lib/whiteLabelTenantGuard";
 import { requireWhiteLabelFinanceWriteRole, requireWhiteLabelMerchantWriteAccess } from "../lib/whiteLabelWriteGuard";
 
@@ -15,6 +16,11 @@ router.post("/:merchantId/preflight",
   requireWhiteLabelFinanceWriteRole,
   requireWhiteLabelMerchantWriteAccess,
   (req, res) => {
+    const key = req.get("Idempotency-Key");
+    if (!validFinanceIdempotencyKey(key)) {
+      res.status(400).json({ error: "A valid Idempotency-Key header is required for financial commands" });
+      return;
+    }
     res.json({
       authorized: true,
       operationEnabled: false,
