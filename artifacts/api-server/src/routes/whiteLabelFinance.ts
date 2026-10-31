@@ -3,9 +3,10 @@ import { db, settlementsTable, walletLedgerTable, cashfreePayoutsTable, whiteLab
 import { and, desc, eq } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { requireWhiteLabelTenantAccess } from "../lib/whiteLabelTenantGuard";
+import { requireWhiteLabelFinanceAccess } from "../lib/whiteLabelFinanceGuard";
 
 const router = Router({ mergeParams: true });
-router.use(requireAuth, requireWhiteLabelTenantAccess);
+router.use(requireAuth, requireWhiteLabelTenantAccess, requireWhiteLabelFinanceAccess("read"));
 
 function idAndLimit(req: { params: Record<string, any>; query: Record<string, any> }) {
   const merchantId = Number(req.params.merchantId);

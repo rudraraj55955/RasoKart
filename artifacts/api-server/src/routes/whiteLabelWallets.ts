@@ -3,9 +3,10 @@ import { db, merchantWalletsTable, merchantsTable, whiteLabelMerchantAssignments
 import { and, eq } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { requireWhiteLabelTenantAccess } from "../lib/whiteLabelTenantGuard";
+import { requireWhiteLabelFinanceAccess } from "../lib/whiteLabelFinanceGuard";
 
 const router = Router({ mergeParams: true });
-router.use(requireAuth, requireWhiteLabelTenantAccess);
+router.use(requireAuth, requireWhiteLabelTenantAccess, requireWhiteLabelFinanceAccess("read"));
 
 // Read-only, explicitly scoped by active tenant membership and merchant assignment.
 // Do not create wallets or mutate ledger balances on a GET request.

@@ -3,9 +3,10 @@ import { db, transactionsTable, whiteLabelMerchantAssignmentsTable } from "@work
 import { and, desc, eq } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { requireWhiteLabelTenantAccess } from "../lib/whiteLabelTenantGuard";
+import { requireWhiteLabelFinanceAccess } from "../lib/whiteLabelFinanceGuard";
 
 const router = Router({ mergeParams: true });
-router.use(requireAuth, requireWhiteLabelTenantAccess);
+router.use(requireAuth, requireWhiteLabelTenantAccess, requireWhiteLabelFinanceAccess("read"));
 
 /**
  * New tenant-scoped read-only transaction endpoint.
