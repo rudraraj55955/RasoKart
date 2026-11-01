@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { RasoKartLogo } from "@/components/ui/rasokart-logo";
 import { PromoBannerSlot } from "@/components/ui/promo-banner";
 import { useCompanySettings } from "@/lib/company-settings";
+import { trackEvent } from "@/lib/analytics";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -251,13 +252,23 @@ export default function Landing() {
               RasoKart provides software tools for merchant onboarding, payment integration, transaction monitoring, reconciliation, reporting and business operations. Payment processing and settlement services are provided through approved banking and payment-service partners, subject to partner onboarding, KYC, risk approval and applicable terms.
             </p>
             <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:gap-4">
-              <Link href="/merchant/apply">
+              <Link
+                href="/merchant/apply"
+                onClick={() => trackEvent("merchant_apply_clicked", {
+                  location: "landing_hero",
+                })}
+              >
                 <Button size="lg" className="w-full gap-2 bg-gradient-to-r from-cyan-500 to-violet-500 text-white hover:opacity-90 sm:w-auto">
                   Apply as Merchant
                   <ArrowRight className="h-4 w-4" />
                 </Button>
               </Link>
-              <Link href="/merchant">
+              <Link
+                href="/merchant"
+                onClick={() => trackEvent("merchant_login_clicked", {
+                  location: "landing_hero",
+                })}
+              >
                 <Button size="lg" variant="outline" className="w-full gap-2 border-border/60 sm:w-auto">
                   Merchant Login
                   <ChevronRight className="h-4 w-4" />

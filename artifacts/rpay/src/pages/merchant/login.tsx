@@ -26,6 +26,7 @@ import { ShieldAlert } from "lucide-react";
 import { SUPPORT_MAILTO } from "@/lib/support-config";
 import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
 import { useSocialProviders } from "@/hooks/useSocialProviders";
+import { trackEvent } from "@/lib/analytics";
 
 function apiUrl(path: string): string {
   const base = (import.meta as any)?.env?.BASE_URL ?? "/";
@@ -95,6 +96,10 @@ function PasswordLoginTab({
           const targetPath = merchantType === "PAYOUT_ONLY"
             ? "/payout-merchant/dashboard"
             : "/merchant/dashboard";
+          trackEvent("merchant_login_succeeded", {
+            method: "password",
+            merchant_type: merchantType || "standard",
+          });
           toast.success("Welcome back.");
           onSigningIn();
           queryClient.clear();
@@ -102,6 +107,10 @@ function PasswordLoginTab({
         },
         onError: (err) => {
           const { status, message, headers } = getErrorInfo(err);
+          trackEvent("merchant_login_failed", {
+            method: "password",
+            reason: status === 429 ? "rate_limited" : status === 401 ? "unauthorized" : "other",
+          });
           if (status === 429) {
             const seconds = extractRateLimitSeconds(headers);
             setRateLimitSeconds(seconds);
@@ -302,6 +311,10 @@ function OtpLoginTab({
           const targetPath = merchantType === "PAYOUT_ONLY"
             ? "/payout-merchant/dashboard"
             : "/merchant/dashboard";
+          trackEvent("merchant_login_succeeded", {
+            method: "otp",
+            merchant_type: merchantType || "standard",
+          });
           toast.success("Welcome back.");
           onSigningIn();
           queryClient.clear();
@@ -309,6 +322,10 @@ function OtpLoginTab({
         },
         onError: (err) => {
           const { status, message, headers } = getErrorInfo(err);
+          trackEvent("merchant_login_failed", {
+            method: "otp",
+            reason: status === 429 ? "rate_limited" : status === 401 ? "invalid_code" : "other",
+          });
           if (status === 429) {
             onRateLimited(extractRateLimitSeconds(headers));
             return;
@@ -679,14 +696,26 @@ function MerchantGoogleSignIn({ onSigningIn }: { onSigningIn: () => void }) {
         return;
       }
       if (!r.ok) {
+        trackEvent("merchant_login_failed", {
+          method: "google",
+          reason: "provider_rejected",
+        });
         toast.error(data.error ?? "Google sign-in failed");
         setBusy(false);
         return;
       }
+      trackEvent("merchant_login_succeeded", {
+        method: "google",
+        merchant_type: "standard",
+      });
       onSigningIn();
       queryClient.clear();
       saveAuthAndRedirect(data.token, data.user, "/merchant/dashboard");
     } catch {
+      trackEvent("merchant_login_failed", {
+        method: "google",
+        reason: "network_error",
+      });
       toast.error("Google sign-in failed. Please try again.");
       setBusy(false);
     }
@@ -729,14 +758,25 @@ function MerchantGoogleSignIn({ onSigningIn }: { onSigningIn: () => void }) {
       });
       const data = await r.json();
       if (!r.ok) {
+        trackEvent("merchant_registration_failed", {
+          method: "google",
+          reason: "provider_rejected",
+        });
         toast.error(data.error ?? "Registration failed");
         setBusy(false);
         return;
       }
+      trackEvent("merchant_registration_succeeded", {
+        method: "google",
+      });
       onSigningIn();
       queryClient.clear();
       saveAuthAndRedirect(data.token, data.user, "/merchant/dashboard");
     } catch {
+      trackEvent("merchant_registration_failed", {
+        method: "google",
+        reason: "network_error",
+      });
       toast.error("Registration failed. Please try again.");
       setBusy(false);
     }

@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Copy, CheckCircle2, Clock, XCircle, Smartphone, Send, AlertCircle, BadgeCheck, Hourglass } from "lucide-react";
 import { toast } from "sonner";
 import { useCompanySettings } from "@/lib/company-settings";
+import { trackEvent } from "@/lib/analytics";
 
 const LS_KEY = (slug: string) => `rasokart_pay_${slug}`;
 
@@ -226,6 +227,11 @@ export default function PayPage() {
       .then(async (data: PublicLink) => {
         setLink(data);
         setLoading(false);
+        trackEvent("payment_link_loaded", {
+          status: data.status,
+          has_fixed_amount: Boolean(data.amount),
+          payment_method: data.staticUpi ? "static_upi" : "upi",
+        });
 
         // If there's a saved submission, fetch its real status immediately
         if (savedUtrLocal?.txnId) {
@@ -256,6 +262,10 @@ export default function PayPage() {
     if (!link.amount && !customAmount.trim()) { setUtrError("Please enter the amount you paid"); return; }
     setUtrError(null);
     setUtrState("submitting");
+    trackEvent("payment_submission_started", {
+      has_fixed_amount: Boolean(link.amount),
+      payment_method: link.staticUpi ? "static_upi" : "upi",
+    });
     const base = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
     try {
       const r = await fetch(`${base}/api/payment-links/public/${slug}/utr`, {
@@ -293,6 +303,10 @@ export default function PayPage() {
           setUtrError(safe);
         }
         setUtrState("error");
+        trackEvent("payment_submission_failed", {
+          reason: code && KNOWN_CODES.has(code) ? code.toLowerCase() : "other",
+          has_fixed_amount: Boolean(link.amount),
+        });
         return;
       }
 
@@ -308,6 +322,10 @@ export default function PayPage() {
       setTxnStatus("pending_verification");
       setTxnUpdatedAt(null);
       setUtrState("success");
+      trackEvent("payment_submission_succeeded", {
+        has_fixed_amount: Boolean(link.amount),
+        payment_method: link.staticUpi ? "static_upi" : "upi",
+      });
 
       // Begin polling for this new submission
       startPolling(slug, saved.txnId);
@@ -315,6 +333,10 @@ export default function PayPage() {
       setUtrErrorTitle(null);
       setUtrError(err.message ?? "We could not submit your payment right now. Please try again.");
       setUtrState("error");
+      trackEvent("payment_submission_failed", {
+        reason: "network_error",
+        has_fixed_amount: Boolean(link.amount),
+      });
     }
   }
 
