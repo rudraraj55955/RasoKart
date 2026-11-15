@@ -7,7 +7,7 @@
  *  3.  Signing roundtrip — encryptSecret → decryptSecret preserves plaintext
  *  4.  Masked status — GET /api/callbacks/secret does NOT expose plaintext; includes callbackVerified
  *  5.  POST /api/webhooks/test → 400 when no webhook URL configured
- *  6.  POST /api/webhooks/test → 200 with non-financial payload (delivery fails → network, route still 200)
+ *  6.  POST /api/webhooks/test → 200 with non-financial payload (stubbed delivery failure, route still 200)
  *  7.  Event type validation — unsupported type → 400
  *  8.  Callback signing — correct HMAC accepted, wrong HMAC rejected (unit)
  *  9.  POST /api/callbacks — without API key → 401
@@ -25,7 +25,7 @@
  *   node --import tsx/esm --test src/routes/callbacks.webhook.setup.test.ts
  */
 
-import { describe, it, before, after, beforeEach } from "node:test";
+import { describe, it, before, after, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import crypto from "node:crypto";
@@ -86,10 +86,10 @@ const M1_WEBHOOK = {
 };
 
 // Public IP literal URL that passes SSRF guard without DNS resolution.
-// 8.8.8.8 is a publicly-routed IP so the SSRF guard accepts it, but
-// the test delivery will fail (connection refused / reset) → delivered=false.
-// The route always returns HTTP 200 regardless of delivery outcome.
+// The SSRF validator still runs, but fetch is stubbed below for every test.
+// This URL is only an assertion fixture; no DNS lookup or remote delivery runs.
 const SSRF_SAFE_TEST_URL = "https://8.8.8.8/webhook-ci-test";
+const DELIVERY_FAILURE = "Synthetic delivery connection failure";
 
 function makeHmac(body: string, secret = PLAIN_SECRET): string {
   return "sha256=" + crypto.createHmac("sha256", secret).update(body).digest("hex");
@@ -174,6 +174,8 @@ describe("Merchant Callback / Webhook Setup", () => {
   const originalSelect = (db as any).select?.bind(db);
   const originalInsert = (db as any).insert?.bind(db);
   const originalUpdate = (db as any).update?.bind(db);
+  const originalFetch = globalThis.fetch;
+  const outboundRequests: Array<{ url: string; init: RequestInit | undefined }> = [];
 
   const m1Token    = generateToken({ userId: M1_USER.id, role: "merchant" });
   const adminToken = generateToken({ userId: ADMIN_USER.id, role: "admin" });
@@ -184,6 +186,7 @@ describe("Merchant Callback / Webhook Setup", () => {
   });
 
   after(async () => {
+    globalThis.fetch = originalFetch;
     (db as any).select = originalSelect;
     (db as any).insert = originalInsert;
     (db as any).update = originalUpdate;
@@ -193,10 +196,18 @@ describe("Merchant Callback / Webhook Setup", () => {
   });
 
   beforeEach(() => {
+    outboundRequests.length = 0;
+    // The route's HTTP client is replaced, not the route, SSRF guard or signing
+    // logic. Throw without ever calling the real transport, for ANY target.
+    globalThis.fetch = async (input, init) => {
+      outboundRequests.push({ url: input instanceof Request ? input.url : String(input), init });
+      throw new TypeError(DELIVERY_FAILURE);
+    };
     (db as any).select = originalSelect;
     (db as any).insert = originalInsert;
     (db as any).update = originalUpdate;
   });
+  afterEach(() => { globalThis.fetch = originalFetch; });
 
   // ── Helper to build a select stub that handles requireAuth + plan check ────
 
@@ -339,9 +350,8 @@ describe("Merchant Callback / Webhook Setup", () => {
 
   // ─── 6. Test delivery — route always returns 200, non-financial body ──────
   //
-  // Use a public IP literal (8.8.8.8) so the SSRF guard passes without DNS
-  // resolution. The actual delivery will fail (connection refused), which is
-  // fine — the route logs it and still returns HTTP 200 with the JSON result.
+  // The public-IP fixture passes validation without DNS. The in-process fetch
+  // stub fails delivery deterministically, with no request sent to that IP.
 
   it("6. POST /api/webhooks/test → 200 with non-financial requestBody", async () => {
     (db as any).select = makeSelectStub(M1_USER, (table) => {
@@ -356,8 +366,15 @@ describe("Merchant Callback / Webhook Setup", () => {
 
     assert.equal(r.status, 200, `route should always return 200; got ${r.status} ${JSON.stringify(r.body)}`);
     const b = r.body as any;
-    assert.ok(typeof b.delivered === "boolean", "response should have `delivered` boolean");
+    assert.equal(b.delivered, false);
+    assert.equal(b.httpStatus, null);
+    assert.equal(b.responseBody, DELIVERY_FAILURE);
     assert.ok(typeof b.requestBody === "string", "response should have `requestBody` string");
+    assert.equal(outboundRequests.length, 1);
+    assert.equal(outboundRequests[0].url, SSRF_SAFE_TEST_URL);
+    assert.equal(outboundRequests[0].init?.method, "POST");
+    assert.equal(outboundRequests[0].init?.body, b.requestBody);
+    assert.equal(new Headers(outboundRequests[0].init?.headers).get("X-Signature"), makeHmac(b.requestBody));
 
     // Non-financial: no wallet/ledger credit/debit fields in payload
     const payload = JSON.parse(b.requestBody) as Record<string, unknown>;
@@ -468,6 +485,9 @@ describe("Merchant Callback / Webhook Setup", () => {
 
       assert.equal(r.status, 200, `eventType="${eventType}" should 200; got ${r.status}`);
       const b = r.body as any;
+      assert.equal(b.delivered, false);
+      assert.equal(b.responseBody, DELIVERY_FAILURE);
+      assert.equal(typeof b.requestBody, "string");
       if (b.requestBody) {
         const p = JSON.parse(b.requestBody) as Record<string, unknown>;
         const banned = ["walletCredit", "ledgerDebit", "creditWallet", "debitLedger"];
@@ -476,5 +496,6 @@ describe("Merchant Callback / Webhook Setup", () => {
         }
       }
     }
+    assert.equal(outboundRequests.length, SUPPORTED.length);
   });
 });
