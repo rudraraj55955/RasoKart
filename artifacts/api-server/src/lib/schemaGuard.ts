@@ -2456,6 +2456,113 @@ async function runGuard(executor: GuardExecutor = db): Promise<void> {
     logger.info({ table: "cashfree_payout_webhook_logs" }, "schema_guard_table_created");
   });
 
+  // ── White-label tables ────────────────────────────────────────────────────
+  // Create the additive tenant foundation before the IAM migration. These
+  // tables reference only other white-label tables and must exist before any
+  // tenant route can query them on a fresh or drifted database.
+  await block("white_label_tables", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS white_label_tenants (
+        id SERIAL PRIMARY KEY,
+        slug TEXT NOT NULL,
+        display_name TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'draft',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS white_label_domains (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER NOT NULL REFERENCES white_label_tenants(id),
+        hostname TEXT NOT NULL,
+        portal_kind TEXT NOT NULL DEFAULT 'admin',
+        ownership_status TEXT NOT NULL DEFAULT 'pending',
+        verification_token_hash TEXT,
+        verified_at TIMESTAMPTZ,
+        tls_status TEXT NOT NULL DEFAULT 'pending',
+        is_primary BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS white_label_branding (
+        tenant_id INTEGER PRIMARY KEY REFERENCES white_label_tenants(id),
+        logo_url TEXT,
+        favicon_url TEXT,
+        primary_color TEXT NOT NULL DEFAULT '#172C54',
+        support_email TEXT,
+        settings JSONB,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS white_label_memberships (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER NOT NULL REFERENCES white_label_tenants(id),
+        user_id INTEGER NOT NULL,
+        role TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS white_label_merchant_assignments (
+        merchant_id INTEGER PRIMARY KEY,
+        tenant_id INTEGER NOT NULL REFERENCES white_label_tenants(id),
+        assigned_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS white_label_features (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER NOT NULL REFERENCES white_label_tenants(id),
+        feature_key TEXT NOT NULL,
+        enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        limits JSONB
+      )
+    `);
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS white_label_finance_commands (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER NOT NULL REFERENCES white_label_tenants(id),
+        merchant_id INTEGER NOT NULL,
+        operation TEXT NOT NULL,
+        idempotency_key TEXT NOT NULL,
+        payload_hash TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'reserved',
+        result JSONB,
+        created_by INTEGER NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        completed_at TIMESTAMPTZ
+      )
+    `);
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS white_label_finance_audit (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER NOT NULL REFERENCES white_label_tenants(id),
+        merchant_id INTEGER NOT NULL,
+        command_id INTEGER REFERENCES white_label_finance_commands(id),
+        actor_id INTEGER NOT NULL,
+        action TEXT NOT NULL,
+        outcome TEXT NOT NULL,
+        metadata JSONB,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS wl_tenants_slug_unique ON white_label_tenants(slug)`);
+    await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS wl_domains_hostname_unique ON white_label_domains(hostname)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS wl_domains_tenant_idx ON white_label_domains(tenant_id)`);
+    await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS wl_membership_tenant_user_unique ON white_label_memberships(tenant_id, user_id)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS wl_membership_user_idx ON white_label_memberships(user_id)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS wl_merchant_tenant_idx ON white_label_merchant_assignments(tenant_id)`);
+    await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS wl_tenant_feature_unique ON white_label_features(tenant_id, feature_key)`);
+    await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS wl_fin_cmd_unique_request ON white_label_finance_commands(tenant_id, merchant_id, operation, idempotency_key)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS wl_fin_cmd_tenant_created ON white_label_finance_commands(tenant_id, created_at)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS wl_fin_audit_tenant_created ON white_label_finance_audit(tenant_id, created_at)`);
+    logger.info({ tables: ["white_label_tenants", "white_label_domains", "white_label_branding", "white_label_memberships", "white_label_merchant_assignments", "white_label_features", "white_label_finance_commands", "white_label_finance_audit"] }, "schema_guard_tables_created");
+  });
+
   // ── IAM tables ─────────────────────────────────────────────────────────────
   // Delegated to the canonical migration file (lib/db/src/migrations/add-iam-rbac.ts).
   // That file owns the DDL and its exported rollback() for emergency use.

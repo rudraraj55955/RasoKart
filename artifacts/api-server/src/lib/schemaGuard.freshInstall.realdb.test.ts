@@ -31,7 +31,7 @@ process.env["NODE_ENV"] = "production";
  * schemaGuard.ts executed on the same connection inside the transaction.
  * information_schema.tables is queried on the same client to confirm:
  *   (a) the 12 dropped tables are absent before the guard runs, and
- *   (b) all 84 guarded tables exist after the guard runs.
+ *   (b) all guarded tables exist after the guard runs.
  * The transaction is then ROLLBACKed so no permanent data is mutated.
  *
  * On a CI runner with a genuinely fresh database the DROP is a no-op (tables
@@ -66,7 +66,7 @@ process.env["NODE_ENV"] = "production";
  *   secure_id_settings, verification_logs, routing_configs (→ routing_rules)
  *
  * Verified to exist after guard runs (Part A information_schema check):
- *   all 84 guarded tables listed in ALL_GUARDED_TABLES
+ *   all guarded tables listed in ALL_GUARDED_TABLES
  *
  * Proven reachable via HTTP 200 with authenticated Bearer tokens (Part B):
  *   payment_links, routing_configs/rules, routing_logs, provider_metrics,
@@ -293,6 +293,16 @@ const ALL_GUARDED_TABLES = [
   "role_permissions",
   "user_permissions",
   "iam_migration_log",
+
+  // ── White-label tenant foundation ───────────────────────────────────────
+  "white_label_tenants",
+  "white_label_domains",
+  "white_label_branding",
+  "white_label_memberships",
+  "white_label_merchant_assignments",
+  "white_label_features",
+  "white_label_finance_commands",
+  "white_label_finance_audit",
 ];
 
 // ── HTTP helper ───────────────────────────────────────────────────────────────
