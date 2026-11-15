@@ -578,6 +578,7 @@ const ADMIN_NAV = [
       { title: "Audit Logs", icon: Shield, href: "/admin/audit-logs" },
       { title: "User Roles", icon: UserCog, href: "/admin/user-roles" },
       { title: "Company Branding", icon: Paintbrush, href: "/admin/company-branding" },
+      { title: "White Labels", icon: Paintbrush, href: "/admin/white-labels", superAdminOnly: true },
       { title: "OTP / SMS Settings", icon: MessageSquare, href: "/admin/otp-settings", superAdminOnly: true },
       { title: "Email OTP Settings", icon: Mail, href: "/admin/otp-email-settings", superAdminOnly: true as const },
       { title: "Password Reset Delivery", icon: Activity, href: "/admin/email-delivery", permissionOverride: "admin_email_delivery" as const },
