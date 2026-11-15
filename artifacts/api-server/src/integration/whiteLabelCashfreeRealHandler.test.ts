@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import express from "express";
-import { createHmac } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import pg from "pg";
 import { getIsolatedWhiteLabelTestDatabaseUrl } from "../lib/whiteLabelPgTestSafety";
 
@@ -43,7 +43,7 @@ test("actual Cashfree webhook HTTP handler rejects unauthenticated payout on iso
     assert.equal(rows.rows[0]?.signature_verified, false);
     assert.equal(rows.rows[0]?.processing_result, "rejected");
     // Authenticated TEST events must be acknowledged without touching payout tables.
-    const body = JSON.stringify({ type: "WEBHOOK_TEST", data: {} });
+    const body = JSON.stringify({ type: "WEBHOOK_TEST", data: { test_id: randomUUID() } });
     const timestamp = String(Math.floor(Date.now() / 1000));
     const signature = createHmac("sha256", "synthetic_local_test_secret_123")
       .update(timestamp + body).digest("base64");
@@ -56,11 +56,20 @@ test("actual Cashfree webhook HTTP handler rejects unauthenticated payout on iso
       });
       assert.equal(ok.status, 200);
     }
-    const verified = await pool.query(
-      "SELECT signature_verified, processing_result FROM cashfree_payout_webhook_logs ORDER BY id DESC LIMIT 2",
-    );
-    assert.equal(verified.rows.length, 2);
-    for (const event of verified.rows) {
+    // The handler acknowledges before persisting its audit log. Wait for the
+    // two synthetic requests instead of racing the asynchronous log inserts.
+    let verifiedRows: Array<{ signature_verified: boolean | null; processing_result: string }> = [];
+    for (let attempt = 0; attempt < 50; attempt++) {
+      const verified = await pool.query(
+        "SELECT signature_verified, processing_result FROM cashfree_payout_webhook_logs WHERE raw_payload = $1 ORDER BY id DESC LIMIT 2",
+        [body],
+      );
+      verifiedRows = verified.rows;
+      if (verifiedRows.length === 2) break;
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    assert.equal(verifiedRows.length, 2);
+    for (const event of verifiedRows) {
       assert.equal(event.signature_verified, true);
       assert.equal(event.processing_result, "ignored");
     }
