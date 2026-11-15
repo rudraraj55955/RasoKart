@@ -155,6 +155,9 @@ jobs:
       - name: Verify production deployment workflow safety policy
         run: pnpm --filter @workspace/scripts run test:deployment-workflow-policy
 
+      - name: Verify deployment preflight preserves local changes
+        run: node --test scripts/deploy-sensitive-production.test.mjs
+
       - name: Validate shared-package TypeScript project references
         run: pnpm run test:ts-references
 

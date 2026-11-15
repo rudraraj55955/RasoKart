@@ -15,3 +15,9 @@ test("terminal status cannot regress due to late webhook", () => {
   assert.equal(evaluatePayoutWebhookEvent({ ...stored, status: "SUCCESS" }, { transferId: "rk123", providerTransferId: "cf456", status: "FAILED" }), "stale");
   assert.equal(evaluatePayoutWebhookEvent({ ...stored, status: "FAILED" }, { transferId: "rk123", providerTransferId: "cf456", status: "PENDING" }), "stale");
 });
+test("signed matching SUCCESS can correct FAILED without reopening it for pending events", () => {
+  const failed = { ...stored, status: "FAILED" };
+  assert.equal(evaluatePayoutWebhookEvent(failed, { transferId: "rk123", providerTransferId: "cf456", status: "SUCCESS" }), "accept");
+  assert.equal(evaluatePayoutWebhookEvent(failed, { transferId: "rk123", providerTransferId: "cf456", status: "FAILED" }), "duplicate");
+  assert.equal(evaluatePayoutWebhookEvent(failed, { transferId: "rk123", providerTransferId: "wrong", status: "SUCCESS" }), "conflict");
+});
