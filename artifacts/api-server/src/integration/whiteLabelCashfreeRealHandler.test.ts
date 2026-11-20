@@ -5,7 +5,7 @@ import { createHmac, randomUUID } from "node:crypto";
 import pg from "pg";
 import { getIsolatedWhiteLabelTestDatabaseUrl } from "../lib/whiteLabelPgTestSafety";
 
-test("actual Cashfree webhook HTTP handler rejects unauthenticated payout on isolated DB", async () => {
+test("actual Cashfree webhook HTTP handler rejects unauthenticated payout on isolated DB", async (t) => {
   const url = getIsolatedWhiteLabelTestDatabaseUrl(process.env);
   process.env.DATABASE_URL = url;
   const pool = new pg.Pool({ connectionString: url });
@@ -247,6 +247,96 @@ test("actual Cashfree webhook HTTP handler rejects unauthenticated payout on iso
       await pool.query("DELETE FROM merchant_wallets WHERE merchant_id=$1",[merchantId]);
       for (const id of ids) await pool.query("DELETE FROM withdrawals WHERE id=$1",[id]);
     }
+    await t.test("late SUCCESS corrects a matched failed payout and withdrawal exactly once", async () => {
+      const transferId = "wl_joint_correction_" + randomUUID();
+      const providerId = "cf_" + randomUUID();
+      const jointMerchantId = merchantId + 1;
+      let jointPayoutId: number | undefined;
+      let jointWithdrawalId: number | undefined;
+      try {
+        // The earlier failure already released the hold. A later provider
+        // SUCCESS must correct both records and debit the released funds once.
+        await pool.query(
+          "INSERT INTO merchant_wallets(merchant_id,available_balance,total_reversals) VALUES($1,100,100)",
+          [jointMerchantId],
+        );
+        const payout = await pool.query(
+          `INSERT INTO cashfree_payouts(transfer_id,cashfree_transfer_id,beneficiary_name,
+            amount,status,merchant_id,initiated_by_email)
+            VALUES($1,$2,'Synthetic Beneficiary',100,'FAILED',$3,'test@example.invalid') RETURNING id`,
+          [transferId, providerId, jointMerchantId],
+        );
+        jointPayoutId = payout.rows[0].id as number;
+        const withdrawal = await pool.query(
+          `INSERT INTO withdrawals(merchant_id,amount,currency,status,transfer_status,
+            provider_reference_id,bank_account,bank_name,ifsc_code,account_holder,payout_mode)
+            VALUES($1,100,'INR','approved','FAILED',$2,'TEST','TEST','TEST','TEST','IMPS') RETURNING id`,
+          [jointMerchantId, transferId],
+        );
+        jointWithdrawalId = withdrawal.rows[0].id as number;
+        const send = async (outcome: "SUCCESS" | "FAILED", cfId = providerId) => {
+          const raw = JSON.stringify({ type: "TRANSFER_" + outcome, data: { transfer: {
+            transfer_id: transferId, cf_transfer_id: cfId,
+            transfer_status: outcome, transfer_utr: "SYNTHETIC_UTR",
+          } } });
+          const timestamp = String(Math.floor(Date.now() / 1000));
+          const signature = createHmac("sha256", "synthetic_local_test_secret_123")
+            .update(timestamp + raw).digest("base64");
+          const response = await fetch(`http://127.0.0.1:${address.port}/api/cashfree-payout/webhook`, {
+            method: "POST", headers: { "Content-Type": "application/json",
+              "x-webhook-timestamp": timestamp, "x-webhook-signature": signature }, body: raw,
+          });
+          assert.equal(response.status, 200);
+        };
+        const waitForEvents = async (count: number) => {
+          // The HTTP ACK precedes processing. The final audit insert is the
+          // completion signal, including for replays and ignored downgrades.
+          for (let attempt = 0; attempt < 200; attempt++) {
+            const logs = await pool.query(
+              "SELECT processing_result FROM cashfree_payout_webhook_logs WHERE transfer_id=$1 ORDER BY id",
+              [transferId],
+            );
+            if (logs.rows.length === count) return logs.rows;
+            await new Promise(resolve => setTimeout(resolve, 25));
+          }
+          assert.fail(`Expected ${count} completed synthetic correction events`);
+        };
+        await send("SUCCESS", "conflicting_provider_id");
+        assert.deepEqual((await waitForEvents(1)).map(r => r.processing_result), ["rejected"]);
+        const unchanged = await pool.query("SELECT available_balance FROM merchant_wallets WHERE merchant_id=$1", [jointMerchantId]);
+        assert.equal(unchanged.rows[0].available_balance, "100.00");
+
+        // Race the first correction too, not only already-completed replays.
+        await Promise.all(Array.from({ length: 5 }, () => send("SUCCESS")));
+        await waitForEvents(6);
+        const assertCorrected = async () => {
+          const payoutState = await pool.query("SELECT status,utr FROM cashfree_payouts WHERE id=$1", [jointPayoutId]);
+          const withdrawalState = await pool.query("SELECT transfer_status,utr FROM withdrawals WHERE id=$1", [jointWithdrawalId]);
+          assert.deepEqual(payoutState.rows[0], { status: "SUCCESS", utr: "SYNTHETIC_UTR" });
+          assert.deepEqual(withdrawalState.rows[0], { transfer_status: "SUCCESS", utr: "SYNTHETIC_UTR" });
+          const balance = await pool.query(
+            "SELECT available_balance,hold_balance,total_payout,total_reversals FROM merchant_wallets WHERE merchant_id=$1",
+            [jointMerchantId],
+          );
+          assert.deepEqual(balance.rows[0], { available_balance: "0.00", hold_balance: "0.00", total_payout: "100.00", total_reversals: "0.00" });
+          const ledger = await pool.query("SELECT txn_type,amount,reference_id FROM wallet_ledger WHERE merchant_id=$1 ORDER BY id", [jointMerchantId]);
+          assert.deepEqual(ledger.rows, [{ txn_type: "payout_success_correction", amount: "-100.00", reference_id: jointWithdrawalId }]);
+        };
+        await assertCorrected();
+        await Promise.all(Array.from({ length: 10 }, () => send("SUCCESS")));
+        await waitForEvents(16);
+        await send("FAILED");
+        const completed = await waitForEvents(17);
+        assert.ok(completed.slice(1).every(r => r.processing_result === "processed"));
+        await assertCorrected();
+      } finally {
+        await pool.query("DELETE FROM wallet_ledger WHERE merchant_id=$1", [jointMerchantId]);
+        await pool.query("DELETE FROM merchant_wallets WHERE merchant_id=$1", [jointMerchantId]);
+        if (jointWithdrawalId !== undefined) await pool.query("DELETE FROM withdrawals WHERE id=$1", [jointWithdrawalId]);
+        if (jointPayoutId !== undefined) await pool.query("DELETE FROM cashfree_payouts WHERE id=$1", [jointPayoutId]);
+        await pool.query("DELETE FROM cashfree_payout_webhook_logs WHERE transfer_id=$1", [transferId]);
+      }
+    });
     // Exercise a MATCHED legacy payout via the real signed HTTP handler.
     // No withdrawal or wallet row is created; this is not a live money flow.
     const testTransfer = "wl_matched_test_" + Date.now().toString(36);
