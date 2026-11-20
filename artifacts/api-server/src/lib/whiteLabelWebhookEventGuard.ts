@@ -9,6 +9,10 @@ export function evaluatePayoutWebhookEvent(
       (event.providerTransferId !== null && stored.providerTransferId !== null &&
        event.providerTransferId !== stored.providerTransferId)) return "conflict";
   if (stored.status === event.status) return "duplicate";
-  if (["SUCCESS", "FAILED"].includes(stored.status)) return "stale";
+  // Provider SUCCESS can correct a locally failed payout, just as it does for
+  // the matching withdrawal and wallet handler. Never downgrade SUCCESS, and
+  // never reopen a failed payout for a non-success event.
+  if (stored.status === "SUCCESS" ||
+      (stored.status === "FAILED" && event.status !== "SUCCESS")) return "stale";
   return "accept";
 }
