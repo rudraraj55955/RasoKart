@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
+import { readFileSync } from "fs";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 
 const rawPort = process.env.PORT || "5173";
@@ -9,8 +10,31 @@ const port = Number(rawPort);
 
 const basePath = process.env.BASE_PATH || "/";
 
+function resolveRootVersion(): string {
+  try {
+    const pkg = JSON.parse(
+      readFileSync(path.resolve(import.meta.dirname, "../../package.json"), "utf8"),
+    );
+    if (typeof pkg.version === "string" && pkg.version && pkg.version !== "0.0.0") {
+      return pkg.version;
+    }
+  } catch {
+    // ignore
+  }
+  return "2.1.0";
+}
+
+const appVersion = process.env.APP_VERSION || resolveRootVersion();
+const buildDate =
+  process.env.BUILD_DATE ||
+  new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
 export default defineConfig({
   base: basePath,
+  define: {
+    __APP_VERSION__: JSON.stringify(appVersion),
+    __BUILD_DATE__: JSON.stringify(buildDate),
+  },
   plugins: [
     react(),
     tailwindcss(),

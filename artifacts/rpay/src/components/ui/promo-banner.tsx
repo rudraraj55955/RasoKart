@@ -39,7 +39,39 @@ export interface Campaign {
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
+// Shared single-flight cache so all PromoBannerSlot instances on a page share
+// ONE `/api/cms/public/banners` request instead of firing 11+ parallel calls.
+const BANNER_CACHE_TTL_MS = 60_000;
+let cachedAllBanners: { data: Campaign[]; fetchedAt: number } | null = null;
+let inFlightBannersRequest: Promise<Campaign[]> | null = null;
+const trackedImpressions = new Set<string>();
+
+function loadAllPublicBanners(): Promise<Campaign[]> {
+  if (cachedAllBanners && Date.now() - cachedAllBanners.fetchedAt < BANNER_CACHE_TTL_MS) {
+    return Promise.resolve(cachedAllBanners.data);
+  }
+  if (!inFlightBannersRequest) {
+    inFlightBannersRequest = fetch(`${BASE}/api/cms/public/banners`)
+      .then((r) => (r.ok ? r.json() : { campaigns: [] }))
+      .then((d: { campaigns?: Campaign[] }) => {
+        const list = Array.isArray(d?.campaigns) ? d.campaigns : [];
+        cachedAllBanners = { data: list, fetchedAt: Date.now() };
+        return list;
+      })
+      .catch(() => [])
+      .finally(() => {
+        inFlightBannersRequest = null;
+      });
+  }
+  return inFlightBannersRequest;
+}
+
 async function trackEvent(campaignId: number, eventType: "impression" | "click", placement: string) {
+  if (eventType === "impression") {
+    const key = `${campaignId}:${placement}`;
+    if (trackedImpressions.has(key)) return;
+    trackedImpressions.add(key);
+  }
   const deviceType = window.innerWidth < 640 ? "mobile" : window.innerWidth < 1024 ? "tablet" : "desktop";
   try {
     await fetch(`${BASE}/api/cms/track`, {
@@ -86,27 +118,29 @@ function AnnouncementBar({ c, onClose }: { c: Campaign; onClose: () => void }) {
     : "bg-primary/10 border-primary/30 text-foreground";
 
   return (
-    <div className={`w-full border-b ${bg} py-2.5 px-4 relative`}>
-      <div className="mx-auto max-w-7xl flex items-center justify-center gap-3 text-sm">
-        {c.badge && <span className="font-bold uppercase text-xs tracking-wider opacity-80">{c.badge}</span>}
-        {c.publicTitle && <span className="font-medium">{c.publicTitle}</span>}
-        {c.ctaText && c.ctaUrl && (
-          <a
-            href={c.ctaUrl}
-            onClick={() => trackEvent(c.id, "click", c.placement)}
-            className="underline font-semibold hover:no-underline flex items-center gap-1"
-          >
-            {c.ctaText} <ArrowRight className="h-3 w-3" />
-          </a>
-        )}
+    <div className="w-full bg-background/95 backdrop-blur-xl">
+      <div className={`w-full border-b ${bg} py-2 pl-4 pr-10 relative`}>
+        <div className="mx-auto max-w-7xl flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs sm:text-sm text-center">
+          {c.badge && <span className="font-bold uppercase text-[11px] tracking-wider opacity-80">{c.badge}</span>}
+          {c.publicTitle && <span className="font-medium">{c.publicTitle}</span>}
+          {c.ctaText && c.ctaUrl && (
+            <a
+              href={c.ctaUrl}
+              onClick={() => trackEvent(c.id, "click", c.placement)}
+              className="underline font-semibold hover:no-underline inline-flex items-center gap-1"
+            >
+              {c.ctaText} <ArrowRight className="h-3 w-3" />
+            </a>
+          )}
+        </div>
+        <button
+          onClick={onClose}
+          className="absolute right-3 top-1/2 -translate-y-1/2 rounded p-1 opacity-70 hover:opacity-100 focus:outline-none"
+          aria-label="Close announcement"
+        >
+          <X className="h-4 w-4" />
+        </button>
       </div>
-      <button
-        onClick={onClose}
-        className="absolute right-3 top-1/2 -translate-y-1/2 opacity-60 hover:opacity-100"
-        aria-label="Close announcement"
-      >
-        <X className="h-4 w-4" />
-      </button>
     </div>
   );
 }
@@ -393,24 +427,37 @@ interface PromoBannerSlotProps {
 export function PromoBannerSlot({ placement, className = "" }: PromoBannerSlotProps) {
   const [campaigns, setCampaigns] = useState<Campaign[] | null>(null);
   const [dismissed, setDismissed] = useState(false);
+  const slotRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-    fetch(`${BASE}/api/cms/public/banners?placement=${encodeURIComponent(placement)}`)
-      .then((r) => r.json())
-      .then((d) => {
-        if (!cancelled) setCampaigns(d.campaigns ?? []);
-      })
-      .catch(() => {
-        if (!cancelled) setCampaigns([]);
-      });
-    return () => { cancelled = true; };
+    let active = true;
+    loadAllPublicBanners().then((all) => {
+      if (active) {
+        setCampaigns(all.filter((c) => c.placement === placement));
+      }
+    });
+    return () => { active = false; };
   }, [placement]);
 
   useEffect(() => {
-    if (campaigns && campaigns.length > 0 && campaigns[0].type !== "announcement_bar") {
+    if (!campaigns || campaigns.length === 0 || campaigns[0].type === "announcement_bar") return;
+    const node = slotRef.current;
+    if (!node || typeof IntersectionObserver === "undefined") {
       campaigns.forEach((c) => trackEvent(c.id, "impression", placement));
+      return;
     }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          campaigns.forEach((c) => trackEvent(c.id, "impression", placement));
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.2 },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
   }, [campaigns, placement]);
 
   if (!campaigns || campaigns.length === 0 || dismissed) return null;
@@ -425,14 +472,14 @@ export function PromoBannerSlot({ placement, className = "" }: PromoBannerSlotPr
 
   if (campaigns.length === 1) {
     return (
-      <div className={className}>
+      <div ref={slotRef} className={className}>
         <SingleBannerRenderer c={campaigns[0]} />
       </div>
     );
   }
 
   return (
-    <div className={className}>
+    <div ref={slotRef} className={className}>
       <Carousel campaigns={campaigns} />
     </div>
   );
