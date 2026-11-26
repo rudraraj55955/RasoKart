@@ -20,6 +20,23 @@ function isSuppressedPath(pathname: string): boolean {
   return SUPPRESSED_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }
 
+function teardownExternalWidget(): void {
+  if (typeof document === "undefined") return;
+  try {
+    const win = window as unknown as Record<string, { destroy?: () => void } | undefined>;
+    win.HelpKart365?.destroy?.();
+    win.HelpKart?.destroy?.();
+  } catch {
+    // Ignore vendor teardown errors on navigation
+  }
+  document.getElementById(WIDGET_SCRIPT_ID)?.remove();
+  document
+    .querySelectorAll(
+      '[id*="helpkart365"], [class*="helpkart365"], [data-helpkart-widget], iframe[src*="helpkart365"]',
+    )
+    .forEach((el) => el.remove());
+}
+
 export function HelpKartWidget() {
   const [location] = useLocation();
   const { supportPhone, supportEmail } = useCompanySettings();
@@ -33,7 +50,11 @@ export function HelpKartWidget() {
     (typeof navigator !== "undefined" && Boolean(navigator.webdriver));
 
   useEffect(() => {
-    if (hidden || !siteKey) return;
+    if (hidden || !siteKey) {
+      teardownExternalWidget();
+      setExternalActive(false);
+      return;
+    }
 
     const existing = document.getElementById(WIDGET_SCRIPT_ID) as HTMLScriptElement | null;
     if (existing) {

@@ -93,7 +93,22 @@ router.get("/public/banners", async (req, res) => {
       return true;
     });
 
-    res.setHeader("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
+    const nowMs = now.getTime();
+    let maxAgeSeconds = 60;
+    for (const r of rows) {
+      for (const boundary of [r.startAt, r.endAt]) {
+        if (!boundary) continue;
+        const deltaSeconds = Math.floor((boundary.getTime() - nowMs) / 1000);
+        if (deltaSeconds >= 0 && deltaSeconds < maxAgeSeconds) {
+          maxAgeSeconds = deltaSeconds;
+        }
+      }
+    }
+
+    res.setHeader(
+      "Cache-Control",
+      maxAgeSeconds > 0 ? `public, max-age=${maxAgeSeconds}` : "no-store",
+    );
     return res.json({ campaigns: filtered });
   } catch (err) {
     req.log.error({ err }, "cms_public_banners_error");
