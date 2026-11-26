@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, type ReactNode, type RefObject, type CSSProperties } from 'react';
 import { motion } from 'framer-motion';
 import { ChevronUp, Heart, Send, MoreHorizontal } from 'lucide-react';
 
@@ -8,9 +8,16 @@ const CLAY = '#b3674a';
 const ROSE = '#9c6b5e';
 const SMOKE = '#7d7468';
 
-const ease = [0.22, 1, 0.36, 1];
+const ease: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
-function Reveal({ children, root, delay = 0, y = 26, className = '', style = {} }) {
+function Reveal({ children, root, delay = 0, y = 26, className = '', style = {} }: {
+  children: ReactNode;
+  root: RefObject<Element | null>;
+  delay?: number;
+  y?: number;
+  className?: string;
+  style?: CSSProperties;
+}) {
   return (
     <motion.div
       className={className}
@@ -34,7 +41,7 @@ function Seam() {
 }
 
 export default function App() {
-  const scrollRef = useRef(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const [progress, setProgress] = useState(0);
 
   useEffect(() => {
@@ -49,7 +56,7 @@ export default function App() {
   }, []);
 
   const segments = 5;
-  const segFill = (i) => {
+  const segFill = (i: number) => {
     const per = 1 / segments;
     const local = (progress - i * per) / per;
     return Math.max(0, Math.min(1, local)) * 100;

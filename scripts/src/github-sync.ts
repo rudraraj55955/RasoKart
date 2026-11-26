@@ -5,10 +5,10 @@ import { sendAdminAlert } from "./mailer.js";
 import { notifyAdminsOfGithubSyncFailing, notifyAdminsOfGithubSyncRecovered, notifyAdminsOfGithubSyncDiverged } from "./githubSyncAlertEmail.js";
 import { db, systemSettingsTable } from "@workspace/db";
 import { inArray } from "drizzle-orm";
+import { createAuthenticatedGitRunner } from "./github-sync-git-auth.js";
 
 const GITHUB_REPO =
   process.env["GITHUB_REPO"] ?? "rudraraj55955/RPAY";
-const REMOTE_NAME = "github";
 const STATUS_FILE = new URL("../../.github-sync-status.json", import.meta.url).pathname;
 const HISTORY_FILE = new URL("../../.github-sync-history.json", import.meta.url).pathname;
 const LOG_DIR = new URL("../../.github-sync-logs/", import.meta.url).pathname;
@@ -52,15 +52,6 @@ function countConsecutiveFailures(): number {
 
 function run(cmd: string, opts: { stdio?: "pipe" | "inherit" } = {}) {
   return execSync(cmd, { stdio: opts.stdio ?? "pipe" });
-}
-
-function resetRemote() {
-  try {
-    run(
-      `git remote set-url ${REMOTE_NAME} https://github.com/${GITHUB_REPO}.git`,
-    );
-  } catch {
-  }
 }
 
 /**
@@ -332,25 +323,19 @@ async function main() {
     return;
   }
 
-  const remoteUrl = `https://x-access-token:${token}@github.com/${GITHUB_REPO}.git`;
-
-  try {
-    run(`git remote get-url ${REMOTE_NAME}`);
-    run(`git remote set-url ${REMOTE_NAME} ${remoteUrl}`);
-  } catch {
-    run(`git remote add ${REMOTE_NAME} ${remoteUrl}`);
-  }
-
   const runId = randomUUID();
+  const remoteUrl = `https://github.com/${GITHUB_REPO}.git`;
+  const temporaryFetchRef = `refs/github-sync/${runId}/main`;
+  const authenticatedGit = createAuthenticatedGitRunner(token);
   const logLines: string[] = [];
   const redact = (text: string) => text.split(token).join("<REDACTED>");
   const log = (line: string) => {
     console.log(line);
     logLines.push(redact(line));
   };
-  const runCaptured = (cmd: string) => {
+  const runCapturedGit = (args: string[]) => {
     try {
-      const out = execSync(cmd, { stdio: ["ignore", "pipe", "pipe"] }).toString();
+      const out = authenticatedGit.run(args).toString();
       if (out.trim()) {
         console.log(out);
         logLines.push(redact(out.trimEnd()));
@@ -368,10 +353,11 @@ async function main() {
   try {
     log(`GITHUB_SYNC: Pushing to ${GITHUB_REPO}...`);
 
-    // Divergence check — run fetch first, then count remote-only commits
+    // Divergence check — fetch into a unique temporary ref so overlapping
+    // sync runs never share a remote URL or a fetched branch reference.
     let fetchSucceeded = false;
     try {
-      runCaptured(`git fetch ${REMOTE_NAME} main`);
+      runCapturedGit(["fetch", "--no-tags", remoteUrl, `main:${temporaryFetchRef}`]);
       fetchSucceeded = true;
     } catch (fetchErr: unknown) {
       const fetchMessage = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
@@ -381,7 +367,7 @@ async function main() {
     if (fetchSucceeded) {
       let remoteAheadBy = 0;
       try {
-        const out = execSync(`git rev-list --count HEAD..${REMOTE_NAME}/main`, { stdio: "pipe" }).toString().trim();
+        const out = execSync(`git rev-list --count HEAD..${temporaryFetchRef}`, { stdio: "pipe" }).toString().trim();
         remoteAheadBy = parseInt(out, 10) || 0;
       } catch {
         // Remote branch doesn't exist yet — first push, no divergence possible
@@ -412,7 +398,9 @@ async function main() {
       }
     }
 
-    runCaptured(`git push ${REMOTE_NAME} HEAD:main --force`);
+    // Authentication is supplied by the process-local GIT_ASKPASS helper;
+    // the URL and every configured Git remote remain credential-free.
+    runCapturedGit(["push", remoteUrl, "HEAD:main", "--force"]);
     log("GITHUB_SYNC: Sync complete.");
 
     // Capture the failure streak that preceded this success BEFORE writeStatus
@@ -454,7 +442,12 @@ async function main() {
 
     throw pushError;
   } finally {
-    resetRemote();
+    try {
+      run(`git update-ref -d ${temporaryFetchRef}`);
+    } catch {
+      // The fetch can fail before creating the temporary ref.
+    }
+    authenticatedGit.dispose();
   }
 }
 

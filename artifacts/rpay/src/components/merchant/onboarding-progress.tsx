@@ -1,172 +1,29 @@
 import { useState, useEffect } from "react";
 import {
-  CheckCircle2, Circle, ChevronDown, ChevronUp, ArrowRight, X, Rocket,
+  CheckCircle2, Circle, ChevronDown, ChevronUp, Rocket, ShieldCheck
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
+import { useMerchantReadiness } from "@/hooks/use-merchant-readiness";
 
-// ── Types ──────────────────────────────────────────────────────────────────────
-
-interface ProgressStep {
-  id: string;
-  label: string;
-  description: string;
-  done: boolean;
-  /** optional steps (API Setup, Callback) are skipped for non-API merchants */
-  optional: boolean;
-  href?: string;
-  cta?: string;
-}
-
-export interface OnboardingProgressProps {
-  /** user.id — used to namespace the localStorage dismiss key */
-  userId?: number;
-  /** merchant account exists = always true when logged in */
-  accountCreated?: boolean;
-  /** any merchantStatus value means contact is on file */
-  contactVerified?: boolean;
-  /** at least one KYC document type has been submitted */
-  kycSubmitted?: boolean;
-  /** admin has approved all KYC docs */
-  kycApproved?: boolean;
-  /** merchant has an active, non-expired, non-suspended plan */
-  planAssigned?: boolean;
-  /** plan includes API access (Silver+) */
-  hasApiAccess?: boolean;
-  /** callback signing secret has been generated */
-  callbackSecretSet?: boolean;
-  /** at least one successful test callback delivery has been recorded */
-  callbackVerified?: boolean;
-  /** at least one payment provider connection is active */
-  paymentServiceLive?: boolean;
-}
-
-// ── Constants ──────────────────────────────────────────────────────────────────
-
-const DISMISS_SUFFIX = "rasokart_onboarding_dismiss";
-
-// ── Component ─────────────────────────────────────────────────────────────────
-
-export function OnboardingProgress({
-  userId,
-  accountCreated = true,
-  contactVerified = true,
-  kycSubmitted = false,
-  kycApproved = false,
-  planAssigned = false,
-  hasApiAccess = false,
-  callbackSecretSet = false,
-  callbackVerified = false,
-  paymentServiceLive = false,
-}: OnboardingProgressProps) {
-  const dismissKey = userId ? `${DISMISS_SUFFIX}_${userId}` : null;
-
-  const [dismissed, setDismissed] = useState(false);
+export function OnboardingProgress() {
+  const { data: readiness, isLoading } = useMerchantReadiness();
   const [collapsed, setCollapsed] = useState(false);
 
+  // Collapse by default if ready
   useEffect(() => {
-    if (!dismissKey) return;
-    setDismissed(localStorage.getItem(dismissKey) === "1");
-  }, [dismissKey]);
+    if (readiness?.isReady) {
+      setCollapsed(true);
+    }
+  }, [readiness?.isReady]);
 
-  const steps: ProgressStep[] = [
-    {
-      id: "account",
-      label: "Account Created",
-      description: "Your RasoKart merchant account is set up and active.",
-      done: accountCreated,
-      optional: false,
-    },
-    {
-      id: "contact",
-      label: "Contact Verified",
-      description: "Email and contact details are confirmed on your account.",
-      done: contactVerified,
-      optional: false,
-    },
-    {
-      id: "kyc_submitted",
-      label: "KYC Submitted",
-      description: kycSubmitted
-        ? "Your business documents have been submitted for review."
-        : "Submit your business verification documents to proceed.",
-      done: kycSubmitted,
-      optional: false,
-      href: "/merchant/verification",
-      cta: kycSubmitted ? "View Status" : "Submit Documents",
-    },
-    {
-      id: "kyc_approved",
-      label: "KYC Approved",
-      description: kycApproved
-        ? "Your identity and business have been verified."
-        : "Awaiting admin review of your submitted documents.",
-      done: kycApproved,
-      optional: false,
-      href: "/merchant/verification",
-      cta: "Check Status",
-    },
-    {
-      id: "plan",
-      label: "Plan Assigned",
-      description: planAssigned
-        ? "A payment plan with your limits and fees is active."
-        : "Contact support — a plan will be assigned after KYC approval.",
-      done: planAssigned,
-      optional: false,
-      href: "/merchant/plan",
-      cta: "View Plan",
-    },
-    {
-      id: "api_setup",
-      label: "API Setup",
-      description: hasApiAccess
-        ? "Your plan includes API access. Generate an API key to integrate."
-        : "Upgrade to Silver or higher to unlock API integration.",
-      done: hasApiAccess,
-      optional: true,
-      href: hasApiAccess ? "/merchant/api-keys" : "/merchant/plan",
-      cta: hasApiAccess ? "Manage API Keys" : "Upgrade Plan",
-    },
-    {
-      id: "callback",
-      label: "Callback Verified",
-      description: callbackVerified
-        ? "Test callback delivered successfully. Webhook integration verified."
-        : callbackSecretSet
-        ? "Secret configured. Send a test callback from Webhook Settings to verify."
-        : "Set up your callback URL and signing secret for payment notifications.",
-      done: callbackVerified,
-      optional: true,
-      href: "/merchant/webhook",
-      cta: callbackVerified
-        ? "View Settings"
-        : callbackSecretSet
-        ? "Send Test Callback"
-        : "Configure",
-    },
-    {
-      id: "live",
-      label: "Payment Service Live",
-      description: paymentServiceLive
-        ? "At least one payment provider is active. You can collect payments."
-        : "Awaiting admin activation of your payment collection service.",
-      done: paymentServiceLive,
-      optional: false,
-      href: "/merchant/connect",
-      cta: "View Providers",
-    },
-  ];
+  if (isLoading || !readiness) return null;
 
-  const requiredSteps = steps.filter(s => !s.optional);
-  const allRequiredDone = requiredSteps.every(s => s.done);
-  const completedCount = steps.filter(s => s.done).length;
-  const nextStep = steps.find(s => !s.done && !s.optional) ?? steps.find(s => !s.done);
-
-  // Hide widget once all required steps pass, or if merchant dismissed it
-  if (allRequiredDone || dismissed) return null;
+  // We don't hide it entirely when done, we just collapse it by default,
+  // or we can hide it if they've dismissed it explicitly.
+  const isAllDone = readiness.isReady;
 
   return (
     <Card className="border-primary/25 bg-primary/5">
@@ -175,13 +32,13 @@ export function OnboardingProgress({
           <div className="flex items-center gap-2.5 flex-wrap">
             <div className="flex items-center gap-1.5">
               <Rocket className="w-4 h-4 text-primary shrink-0" />
-              <CardTitle className="text-base">Onboarding Progress</CardTitle>
+              <CardTitle className="text-base">Merchant Readiness</CardTitle>
             </div>
             <Badge
               variant="outline"
-              className="text-xs border-primary/30 text-primary bg-primary/10"
+              className={`text-xs ${isAllDone ? "border-emerald-500/30 text-emerald-500 bg-emerald-500/10" : "border-primary/30 text-primary bg-primary/10"}`}
             >
-              {completedCount}/{steps.length} complete
+              {isAllDone ? "Ready to process" : `${readiness.summary.completedSteps}/${readiness.summary.totalSteps} complete`}
             </Badge>
           </div>
 
@@ -191,7 +48,7 @@ export function OnboardingProgress({
               size="sm"
               className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
               onClick={() => setCollapsed(c => !c)}
-              aria-label={collapsed ? "Expand onboarding progress" : "Collapse onboarding progress"}
+              aria-label={collapsed ? "Expand readiness progress" : "Collapse readiness progress"}
             >
               {collapsed ? (
                 <ChevronDown className="w-4 h-4" />
@@ -199,100 +56,60 @@ export function OnboardingProgress({
                 <ChevronUp className="w-4 h-4" />
               )}
             </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
-              onClick={() => {
-                if (dismissKey) localStorage.setItem(dismissKey, "1");
-                setDismissed(true);
-              }}
-              aria-label="Dismiss onboarding progress"
-            >
-              <X className="w-4 h-4" />
-            </Button>
           </div>
         </div>
 
-        {/* Next action hint — only when expanded */}
-        {!collapsed && nextStep && (
-          <p className="text-xs text-muted-foreground mt-1.5">
-            {"Next: "}
-            <span className="text-foreground font-medium">{nextStep.label}</span>
-            {nextStep.href && (
-              <Link href={nextStep.href}>
-                <span className="ml-2 inline-flex items-center gap-0.5 text-primary hover:underline cursor-pointer">
-                  {nextStep.cta ?? "Get Started"}
-                  <ArrowRight className="w-3 h-3" />
-                </span>
+        {/* Priority action hint — only when expanded, and not done */}
+        {!collapsed && readiness.priorityAction && (
+          <div className="mt-3 flex flex-col sm:flex-row sm:items-start gap-3 p-3 bg-background/50 rounded-md border border-border/50">
+            <ShieldCheck className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-foreground">{readiness.priorityAction.label}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{readiness.priorityAction.description}</p>
+            </div>
+            {readiness.priorityAction.href && (
+              <Link href={readiness.priorityAction.href} className="w-full sm:w-auto">
+                <Button size="sm" className="w-full sm:w-auto min-h-10 shrink-0">
+                  {readiness.priorityAction.cta}
+                </Button>
               </Link>
             )}
-          </p>
+          </div>
         )}
       </CardHeader>
 
       {!collapsed && (
         <CardContent className="pt-0">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-            {steps.map(step => (
-              <StepCard key={step.id} step={step} />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 mt-2">
+            {readiness.steps.map(step => (
+              <div key={step.id} className={`flex items-start gap-2.5 rounded-lg p-3 ${step.isCompleted ? "bg-emerald-500/5 border border-emerald-500/20" : step.isOptional ? "bg-muted/20 border border-border/40 opacity-75" : "bg-amber-500/5 border border-amber-500/20"}`}>
+                <div className="shrink-0 mt-0.5">
+                  {step.isCompleted ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  ) : (
+                    <Circle className={`w-4 h-4 ${step.isOptional ? "text-muted-foreground/35" : "text-amber-400"}`} />
+                  )}
+                </div>
+                <div className="min-w-0 space-y-0.5">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className={`text-xs font-semibold leading-tight ${step.isCompleted ? "text-emerald-300" : step.isOptional ? "text-muted-foreground" : "text-foreground"}`}>
+                      {step.label}
+                    </span>
+                    {step.isOptional && (
+                      <span className="text-[10px] text-muted-foreground/55 border border-border/35 rounded px-1 leading-tight">
+                        optional
+                      </span>
+                    )}
+                  </div>
+                  {step.statusText && (
+                    <p className="text-[11px] text-muted-foreground leading-snug">{step.statusText}</p>
+                  )}
+                </div>
+              </div>
             ))}
           </div>
         </CardContent>
       )}
     </Card>
-  );
-}
-
-// ── Step Card ─────────────────────────────────────────────────────────────────
-
-function StepCard({ step }: { step: ProgressStep }) {
-  const cardCls = step.done
-    ? "bg-emerald-500/5 border border-emerald-500/20"
-    : step.optional
-    ? "bg-muted/20 border border-border/40 opacity-75"
-    : "bg-amber-500/5 border border-amber-500/20";
-
-  return (
-    <div className={`flex items-start gap-2.5 rounded-lg p-3 ${cardCls}`}>
-      <div className="shrink-0 mt-0.5">
-        {step.done ? (
-          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-        ) : (
-          <Circle
-            className={`w-4 h-4 ${step.optional ? "text-muted-foreground/35" : "text-amber-400"}`}
-          />
-        )}
-      </div>
-      <div className="min-w-0 space-y-0.5">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span
-            className={`text-xs font-semibold leading-tight ${
-              step.done
-                ? "text-emerald-300"
-                : step.optional
-                ? "text-muted-foreground"
-                : "text-foreground"
-            }`}
-          >
-            {step.label}
-          </span>
-          {step.optional && (
-            <span className="text-[10px] text-muted-foreground/55 border border-border/35 rounded px-1 leading-tight">
-              optional
-            </span>
-          )}
-        </div>
-        <p className="text-[11px] text-muted-foreground leading-snug">{step.description}</p>
-        {!step.done && step.href && (
-          <Link href={step.href}>
-            <span className="text-[11px] text-primary hover:underline inline-flex items-center gap-0.5 mt-1 cursor-pointer">
-              {step.cta ?? "Get Started"}
-              <ArrowRight className="w-2.5 h-2.5" />
-            </span>
-          </Link>
-        )}
-      </div>
-    </div>
   );
 }

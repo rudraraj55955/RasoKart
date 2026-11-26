@@ -1,14 +1,18 @@
-import { ReactNode, useEffect, useState } from "react";
+import { ReactNode, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useHasPermission } from "@/hooks/use-has-permission";
 import { Spinner } from "@/components/ui/spinner";
-import { UserRole, useGetMyPlanUsage, useGetCallbackSecret, useListApiKeys, useGetSecurityComplianceSummary, useGetKycSummary, useListMerchantReportSchedules, useListNotifications, useGetMe, ListNotificationsIsRead, useGetReportDeliveryHealth, useGetReportSchedule, useGetGithubSyncStatus, useGetGithubSyncDivergence } from "@workspace/api-client-react";
+import { UserRole, useGetMyPlanUsage, useGetCallbackSecret, useGetSecurityComplianceSummary, useListMerchantReportSchedules, useListNotifications, useGetMe, ListNotificationsIsRead, useGetReportDeliveryHealth, useGetReportSchedule, useGetGithubSyncStatus, useGetGithubSyncDivergence } from "@workspace/api-client-react";
+import { useMerchantReadiness } from "@/hooks/use-merchant-readiness";
 
 import { SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarHeader, SidebarFooter, useSidebar } from "@/components/ui/sidebar";
 import { format } from "date-fns";
 import { Link, useLocation } from "wouter";
-import { LogOut, LayoutDashboard, Store, ArrowRightLeft, Landmark, FileText, Webhook, KeyRound, Users, Package, Plug, BookOpen, QrCode, Building2, CreditCard, ArrowDownLeft, Activity, Shield, UserCog, Sliders, Eye, LayoutGrid, Lock, Receipt, BookMarked, Zap, GitMerge, Link2, Paintbrush, Settings, ShieldAlert, ShieldCheck, X, Download, ShieldOff, Layers, ToggleLeft, BadgeCheck, BarChart3, Wallet, Headphones, Code2, CheckCircle2, TrendingUp, User, MessageSquare, Mail, ChevronDown, ChevronUp, Trash2, Menu, Megaphone, GitCommit } from "lucide-react";
+import { LogOut, LayoutDashboard, Store, ArrowRightLeft, Landmark, FileText, Webhook, KeyRound, Users, Package, Plug, BookOpen, QrCode, Building2, CreditCard, ArrowDownLeft, Activity, Shield, UserCog, Sliders, Eye, LayoutGrid, Lock, Receipt, BookMarked, Zap, GitMerge, Link2, Paintbrush, Settings, ShieldAlert, ShieldCheck, X, Download, ShieldOff, Layers, ToggleLeft, BadgeCheck, BarChart3, Wallet, Headphones, Code2, CheckCircle2, TrendingUp, User, MessageSquare, Mail, ChevronDown, ChevronUp, Trash2, Menu, Megaphone, GitCommit, UserCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { NotificationBell } from "@/components/notification-bell";
 import { RasoKartLogo } from "@/components/ui/rasokart-logo";
@@ -17,6 +21,149 @@ import { Card, CardContent } from "@/components/ui/card";
 import { MobileBottomNav } from "@/components/layout/mobile-bottom-nav";
 import { InstallAppButton } from "@/components/ui/install-app-banner";
 import { apiUrl } from "@/lib/api-url";
+
+// ── Admin self-service password change dialog ─────────────────────────────────
+
+function validatePasswordClient(pw: string): string | null {
+  if (pw.length < 10)           return "Password must be at least 10 characters.";
+  if (!/[A-Z]/.test(pw))        return "Password must contain at least one uppercase letter.";
+  if (!/[a-z]/.test(pw))        return "Password must contain at least one lowercase letter.";
+  if (!/[0-9]/.test(pw))        return "Password must contain at least one number.";
+  if (!/[^A-Za-z0-9]/.test(pw)) return "Password must contain at least one special character.";
+  return null;
+}
+
+function AdminChangePasswordDialog({
+  open,
+  onOpenChange,
+  onSuccess,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onSuccess: () => void;
+}) {
+  const [current, setCurrent]   = useState("");
+  const [next, setNext]         = useState("");
+  const [confirm, setConfirm]   = useState("");
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState<string | null>(null);
+  const [done, setDone]         = useState(false);
+  const firstRef = useRef<HTMLInputElement>(null);
+
+  // Reset form whenever dialog opens
+  useEffect(() => {
+    if (open) {
+      setCurrent(""); setNext(""); setConfirm("");
+      setError(null); setDone(false); setLoading(false);
+      setTimeout(() => firstRef.current?.focus(), 50);
+    }
+  }, [open]);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+
+    if (!next || !confirm || !current) { setError("All fields are required."); return; }
+    if (next !== confirm) { setError("New password and confirmation do not match."); return; }
+    const strengthErr = validatePasswordClient(next);
+    if (strengthErr) { setError(strengthErr); return; }
+
+    setLoading(true);
+    try {
+      const res = await fetch(apiUrl("/api/auth/admin/change-password"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("rasokart_token")}` },
+        body: JSON.stringify({ currentPassword: current, newPassword: next, confirmPassword: confirm }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError((data as any)?.error ?? "Password change failed. Please try again.");
+        return;
+      }
+      setDone(true);
+      // Give admin 2 s to read the success message, then sign out
+      // (old JWT is now invalidated by passwordUpdatedAt on the server)
+      setTimeout(() => { onSuccess(); onOpenChange(false); }, 2000);
+    } catch {
+      setError("Network error. Please check your connection and try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!loading) onOpenChange(v); }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <KeyRound className="w-4 h-4 text-primary shrink-0" />
+            Change Password
+          </DialogTitle>
+          <DialogDescription className="text-xs text-muted-foreground">
+            Minimum 10 characters — uppercase, lowercase, number, and special character required.
+            All existing sessions will be signed out after a successful change.
+          </DialogDescription>
+        </DialogHeader>
+
+        {done ? (
+          <div className="py-6 text-center space-y-2">
+            <p className="text-sm font-medium text-emerald-400">Password changed successfully.</p>
+            <p className="text-xs text-muted-foreground">Signing you out…</p>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="adm-pw-current" className="text-xs">Current Password</Label>
+              <Input
+                id="adm-pw-current"
+                ref={firstRef}
+                type="password"
+                autoComplete="current-password"
+                value={current}
+                onChange={(e) => { setCurrent(e.target.value); setError(null); }}
+                disabled={loading}
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="adm-pw-new" className="text-xs">New Password</Label>
+              <Input
+                id="adm-pw-new"
+                type="password"
+                autoComplete="new-password"
+                value={next}
+                onChange={(e) => { setNext(e.target.value); setError(null); }}
+                disabled={loading}
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="adm-pw-confirm" className="text-xs">Confirm New Password</Label>
+              <Input
+                id="adm-pw-confirm"
+                type="password"
+                autoComplete="new-password"
+                value={confirm}
+                onChange={(e) => { setConfirm(e.target.value); setError(null); }}
+                disabled={loading}
+                required
+              />
+            </div>
+            {error && <p className="text-xs text-destructive" role="alert">{error}</p>}
+            <DialogFooter className="pt-2">
+              <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={loading}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={loading}>
+                {loading ? "Changing…" : "Change Password"}
+              </Button>
+            </DialogFooter>
+          </form>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 export const REPORTS_SNOOZE_EVENT = "rasokart-reports-snooze-changed";
 export function getReportSnoozeKey(userId: number | string | undefined): string {
@@ -58,15 +205,9 @@ function SuspensionBanner() {
   );
 }
 
-const CALLBACK_BANNER_SESSION_KEY = "rasokart_callback_banner_dismissed";
-
 function CallbackSecretBanner() {
   const { user } = useAuth();
   const { data: callbackSecret } = useGetCallbackSecret();
-  const { data: apiKeys } = useListApiKeys();
-  const [dismissed, setDismissed] = useState(
-    () => sessionStorage.getItem(CALLBACK_BANNER_SESSION_KEY) === "1"
-  );
 
   const rotationDismissKey = user?.id && callbackSecret?.lastRotatedAt
     ? `rasokart_rotation_dismissed_${user.id}_${callbackSecret.lastRotatedAt}`
@@ -77,9 +218,6 @@ function CallbackSecretBanner() {
     setRotationDismissed(localStorage.getItem(rotationDismissKey) === "1");
   }, [rotationDismissKey]);
 
-  const hasActiveApiKey = Array.isArray(apiKeys) && apiKeys.some(k => k.isActive);
-  const showNotConfigured = !dismissed && callbackSecret != null && !callbackSecret.isSet && hasActiveApiKey;
-
   const secretAgeExceeds90Days = (() => {
     if (!callbackSecret?.isSet) return false;
     const lastRotated = callbackSecret.lastRotatedAt;
@@ -89,50 +227,15 @@ function CallbackSecretBanner() {
   })();
   const showRotationReminder = !rotationDismissed && secretAgeExceeds90Days;
 
-  function handleDismiss() {
-    sessionStorage.setItem(CALLBACK_BANNER_SESSION_KEY, "1");
-    setDismissed(true);
-  }
-
   function handleRotationDismiss() {
     if (rotationDismissKey) localStorage.setItem(rotationDismissKey, "1");
     setRotationDismissed(true);
   }
 
-  if (!showNotConfigured && !showRotationReminder) return null;
+  if (!showRotationReminder) return null;
 
   return (
     <>
-      {showNotConfigured && (
-        <Card className="border-orange-500/40 bg-orange-950/20 rounded-lg mb-6">
-          <CardContent className="py-3 flex items-start gap-3">
-            <ShieldAlert className="w-5 h-5 text-orange-400 shrink-0 mt-0.5" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm text-orange-400 font-medium">Callback Secret Not Configured</p>
-              <p className="text-xs text-orange-400/70">
-                You have an active API key but no callback signing secret. Without it, payment notifications on{" "}
-                <code className="font-mono bg-orange-900/30 px-1 rounded">POST /api/callbacks</code> cannot be verified and may be spoofed.
-              </p>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <Link href="/merchant/webhook">
-                <Button size="sm" variant="outline" className="border-orange-500/30 text-orange-400 hover:bg-orange-500/10 hidden sm:flex">
-                  Set Up Secret
-                </Button>
-              </Link>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-8 w-8 p-0 text-orange-400/60 hover:text-orange-400 hover:bg-orange-500/10"
-                onClick={handleDismiss}
-                aria-label="Dismiss callback secret warning"
-              >
-                <X className="w-4 h-4" />
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
       {showRotationReminder && (
         <Card className="border-amber-500/40 bg-amber-950/20 rounded-lg mb-6">
           <CardContent className="py-3 flex items-start gap-3">
@@ -174,13 +277,9 @@ interface DashboardLayoutProps {
 
 function MerchantSidebar() {
   const [location] = useLocation();
-  const { user } = useAuth();
   const { data: usage } = useGetMyPlanUsage();
-  const merchantId = (user as any)?.merchantId as number | undefined;
-  const { data: kycSummary } = useGetKycSummary(merchantId ?? 0, {
-    query: { enabled: !!merchantId, queryKey: ["/api/kyc/summary", merchantId] },
-  });
-  const isKycVerified = kycSummary?.isVerified === true;
+  const { data: readiness } = useMerchantReadiness();
+  const isKycVerified = readiness?.serverData.kyc.status === "approved";
   const { data: me } = useGetMe();
   const { data: reportSchedule } = useGetReportSchedule({
     query: { refetchInterval: 5 * 60 * 1000, queryKey: ["/api/reports/schedule"] },
@@ -241,11 +340,15 @@ function MerchantSidebar() {
       group: "Overview",
       items: [
         { title: "Dashboard", icon: LayoutDashboard, href: "/merchant/dashboard", locked: false, lockReason: null, badge: null },
-        { title: "My Plan", icon: CreditCard, href: "/merchant/plan", locked: false, lockReason: null, badge: null },
         { title: "Profile", icon: User, href: "/merchant/profile", locked: false, lockReason: null, badge: null },
-        { title: "Verification", icon: BadgeCheck, href: "/merchant/verification", locked: false, lockReason: null, badge: isKycVerified ? "Verified" : null },
-        { title: "Secure Onboarding", icon: ShieldCheck, href: "/merchant/onboarding", locked: false, lockReason: null, badge: null },
-        { title: "KYC Verification", icon: ShieldCheck, href: "/merchant/auto-kyc", locked: false, lockReason: null, badge: null },
+        { title: "KYC & Verification", icon: BadgeCheck, href: "/merchant/verification", locked: false, lockReason: null, badge: isKycVerified ? "Verified" : null },
+      ],
+    },
+    {
+      group: "Plans & Pricing",
+      items: [
+        { title: "My Plan", icon: CreditCard, href: "/merchant/plan", locked: false, lockReason: null, badge: null },
+        { title: "Plans & Pricing", icon: Package, href: "/merchant/products", locked: false, lockReason: null },
       ],
     },
     {
@@ -267,26 +370,18 @@ function MerchantSidebar() {
         { title: "Virtual Accounts", icon: Building2, href: "/merchant/virtual-accounts", locked: false, lockReason: null },
         { title: "Dynamic QR", icon: QrCode, href: "/merchant/qr-codes", locked: false, lockReason: null },
         { title: "Payment Links", icon: Link2, href: "/merchant/payment-links", locked: false, lockReason: null },
-        { title: "Plans & Pricing", icon: Package, href: "/merchant/products", locked: false, lockReason: null },
       ],
     },
     {
-      group: "Support",
+      group: "Payment Providers",
       items: [
-        { title: "Support", icon: Headphones, href: "/merchant/support", locked: false, lockReason: null },
-      ],
-    },
-    {
-      group: "API Services",
-      items: [
-        { title: "UPI Collection API", icon: Code2, href: "/upi-collection-api", locked: false, lockReason: null },
-      ],
-    },
-    {
-      group: "Integration",
-      items: [
-        { title: "RasoKart Services", icon: Layers, href: "/merchant/rasokart-services", locked: false, lockReason: null },
         { title: "Connect", icon: Plug, href: "/merchant/connect", locked: false, lockReason: null },
+        { title: "RasoKart Services", icon: Layers, href: "/merchant/rasokart-services", locked: false, lockReason: null },
+      ],
+    },
+    {
+      group: "Developer & API",
+      items: [
         {
           title: "API Keys", icon: KeyRound, href: "/merchant/api-keys",
           locked: usage !== undefined && !usage.apiAccess,
@@ -298,8 +393,15 @@ function MerchantSidebar() {
           lockReason: "Webhook access is not included in your current plan. Upgrade to unlock."
         },
         { title: "Callbacks", icon: FileText, href: "/merchant/callbacks", locked: false, lockReason: null },
-        { title: "Security Activity", icon: Shield, href: "/merchant/security", locked: false, lockReason: null },
         { title: "API Docs", icon: BookOpen, href: "/merchant/api-docs", locked: false, lockReason: null },
+        { title: "UPI Collection API", icon: Code2, href: "/upi-collection-api", locked: false, lockReason: null },
+        { title: "Security Activity", icon: Shield, href: "/merchant/security", locked: false, lockReason: null },
+      ],
+    },
+    {
+      group: "Support",
+      items: [
+        { title: "Support", icon: Headphones, href: "/merchant/support", locked: false, lockReason: null },
       ],
     },
   ];
@@ -413,6 +515,8 @@ const ADMIN_NAV = [
       { title: "Payout Gateway", icon: Landmark, href: "/admin/payout-gateway" },
       { title: "Smart Routing", icon: GitMerge, href: "/admin/smart-routing" },
       { title: "Payment Providers", icon: Zap, href: "/admin/providers" },
+      { title: "Merchant Connect", icon: Plug, href: "/admin/merchant-connect" },
+      { title: "Enrollment Review", icon: UserCheck, href: "/admin/merchant-enrollments" },
       { title: "QR Providers", icon: QrCode, href: "/admin/qr-providers" },
       { title: "Provider Integrations", icon: Layers, href: "/admin/provider-integrations" },
       { title: "Visibility Rules", icon: Eye, href: "/admin/visibility-rules" },
@@ -455,10 +559,11 @@ const ADMIN_NAV = [
   {
     group: "Finance",
     items: [
-      { title: "Reconciliation",       icon: GitMerge,    href: "/admin/reconciliation" },
-      { title: "Reports",              icon: BarChart3,   href: "/admin/reports" },
-      { title: "Merchant Statements",  icon: FileText,    href: "/admin/merchant-statements" },
-      { title: "Platform Profit",      icon: TrendingUp,  href: "/admin/platform-profit", superAdminOnly: true as const },
+      { title: "Reconciliation",              icon: GitMerge,    href: "/admin/reconciliation" },
+      { title: "Cashfree Payin Recon",        icon: Receipt,     href: "/admin/cashfree-payin-recon", superAdminOnly: true as const },
+      { title: "Reports",                     icon: BarChart3,   href: "/admin/reports" },
+      { title: "Merchant Statements",         icon: FileText,    href: "/admin/merchant-statements" },
+      { title: "Platform Profit",             icon: TrendingUp,  href: "/admin/platform-profit", superAdminOnly: true as const },
     ],
   },
   {
@@ -473,8 +578,10 @@ const ADMIN_NAV = [
       { title: "Audit Logs", icon: Shield, href: "/admin/audit-logs" },
       { title: "User Roles", icon: UserCog, href: "/admin/user-roles" },
       { title: "Company Branding", icon: Paintbrush, href: "/admin/company-branding" },
+      { title: "White Labels", icon: Paintbrush, href: "/admin/white-labels", superAdminOnly: true },
       { title: "OTP / SMS Settings", icon: MessageSquare, href: "/admin/otp-settings", superAdminOnly: true },
       { title: "Email OTP Settings", icon: Mail, href: "/admin/otp-email-settings", superAdminOnly: true as const },
+      { title: "Password Reset Delivery", icon: Activity, href: "/admin/email-delivery", permissionOverride: "admin_email_delivery" as const },
       { title: "Social Auth Providers", icon: Shield, href: "/admin/social-providers", superAdminOnly: true as const },
       { title: "Secure ID Provider", icon: ShieldCheck, href: "/admin/secure-id-settings", superAdminOnly: true as const },
       { title: "Merchant Auto KYC Settings", icon: ShieldCheck, href: "/admin/merchant-kyc-settings", superAdminOnly: true as const },
@@ -498,6 +605,7 @@ function AdminSidebar() {
   const [location] = useLocation();
   const { user } = useAuth();
   const hasIamRead = useHasPermission("iam_read");
+  const hasEmailDelivery = useHasPermission("admin_email_delivery");
   const { data: complianceData } = useGetSecurityComplianceSummary();
   const neverCount = complianceData?.neverCount ?? 0;
 
@@ -612,6 +720,7 @@ function AdminSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {group.items.map((item) => {
+                if ((item as any).permissionOverride === "admin_email_delivery" && !hasEmailDelivery) return null;
                 if ((item as any).superAdminOnly) {
                   const hasPermOverride = (item as any).permissionOverride && hasIamRead;
                   if (!meData?.isSuperAdmin && !hasPermOverride) return null;
@@ -869,6 +978,7 @@ function VersionBadge() {
 export function DashboardLayout({ children, publicMode = false }: DashboardLayoutProps) {
   const { user, logout } = useAuth();
   const [location] = useLocation();
+  const [pwDialogOpen, setPwDialogOpen] = useState(false);
   // Hooks must run unconditionally on every render (React rules-of-hooks).
   // Previously this was called after an early `if (!user) return ...`
   // below, so the very first render right after a hard-redirect login (user
@@ -956,15 +1066,37 @@ export function DashboardLayout({ children, publicMode = false }: DashboardLayou
               {!publicMode && isAdmin && <VersionBadge />}
             </div>
             {user ? (
-              <div className="flex items-center justify-between">
-                <div className="flex flex-col truncate pr-2">
-                  <span className="text-sm font-medium truncate">{user.name}</span>
-                  <span className="text-xs text-muted-foreground truncate">{user.email}</span>
+              <>
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-col truncate pr-2">
+                    <span className="text-sm font-medium truncate">{user.name}</span>
+                    <span className="text-xs text-muted-foreground truncate">{user.email}</span>
+                  </div>
+                  <div className="flex items-center shrink-0">
+                    {isAdmin && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setPwDialogOpen(true)}
+                        title="Change password"
+                        className="text-muted-foreground hover:text-foreground"
+                      >
+                        <KeyRound className="w-4 h-4" />
+                      </Button>
+                    )}
+                    <Button variant="ghost" size="icon" onClick={logout} title="Sign out" className="text-muted-foreground hover:text-foreground">
+                      <LogOut className="w-4 h-4" />
+                    </Button>
+                  </div>
                 </div>
-                <Button variant="ghost" size="icon" onClick={logout} title="Sign out" className="shrink-0 text-muted-foreground hover:text-foreground">
-                  <LogOut className="w-4 h-4" />
-                </Button>
-              </div>
+                {isAdmin && (
+                  <AdminChangePasswordDialog
+                    open={pwDialogOpen}
+                    onOpenChange={setPwDialogOpen}
+                    onSuccess={logout}
+                  />
+                )}
+              </>
             ) : (
               <Link href="/merchant/login">
                 <Button variant="outline" size="sm" className="w-full">Sign In</Button>

@@ -1,20 +1,18 @@
 ---
-name: Deploy recovery block must not rm -rf tracked files
-description: After git merge --abort, removing tracked directories creates D entries that trip the dirty-tree guard. Only untracked junk should be cleaned in recovery blocks.
+name: VPS deploy recovery and no-op sync
+description: Safe reconciliation cleanup and the guarded-deploy edge case where VPS HEAD advances before the running binary is rebuilt.
 ---
 
-## The rule
-In `scripts/deploy-sensitive-production.sh` section 1b (stale-merge recovery), only `rm -rf` paths that are **untracked** in the VPS HEAD commit. Never remove tracked directories — `git merge --abort` already restores them cleanly, and deleting them creates `D` (deleted) entries in `git status --porcelain --untracked-files=no`, which trips the dirty-tree guard at section 2 and causes the deploy to fail.
+## Reconciliation cleanup rule
+Known reconciliation-only paths may be removed, but the script must immediately restore every tracked deletion from the current HEAD before the dirty-tree guard runs. A raw `rm -rf` without that restoration leaves `D` entries and aborts deployment.
 
-**Currently safe to remove (untracked junk from reconciliation tooling):**
-- `.github/workflows/sed8S3arA`
-- `attached_assets/screenshots`
+**Why:** stale reconciliation artifacts have previously included both untracked junk and tracked files. Cleanup is useful, but tracked deletions must not reach the strict preflight guard.
 
-**Must NOT be removed (tracked at VPS HEAD):**
-- `.agents/memory` — tracked at every deployed commit; `git merge --abort` restores it properly; the fast-forward updates it
+**How to apply:** after cleanup, derive deleted tracked paths from `git status --porcelain --untracked-files=no`, restore them from HEAD, then run the dirty-tree check. Never weaken the guard or run broad `git clean`.
 
-**Why:**
-Run #56 failed with 40+ `D .agents/memory/...` entries after the recovery block ran `rm -rf .agents/memory`. The path was tracked at `40f5d8d6` (VPS HEAD). `git merge --abort` restored it, then `rm -rf` deleted it again, creating dirty-tree entries. Run #57 fixed this by removing `.agents/memory` from the rm loop.
+## Guarded deploy no-op after external fast-forward
+The VPS repository can already equal `origin/main` while PM2 still runs a binary built from an older commit. In that state, the sensitive deploy exits with “Nothing to deploy” before backup, migration, build, restart, or SHA verification.
 
-**How to apply:**
-Any future stale-merge recovery patch must check `git ls-files <path>` before adding a path to the `rm -rf` loop — if it returns output, the path is tracked and must NOT be deleted before the fast-forward.
+**Why:** reconciliation/sync can advance the VPS working tree independently of the production build. Repository equality therefore does not prove runtime equality.
+
+**How to apply:** check `/api/healthz/deep` and compare its baked commit with the target. If HEAD already equals the target but the runtime SHA differs, move only the VPS tracked working tree to the target’s first parent and rerun the guarded script. Never touch the database, `.env`, uploads, or runtime data.

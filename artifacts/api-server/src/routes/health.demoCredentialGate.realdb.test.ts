@@ -18,6 +18,7 @@ import { eq } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 import { DEMO_CREDENTIALS } from "@workspace/demo-credentials";
 import app from "../app";
+import { prepareHealthzDeepTestEnv } from "../lib/testHelpers/ensureDemoUsers";
 
 function get(server: http.Server, path: string): Promise<{ status: number; body: Record<string, unknown> }> {
   const addr = server.address() as { port: number };
@@ -53,6 +54,8 @@ describe("GET /api/healthz/deep — demo credential deploy gate (real DB)", () =
 
   before(async () => {
     assert.ok(merchant3, "merchant3@demo.com must be present in DEMO_CREDENTIALS for this test");
+
+    await prepareHealthzDeepTestEnv();
 
     server = http.createServer(app);
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));

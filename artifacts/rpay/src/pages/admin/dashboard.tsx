@@ -3,7 +3,7 @@ import { useGetDashboardStats, useGetDashboardChart, useGetDashboardMerchantVolu
 import { StatCard } from "@/components/ui/stat-card";
 import { ADMIN_KPI_ROUTES } from "@/lib/kpi-routes";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowDownLeft, ArrowUpRight, Activity, Clock, Store, AlertTriangle, Bell, TrendingDown, ShieldAlert, ChevronRight, CheckCircle2, XCircle, GitCompareArrows, Zap, Github, Webhook, Radio, MailX, FlaskConical } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, Activity, Clock, Store, AlertTriangle, Bell, TrendingDown, ShieldAlert, ChevronRight, CheckCircle2, XCircle, GitCompareArrows, Zap, Github, Webhook, Radio, MailX, FlaskConical, CreditCard } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, BarChart, Bar, Legend } from "recharts";
 import { format } from "date-fns";
 import { Link, useLocation } from "wouter";
@@ -227,6 +227,33 @@ export default function AdminDashboard() {
           </Link>
         );
       })()}
+
+      {stats && stats.stuckCashfreeOrderCount != null && stats.stuckCashfreeOrderCount > 0 && (
+        <Link href="/admin/deposits?tab=upi">
+          <Card className="cursor-pointer transition-all hover:border-border/80 border-rose-500/40 bg-rose-500/5 hover:bg-rose-500/10">
+            <CardContent className="pt-4 pb-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-rose-500/15">
+                    <CreditCard className="w-4 h-4 text-rose-400" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Cashfree Stuck Orders</p>
+                    <p className="text-sm font-semibold text-rose-400">
+                      {stats.stuckCashfreeOrderCount} order{stats.stuckCashfreeOrderCount !== 1 ? "s" : ""} stuck — no payment after {stats.stuckCashfreeOrderStaleMinutes ?? 15} min
+                    </p>
+                    <p className="text-xs text-amber-400/80 mt-0.5">Check webhook logs and signing config</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <span>View orders</span>
+                  <ChevronRight className="w-3 h-3" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
+      )}
 
       {ekqrStats && (() => {
         const hasErrors = ekqrStats.errorCount > 0;

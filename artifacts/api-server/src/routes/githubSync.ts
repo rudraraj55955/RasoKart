@@ -7,6 +7,7 @@ import { db, systemSettingsTable, auditLogsTable, usersTable } from "@workspace/
 import { and, eq, inArray } from "drizzle-orm";
 import { runGithubSyncLogCleanup, getLastGithubSyncLogCleanupResult, CLEANUP_ALERT_SNOOZE_KEY, readFailureStreak, getCleanupFailureThreshold, CLEANUP_FAILURE_THRESHOLD_KEY } from "../helpers/githubSyncLogCleanupScheduler";
 import { sendMail } from "../helpers/mailer";
+import { runAuthenticatedGit } from "../helpers/githubGitAuth";
 
 const router = Router();
 router.use(requireAuth);
@@ -25,7 +26,6 @@ const GITHUB_SYNC_KEYS = [
   "github_sync_diverge_action",
   "github_sync_cleanup_failure_threshold",
 ] as const;
-const REMOTE_NAME = "github";
 const GITHUB_REPO = process.env["GITHUB_REPO"] ?? "rudraraj55955/RPAY";
 const DEFAULT_FAILURE_THRESHOLD = 3;
 const DEFAULT_RENOTIFY_INTERVAL = 10;
@@ -333,16 +333,6 @@ async function _maybeNotifyDivergenceTransitionImpl(opts: {
 
 let syncRunInProgress = false;
 
-function resetRemote() {
-  try {
-    execSync(`git remote set-url ${REMOTE_NAME} https://github.com/${GITHUB_REPO}.git`, {
-      cwd: REPO_ROOT,
-      stdio: "pipe",
-    });
-  } catch {
-  }
-}
-
 // GET /api/github-sync/config
 router.get("/config", async (req, res, next) => {
   try {
@@ -565,20 +555,20 @@ router.get("/divergence", (req, res) => {
     return;
   }
 
-  const remoteUrl = `https://x-access-token:${token}@github.com/${GITHUB_REPO}.git`;
+  const remoteUrl = `https://github.com/${GITHUB_REPO}.git`;
+  const temporaryFetchRef = `refs/github-sync-divergence/${process.pid}-${Date.now()}/main`;
 
   try {
     try {
-      execSync(`git remote get-url ${REMOTE_NAME}`, { cwd: REPO_ROOT, stdio: "pipe" });
-      execSync(`git remote set-url ${REMOTE_NAME} ${remoteUrl}`, { cwd: REPO_ROOT, stdio: "pipe" });
-    } catch {
-      execSync(`git remote add ${REMOTE_NAME} ${remoteUrl}`, { cwd: REPO_ROOT, stdio: "pipe" });
-    }
-
-    try {
-      execSync(`git fetch ${REMOTE_NAME} main`, { cwd: REPO_ROOT, stdio: "pipe" });
+      runAuthenticatedGit(
+        token,
+        ["fetch", "--no-tags", remoteUrl, `main:${temporaryFetchRef}`],
+        { cwd: REPO_ROOT },
+      );
     } catch (fetchErr: unknown) {
-      const message = fetchErr instanceof Error ? fetchErr.message.replace(token, "<REDACTED>") : String(fetchErr);
+      const message = fetchErr instanceof Error
+        ? fetchErr.message.split(token).join("<REDACTED>")
+        : String(fetchErr).split(token).join("<REDACTED>");
       req.log.warn({ err: message }, "GitHub sync divergence check: fetch failed");
       res.json({ checked: false, diverged: false, repo: GITHUB_REPO, reason: "Could not reach the remote repository to check for divergence" });
       return;
@@ -586,7 +576,7 @@ router.get("/divergence", (req, res) => {
 
     let remoteAheadBy = 0;
     try {
-      const out = execSync(`git rev-list --count HEAD..${REMOTE_NAME}/main`, { cwd: REPO_ROOT, stdio: "pipe" }).toString().trim();
+      const out = execSync(`git rev-list --count HEAD..${temporaryFetchRef}`, { cwd: REPO_ROOT, stdio: "pipe" }).toString().trim();
       remoteAheadBy = parseInt(out, 10) || 0;
     } catch {
       maybeNotifyDivergenceTransition({ nowDiverged: false, remoteAheadBy: 0, repo: GITHUB_REPO }).catch(
@@ -607,11 +597,16 @@ router.get("/divergence", (req, res) => {
       repo: GITHUB_REPO,
     });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message.replace(token, "<REDACTED>") : String(err);
+    const message = err instanceof Error
+      ? err.message.split(token).join("<REDACTED>")
+      : String(err).split(token).join("<REDACTED>");
     req.log.warn({ err: message }, "GitHub sync divergence check failed");
     res.json({ checked: false, diverged: false, repo: GITHUB_REPO, reason: "Divergence check failed" });
   } finally {
-    resetRemote();
+    try {
+      execSync(`git update-ref -d ${temporaryFetchRef}`, { cwd: REPO_ROOT, stdio: "pipe" });
+    } catch {
+    }
   }
 });
 

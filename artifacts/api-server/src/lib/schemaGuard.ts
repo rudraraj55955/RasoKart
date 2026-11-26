@@ -400,7 +400,110 @@ async function runGuard(executor: GuardExecutor = db): Promise<void> {
       )
     `);
     await exec.execute(sql`CREATE INDEX IF NOT EXISTS merchant_connections_merchant_id_idx ON merchant_connections(merchant_id)`);
+    // ── MC-1: new columns (idempotent ALTER TABLE) ─────────────────────────
+    await exec.execute(sql`ALTER TABLE merchant_connections ADD COLUMN IF NOT EXISTS connection_status TEXT NOT NULL DEFAULT 'active'`);
+    await exec.execute(sql`ALTER TABLE merchant_connections ADD COLUMN IF NOT EXISTS last_tested_at TIMESTAMPTZ`);
+    await exec.execute(sql`ALTER TABLE merchant_connections ADD COLUMN IF NOT EXISTS last_test_result TEXT NOT NULL DEFAULT 'untested'`);
+    await exec.execute(sql`ALTER TABLE merchant_connections ADD COLUMN IF NOT EXISTS ownership TEXT NOT NULL DEFAULT 'rasokart_owned'`);
+    await exec.execute(sql`ALTER TABLE merchant_connections ADD COLUMN IF NOT EXISTS capability_payin BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE merchant_connections ADD COLUMN IF NOT EXISTS capability_payout BOOLEAN NOT NULL DEFAULT FALSE`);
+    await exec.execute(sql`ALTER TABLE merchant_connections ADD COLUMN IF NOT EXISTS capability_upi BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE merchant_connections ADD COLUMN IF NOT EXISTS capability_qr BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE merchant_connections ADD COLUMN IF NOT EXISTS capability_payment_links BOOLEAN NOT NULL DEFAULT FALSE`);
+    await exec.execute(sql`ALTER TABLE merchant_connections ADD COLUMN IF NOT EXISTS capability_refunds BOOLEAN NOT NULL DEFAULT FALSE`);
+    await exec.execute(sql`ALTER TABLE merchant_connections ADD COLUMN IF NOT EXISTS capability_settlement BOOLEAN NOT NULL DEFAULT FALSE`);
+    await exec.execute(sql`ALTER TABLE merchant_connections ADD COLUMN IF NOT EXISTS visibility_enabled BOOLEAN NOT NULL DEFAULT TRUE`);
+    await exec.execute(sql`ALTER TABLE merchant_connections ADD COLUMN IF NOT EXISTS notes TEXT`);
+    // ── FK: merchant_id → merchants(id) ───────────────────────────────────
+    await exec.execute(sql`
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.table_constraints
+          WHERE constraint_name = 'merchant_connections_merchant_id_fkey'
+            AND table_name = 'merchant_connections'
+        ) THEN
+          ALTER TABLE merchant_connections
+            ADD CONSTRAINT merchant_connections_merchant_id_fkey
+            FOREIGN KEY (merchant_id) REFERENCES merchants(id) ON DELETE CASCADE;
+        END IF;
+      END $$
+    `);
+    // ── UNIQUE (merchant_id, provider) ─────────────────────────────────────
+    await exec.execute(sql`
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.table_constraints
+          WHERE constraint_name = 'merchant_connections_merchant_provider_unique'
+            AND table_name = 'merchant_connections'
+        ) THEN
+          ALTER TABLE merchant_connections
+            ADD CONSTRAINT merchant_connections_merchant_provider_unique
+            UNIQUE (merchant_id, provider);
+        END IF;
+      END $$
+    `);
     logger.info({ table: "merchant_connections" }, "schema_guard_table_created");
+  });
+
+  // ── merchant_connections: credential encryption migration ─────────────────
+  // Encrypt any plaintext credentials (rows where credentials does NOT start
+  // with 'enc:v1:'). This is idempotent — already-encrypted rows are skipped.
+  // Runs every startup; costs one SELECT and at most N UPDATEs where N is the
+  // count of plaintext rows (expected 0 after the first successful run).
+  //
+  // IMPORTANT: must use exec (not db) so this runs on the same connection as
+  // the surrounding guard.  Using the global db pool here causes a lock
+  // conflict when runSchemaGuardWith() is called inside a transaction — the
+  // transaction holds ACCESS EXCLUSIVE on merchant_connections (just created
+  // above) and a separate pool connection needs ACCESS SHARE → indefinite wait.
+  await block("merchant_connections_credential_migration", async () => {
+    const { encryptSecret } = await import("../helpers/cryptoUtils");
+    const result = await exec.execute(sql`
+      SELECT id, credentials FROM merchant_connections
+      WHERE credentials IS NOT NULL
+        AND credentials != ''
+        AND credentials NOT LIKE 'enc:v1:%'
+    `);
+    const rows = result.rows as { id: number; credentials: string }[];
+    if (rows.length === 0) return;
+    logger.info({ count: rows.length }, "merchant_connections: encrypting plaintext credentials");
+    for (const row of rows) {
+      const encrypted = encryptSecret(row.credentials);
+      await exec.execute(sql`UPDATE merchant_connections SET credentials = ${encrypted} WHERE id = ${row.id}`);
+    }
+    logger.info({ count: rows.length }, "merchant_connections: credential encryption migration complete");
+  });
+
+  // ── platform_connections: RasoKart's own provider accounts (Super Admin) ────
+  // Completely separate from merchant_connections; no merchantId FK.
+  await block("platform_connections", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS platform_connections (
+        id              SERIAL PRIMARY KEY,
+        provider        TEXT NOT NULL,
+        label           TEXT,
+        environment     TEXT NOT NULL DEFAULT 'sandbox',
+        credentials     TEXT,
+        connection_status TEXT NOT NULL DEFAULT 'pending',
+        is_active       BOOLEAN NOT NULL DEFAULT FALSE,
+        deactivated_at  TIMESTAMPTZ,
+        last_tested_at  TIMESTAMPTZ,
+        last_test_result TEXT DEFAULT 'untested',
+        capability_payin         BOOLEAN NOT NULL DEFAULT TRUE,
+        capability_payout        BOOLEAN NOT NULL DEFAULT FALSE,
+        capability_upi           BOOLEAN NOT NULL DEFAULT TRUE,
+        capability_qr            BOOLEAN NOT NULL DEFAULT TRUE,
+        capability_payment_links BOOLEAN NOT NULL DEFAULT FALSE,
+        capability_refunds       BOOLEAN NOT NULL DEFAULT FALSE,
+        capability_settlement    BOOLEAN NOT NULL DEFAULT FALSE,
+        notes           TEXT,
+        created_by_email TEXT,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS platform_connections_provider_idx ON platform_connections(provider)`);
+    logger.info({ table: "platform_connections" }, "schema_guard_table_created");
   });
 
   // ── merchant_trusted_ips: per-merchant trusted IP allowlist ─────────────────
@@ -846,6 +949,129 @@ async function runGuard(executor: GuardExecutor = db): Promise<void> {
     await exec.execute(sql`CREATE INDEX IF NOT EXISTS sms_send_logs_created_at_idx ON sms_send_logs(created_at DESC)`);
     await exec.execute(sql`CREATE INDEX IF NOT EXISTS sms_send_logs_status_idx ON sms_send_logs(status)`);
     logger.info({ table: "sms_send_logs" }, "schema_guard_table_created");
+  });
+
+  // ── email_delivery_logs (password-reset email delivery status) ───────────
+  await block("email_delivery_logs", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS email_delivery_logs (
+        id SERIAL PRIMARY KEY,
+        recipient_hash TEXT NOT NULL,
+        recipient_masked TEXT NOT NULL,
+        purpose TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        status TEXT NOT NULL,
+        provider_message_id TEXT,
+        provider_event_id TEXT,
+        error_reason TEXT,
+        otp_id INTEGER,
+        user_id INTEGER,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_event_at TIMESTAMPTZ
+      )
+    `);
+    // Legacy installations may have created this table before the delivery
+    // lifecycle columns were introduced.  Add each column independently so
+    // existing delivery history is preserved and the guard is retry-safe.
+    await exec.execute(sql`ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS recipient_hash TEXT NOT NULL DEFAULT ''`);
+    await exec.execute(sql`ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS recipient_masked TEXT NOT NULL DEFAULT ''`);
+    await exec.execute(sql`ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS purpose TEXT NOT NULL DEFAULT 'unknown'`);
+    await exec.execute(sql`ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS provider TEXT NOT NULL DEFAULT 'unknown'`);
+    await exec.execute(sql`ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'accepted'`);
+    await exec.execute(sql`ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS provider_message_id TEXT`);
+    await exec.execute(sql`ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS provider_event_id TEXT`);
+    await exec.execute(sql`ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS error_reason TEXT`);
+    await exec.execute(sql`ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS otp_id INTEGER`);
+    await exec.execute(sql`ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS user_id INTEGER`);
+    await exec.execute(sql`ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
+    await exec.execute(sql`ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
+    await exec.execute(sql`ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS last_event_at TIMESTAMPTZ`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS email_delivery_logs_created_at_idx ON email_delivery_logs(created_at DESC)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS email_delivery_logs_purpose_created_at_idx ON email_delivery_logs(purpose, created_at DESC)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS email_delivery_logs_status_idx ON email_delivery_logs(status)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS email_delivery_logs_provider_message_id_idx ON email_delivery_logs(provider_message_id)`);
+    await exec.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS email_delivery_logs_provider_event_id_unique
+      ON email_delivery_logs(provider_event_id)
+      WHERE provider_event_id IS NOT NULL
+    `);
+    logger.info({ table: "email_delivery_logs" }, "schema_guard_table_created");
+  });
+
+  // ── email_delivery_events (sanitized callback audit history) ──────────────
+  await block("email_delivery_events", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS email_delivery_events (
+        id SERIAL PRIMARY KEY,
+        delivery_log_id INTEGER NOT NULL REFERENCES email_delivery_logs(id) ON DELETE CASCADE,
+        provider TEXT NOT NULL,
+        provider_message_id TEXT,
+        provider_event_id TEXT,
+        status TEXT NOT NULL,
+        failure_summary TEXT,
+        received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    // The events table was introduced after the log table.  Keep this
+    // reconciliation additive: no existing rows are deleted or rewritten.
+    await exec.execute(sql`ALTER TABLE email_delivery_events ADD COLUMN IF NOT EXISTS delivery_log_id INTEGER`);
+    await exec.execute(sql`ALTER TABLE email_delivery_events ADD COLUMN IF NOT EXISTS provider TEXT NOT NULL DEFAULT 'unknown'`);
+    await exec.execute(sql`ALTER TABLE email_delivery_events ADD COLUMN IF NOT EXISTS provider_message_id TEXT`);
+    await exec.execute(sql`ALTER TABLE email_delivery_events ADD COLUMN IF NOT EXISTS provider_event_id TEXT`);
+    await exec.execute(sql`ALTER TABLE email_delivery_events ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'accepted'`);
+    await exec.execute(sql`ALTER TABLE email_delivery_events ADD COLUMN IF NOT EXISTS failure_summary TEXT`);
+    await exec.execute(sql`ALTER TABLE email_delivery_events ADD COLUMN IF NOT EXISTS received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
+    await exec.execute(sql`
+      ALTER TABLE email_delivery_events
+      ALTER COLUMN provider_event_id DROP NOT NULL
+    `);
+    await exec.execute(sql`
+      CREATE INDEX IF NOT EXISTS email_delivery_events_delivery_log_received_at_idx
+      ON email_delivery_events(delivery_log_id, received_at DESC)
+    `);
+    await exec.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS email_delivery_events_provider_event_id_unique
+      ON email_delivery_events(provider_event_id)
+      WHERE provider_event_id IS NOT NULL
+    `);
+    await exec.execute(sql`
+      INSERT INTO email_delivery_events (
+        delivery_log_id,
+        provider,
+        provider_message_id,
+        provider_event_id,
+        status,
+        failure_summary,
+        received_at
+      )
+      SELECT
+        id,
+        provider,
+        provider_message_id,
+        provider_event_id,
+        status,
+        CASE
+          WHEN status = 'delivered' OR error_reason IS NULL THEN NULL
+          ELSE 'Provider reported delivery failure'
+        END,
+        COALESCE(last_event_at, updated_at, created_at)
+      FROM email_delivery_logs
+      WHERE provider_event_id IS NOT NULL
+      ON CONFLICT DO NOTHING
+    `);
+    await exec.execute(sql`
+      UPDATE email_delivery_events
+      SET failure_summary = CASE
+        WHEN status = 'delivered' OR failure_summary IS NULL THEN NULL
+        ELSE 'Provider reported delivery failure'
+      END
+      WHERE failure_summary IS DISTINCT FROM CASE
+        WHEN status = 'delivered' OR failure_summary IS NULL THEN NULL
+        ELSE 'Provider reported delivery failure'
+      END
+    `);
+    logger.info({ table: "email_delivery_events" }, "schema_guard_table_created");
   });
 
   // ── merchant_tryit_presets (server-side Try It preset sync) ───────────────
@@ -1500,6 +1726,7 @@ async function runGuard(executor: GuardExecutor = db): Promise<void> {
     await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_ip TEXT`);
     await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_updated_at TIMESTAMPTZ`);
     await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ`);
+    await exec.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS enrollment_credential_submitted_emails BOOLEAN NOT NULL DEFAULT TRUE`);
     logger.info({ table: "users", migration: "add_missing_notif_and_profile_cols" }, "schema_guard_column_added");
   });
 
@@ -2229,12 +2456,127 @@ async function runGuard(executor: GuardExecutor = db): Promise<void> {
     logger.info({ table: "cashfree_payout_webhook_logs" }, "schema_guard_table_created");
   });
 
+  // ── White-label tables ────────────────────────────────────────────────────
+  // Create the additive tenant foundation before the IAM migration. These
+  // tables reference only other white-label tables and must exist before any
+  // tenant route can query them on a fresh or drifted database.
+  await block("white_label_tables", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS white_label_tenants (
+        id SERIAL PRIMARY KEY,
+        slug TEXT NOT NULL,
+        display_name TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'draft',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS white_label_domains (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER NOT NULL REFERENCES white_label_tenants(id),
+        hostname TEXT NOT NULL,
+        portal_kind TEXT NOT NULL DEFAULT 'admin',
+        ownership_status TEXT NOT NULL DEFAULT 'pending',
+        verification_token_hash TEXT,
+        verified_at TIMESTAMPTZ,
+        tls_status TEXT NOT NULL DEFAULT 'pending',
+        is_primary BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS white_label_branding (
+        tenant_id INTEGER PRIMARY KEY REFERENCES white_label_tenants(id),
+        logo_url TEXT,
+        favicon_url TEXT,
+        primary_color TEXT NOT NULL DEFAULT '#172C54',
+        support_email TEXT,
+        settings JSONB,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS white_label_memberships (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER NOT NULL REFERENCES white_label_tenants(id),
+        user_id INTEGER NOT NULL,
+        role TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS white_label_merchant_assignments (
+        merchant_id INTEGER PRIMARY KEY,
+        tenant_id INTEGER NOT NULL REFERENCES white_label_tenants(id),
+        assigned_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS white_label_features (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER NOT NULL REFERENCES white_label_tenants(id),
+        feature_key TEXT NOT NULL,
+        enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        limits JSONB
+      )
+    `);
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS white_label_finance_commands (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER NOT NULL REFERENCES white_label_tenants(id),
+        merchant_id INTEGER NOT NULL,
+        operation TEXT NOT NULL,
+        idempotency_key TEXT NOT NULL,
+        payload_hash TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'reserved',
+        result JSONB,
+        created_by INTEGER NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        completed_at TIMESTAMPTZ
+      )
+    `);
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS white_label_finance_audit (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER NOT NULL REFERENCES white_label_tenants(id),
+        merchant_id INTEGER NOT NULL,
+        command_id INTEGER REFERENCES white_label_finance_commands(id),
+        actor_id INTEGER NOT NULL,
+        action TEXT NOT NULL,
+        outcome TEXT NOT NULL,
+        metadata JSONB,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS wl_tenants_slug_unique ON white_label_tenants(slug)`);
+    await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS wl_domains_hostname_unique ON white_label_domains(hostname)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS wl_domains_tenant_idx ON white_label_domains(tenant_id)`);
+    await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS wl_membership_tenant_user_unique ON white_label_memberships(tenant_id, user_id)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS wl_membership_user_idx ON white_label_memberships(user_id)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS wl_merchant_tenant_idx ON white_label_merchant_assignments(tenant_id)`);
+    await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS wl_tenant_feature_unique ON white_label_features(tenant_id, feature_key)`);
+    await exec.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS wl_fin_cmd_unique_request ON white_label_finance_commands(tenant_id, merchant_id, operation, idempotency_key)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS wl_fin_cmd_tenant_created ON white_label_finance_commands(tenant_id, created_at)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS wl_fin_audit_tenant_created ON white_label_finance_audit(tenant_id, created_at)`);
+    logger.info({ tables: ["white_label_tenants", "white_label_domains", "white_label_branding", "white_label_memberships", "white_label_merchant_assignments", "white_label_features", "white_label_finance_commands", "white_label_finance_audit"] }, "schema_guard_tables_created");
+  });
+
   // ── IAM tables ─────────────────────────────────────────────────────────────
   // Delegated to the canonical migration file (lib/db/src/migrations/add-iam-rbac.ts).
   // That file owns the DDL and its exported rollback() for emergency use.
   // Both up() and rollback() are idempotent (CREATE/DROP IF EXISTS).
+  //
+  // IMPORTANT: pass exec (not db) so up() runs on the same connection.
+  // GuardExecutor and DrizzleExecutor are structurally identical:
+  //   { execute: (query: SQL) => Promise<{ rows: unknown[] }> }
+  // Using the global db pool here causes a lock wait when this is called from
+  // within a transaction: up() adds FK constraints referencing users(id) which
+  // need a SHARE lock, conflicting with the transaction's ACCESS EXCLUSIVE on
+  // users from the earlier ALTER TABLE ADD COLUMN step.
   await block("iam_tables", async () => {
-    await up(db);
+    await up(exec);
     logger.info({ tables: ["permissions", "role_permissions", "user_permissions", "iam_migration_log"] }, "schema_guard_table_created");
   });
 
@@ -2350,6 +2692,8 @@ async function runGuard(executor: GuardExecutor = db): Promise<void> {
         type           TEXT        NOT NULL,
         trigger        TEXT        NOT NULL DEFAULT 'scheduled',
         ran_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+        status          TEXT        NOT NULL DEFAULT 'success',
+        summary         TEXT,
         expired        INTEGER,
         closed         INTEGER,
         deleted        INTEGER     NOT NULL DEFAULT 0,
@@ -2357,6 +2701,8 @@ async function runGuard(executor: GuardExecutor = db): Promise<void> {
         triggered_by   TEXT        NOT NULL DEFAULT 'scheduled'
       )
     `);
+    await exec.execute(sql`ALTER TABLE cleanup_run_history ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'success'`);
+    await exec.execute(sql`ALTER TABLE cleanup_run_history ADD COLUMN IF NOT EXISTS summary TEXT`);
     logger.info({ table: "cleanup_run_history" }, "schema_guard_table_created");
   });
 
@@ -2690,6 +3036,238 @@ async function runGuard(executor: GuardExecutor = db): Promise<void> {
       `schemaGuard completed with ${failures.length} failed block(s): ${failures.join(", ")}`,
     );
   }
+
+  // ── merchant_provider_enrollments ─────────────────────────────────────────
+  await block("merchant_provider_enrollments", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS merchant_provider_enrollments (
+        id                  SERIAL PRIMARY KEY,
+        merchant_id         INTEGER NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
+        provider_slug       TEXT NOT NULL,
+        enrollment_status   TEXT NOT NULL DEFAULT 'pending_kyc',
+        encrypted_api_key   TEXT,
+        encrypted_api_secret TEXT,
+        encrypted_webhook_secret TEXT,
+        masked_identifier   TEXT,
+        onboarding_url      TEXT,
+        connected_at        TIMESTAMPTZ,
+        last_verified_at    TIMESTAMPTZ,
+        disconnected_at     TIMESTAMPTZ,
+        disconnected_by     TEXT,
+        failure_reason      TEXT,
+        created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS merchant_provider_enrollments_uniq
+        ON merchant_provider_enrollments(merchant_id, provider_slug)
+    `);
+    await exec.execute(sql`
+      CREATE INDEX IF NOT EXISTS merchant_provider_enrollments_merchant_id_idx
+        ON merchant_provider_enrollments(merchant_id)
+    `);
+    logger.info({ table: "merchant_provider_enrollments" }, "schema_guard_table_created");
+  });
+
+  // ── portal_sessions ──────────────────────────────────────────────────────────
+  // Connector Engine: encrypted provider-portal sessions per platform_connection.
+  // Written exclusively by the portalSessions route via the ConnectorEngine.
+  await block("portal_sessions", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS portal_sessions (
+        id                    SERIAL PRIMARY KEY,
+        platform_connection_id INTEGER NOT NULL REFERENCES platform_connections(id) ON DELETE CASCADE,
+        provider_slug         TEXT NOT NULL,
+        status                TEXT NOT NULL DEFAULT 'PENDING',
+        next_step             TEXT,
+        next_step_prompt      TEXT,
+        encrypted_session     TEXT,
+        fail_reason           TEXT,
+        fail_detail           TEXT,
+        help_url              TEXT,
+        discovery_snapshot    TEXT,
+        last_discovered_at    TIMESTAMPTZ,
+        last_validated_at     TIMESTAMPTZ,
+        expires_at            TIMESTAMPTZ,
+        last_health_check_at  TIMESTAMPTZ,
+        last_health_status    TEXT,
+        initiated_by_email    TEXT,
+        disconnected_by_email TEXT,
+        disconnected_at       TIMESTAMPTZ,
+        created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS portal_sessions_connection_idx ON portal_sessions(platform_connection_id)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS portal_sessions_provider_status_idx ON portal_sessions(provider_slug, status)`);
+    logger.info({ table: "portal_sessions" }, "schema_guard_table_created");
+  });
+
+  // ── portal_discovered_entities ───────────────────────────────────────────────
+  // Connector Engine: merchants, stores, devices, and QR codes discovered
+  // from an authenticated portal session. Read-only after creation.
+  await block("portal_discovered_entities", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS portal_discovered_entities (
+        id                    SERIAL PRIMARY KEY,
+        platform_connection_id INTEGER NOT NULL REFERENCES platform_connections(id) ON DELETE CASCADE,
+        portal_session_id     INTEGER NOT NULL REFERENCES portal_sessions(id) ON DELETE CASCADE,
+        entity_type           TEXT NOT NULL,
+        provider_entity_id    TEXT NOT NULL,
+        provider_entity_name  TEXT,
+        parent_entity_id      TEXT,
+        is_primary            BOOLEAN NOT NULL DEFAULT FALSE,
+        metadata              TEXT,
+        is_active             BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS portal_discovery_connection_idx ON portal_discovered_entities(platform_connection_id)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS portal_discovery_session_idx ON portal_discovered_entities(portal_session_id)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS portal_discovery_entity_type_idx ON portal_discovered_entities(entity_type)`);
+    logger.info({ table: "portal_discovered_entities" }, "schema_guard_table_created");
+  });
+
+  // ── portal_transactions ───────────────────────────────────────────────────────
+  // Connector Engine: normalised payment records fetched from provider portals.
+  // Idempotent on (provider_slug, provider_tx_id) via idempotency_key unique constraint.
+  await block("portal_transactions", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS portal_transactions (
+        id                    SERIAL PRIMARY KEY,
+        platform_connection_id INTEGER NOT NULL REFERENCES platform_connections(id) ON DELETE CASCADE,
+        portal_session_id     INTEGER REFERENCES portal_sessions(id) ON DELETE SET NULL,
+        provider_slug         TEXT NOT NULL,
+        provider_tx_id        TEXT NOT NULL,
+        utr                   TEXT,
+        rrn                   TEXT,
+        amount                NUMERIC(18,2) NOT NULL,
+        currency              TEXT NOT NULL DEFAULT 'INR',
+        status                TEXT NOT NULL,
+        provider_status       TEXT,
+        tx_timestamp          TIMESTAMPTZ,
+        settlement_timestamp  TIMESTAMPTZ,
+        merchant_id_provider  TEXT,
+        store_id_provider     TEXT,
+        device_tid            TEXT,
+        qr_code_id            TEXT,
+        settlement_reference  TEXT,
+        idempotency_key       TEXT NOT NULL,
+        is_credited           BOOLEAN NOT NULL DEFAULT FALSE,
+        credited_at           TIMESTAMPTZ,
+        raw_payload           TEXT,
+        created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT portal_transactions_idempotency_uniq UNIQUE (idempotency_key)
+      )
+    `);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS portal_transactions_connection_idx ON portal_transactions(platform_connection_id)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS portal_transactions_provider_tx_idx ON portal_transactions(provider_slug, provider_tx_id)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS portal_transactions_status_credited_idx ON portal_transactions(status, is_credited)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS portal_transactions_tx_timestamp_idx ON portal_transactions(tx_timestamp)`);
+    logger.info({ table: "portal_transactions" }, "schema_guard_table_created");
+  });
+
+  // ── portal_wallet_credits ─────────────────────────────────────────────────────
+  // Connector Engine: immutable record of every RasoKart wallet credit from a
+  // portal transaction. One row per portal_transaction (unique constraint).
+  await block("portal_wallet_credits", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS portal_wallet_credits (
+        id                    SERIAL PRIMARY KEY,
+        portal_transaction_id INTEGER NOT NULL REFERENCES portal_transactions(id) ON DELETE RESTRICT,
+        platform_connection_id INTEGER NOT NULL REFERENCES platform_connections(id) ON DELETE RESTRICT,
+        merchant_id           INTEGER NOT NULL,
+        amount                NUMERIC(18,2) NOT NULL,
+        currency              TEXT NOT NULL DEFAULT 'INR',
+        wallet_ledger_id      INTEGER,
+        idempotency_key       TEXT NOT NULL,
+        credited_by           TEXT NOT NULL DEFAULT 'auto',
+        verification_record   TEXT NOT NULL,
+        created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT portal_wallet_credits_tx_uniq          UNIQUE (portal_transaction_id),
+        CONSTRAINT portal_wallet_credits_idempotency_uniq UNIQUE (idempotency_key)
+      )
+    `);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS portal_wallet_credits_merchant_idx ON portal_wallet_credits(merchant_id)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS portal_wallet_credits_connection_idx ON portal_wallet_credits(platform_connection_id)`);
+    logger.info({ table: "portal_wallet_credits" }, "schema_guard_table_created");
+  });
+
+  // ── merchant_portal_sessions ─────────────────────────────────────────────────
+  // Tenant-owned portal automation sessions. Strictly isolated by merchant_id.
+  // Separate from portal_sessions (admin/platform-owned). No cross-tenant access.
+  await block("merchant_portal_sessions", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS merchant_portal_sessions (
+        id                   SERIAL PRIMARY KEY,
+        merchant_id          INTEGER NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
+        provider_slug        TEXT NOT NULL,
+        status               TEXT NOT NULL DEFAULT 'PENDING',
+        encrypted_session    TEXT,
+        step_failure_count   INTEGER NOT NULL DEFAULT 0,
+        otp_verification_failure_count INTEGER NOT NULL DEFAULT 0,
+        otp_resend_count     INTEGER NOT NULL DEFAULT 0,
+        otp_resend_available_at TIMESTAMPTZ,
+        otp_expires_at       TIMESTAMPTZ,
+        processing_lease_id  TEXT,
+        processing_lease_expires_at TIMESTAMPTZ,
+        last_error_code      TEXT,
+        last_status_message  TEXT,
+        expires_at           TIMESTAMPTZ,
+        connected_at         TIMESTAMPTZ,
+        ended_at             TIMESTAMPTZ,
+        end_reason           TEXT,
+        dry_run              BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (merchant_id, provider_slug)
+      )
+    `);
+    await exec.execute(sql`ALTER TABLE merchant_portal_sessions ADD COLUMN IF NOT EXISTS otp_verification_failure_count INTEGER NOT NULL DEFAULT 0`);
+    await exec.execute(sql`ALTER TABLE merchant_portal_sessions ADD COLUMN IF NOT EXISTS otp_resend_count INTEGER NOT NULL DEFAULT 0`);
+    await exec.execute(sql`ALTER TABLE merchant_portal_sessions ADD COLUMN IF NOT EXISTS otp_resend_available_at TIMESTAMPTZ`);
+    await exec.execute(sql`ALTER TABLE merchant_portal_sessions ADD COLUMN IF NOT EXISTS otp_expires_at TIMESTAMPTZ`);
+    await exec.execute(sql`ALTER TABLE merchant_portal_sessions ADD COLUMN IF NOT EXISTS processing_lease_id TEXT`);
+    await exec.execute(sql`ALTER TABLE merchant_portal_sessions ADD COLUMN IF NOT EXISTS processing_lease_expires_at TIMESTAMPTZ`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS merchant_portal_sessions_merchant_idx ON merchant_portal_sessions(merchant_id)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS merchant_portal_sessions_provider_status_idx ON merchant_portal_sessions(provider_slug, status)`);
+    logger.info({ table: "merchant_portal_sessions" }, "schema_guard_table_created");
+  });
+
+  // ── merchant_portal_transactions ─────────────────────────────────────────────
+  // Read-only transactions fetched from provider portals via the Connector Engine.
+  // Duplicate protection: UNIQUE (merchant_id, provider_slug, external_id).
+  await block("merchant_portal_transactions", async () => {
+    await exec.execute(sql`
+      CREATE TABLE IF NOT EXISTS merchant_portal_transactions (
+        id                   SERIAL PRIMARY KEY,
+        merchant_id          INTEGER NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
+        provider_slug        TEXT NOT NULL,
+        external_id          TEXT NOT NULL,
+        external_order_id    TEXT,
+        amount               INTEGER NOT NULL,
+        currency             TEXT NOT NULL DEFAULT 'INR',
+        status               TEXT NOT NULL,
+        normalized_status    TEXT,
+        payment_method       TEXT,
+        utr                  TEXT,
+        tx_timestamp         TIMESTAMPTZ,
+        raw_payload          TEXT,
+        fetched_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        dry_run              BOOLEAN NOT NULL DEFAULT TRUE,
+        auto_credited        BOOLEAN NOT NULL DEFAULT FALSE,
+        wallet_ledger_id     INTEGER,
+        created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (merchant_id, provider_slug, external_id)
+      )
+    `);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS merchant_portal_txns_merchant_idx ON merchant_portal_transactions(merchant_id, provider_slug)`);
+    await exec.execute(sql`CREATE INDEX IF NOT EXISTS merchant_portal_txns_ts_idx ON merchant_portal_transactions(tx_timestamp DESC NULLS LAST)`);
+    logger.info({ table: "merchant_portal_transactions" }, "schema_guard_table_created");
+  });
 
   _guardStatus = "pass";
   logger.info("schema_guard_completed");

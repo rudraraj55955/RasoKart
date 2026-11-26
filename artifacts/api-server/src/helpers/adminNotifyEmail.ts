@@ -11,7 +11,7 @@ function formatAmount(val: string | number | null | undefined): string {
   return `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-export async function getAdminEmails(preference: "planExpiryAlertEmails" | "settlementStateEmails" | "webhookFailureEmails" | "ekqrSyncAlertEmails" | "ekqrCapAlertEmails" | "reportFailureAlertEmails"): Promise<string[]> {
+export async function getAdminEmails(preference: "planExpiryAlertEmails" | "settlementStateEmails" | "webhookFailureEmails" | "ekqrSyncAlertEmails" | "ekqrCapAlertEmails" | "reportFailureAlertEmails" | "enrollmentCredentialSubmittedEmails"): Promise<string[]> {
   const admins = await db
     .select({ email: usersTable.email })
     .from(usersTable)
@@ -1413,5 +1413,606 @@ export async function notifyAdminsOfPayuCreditFailure(opts: {
     }
   } catch (err) {
     logger.error({ err, txnid: opts.txnid }, "Failed to send PayU credit failure alerts");
+  }
+}
+
+// ── Cashfree stuck payin order alert ─────────────────────────────────────────
+// Payment-integrity alert: every active admin is notified (no opt-out),
+// matching the pattern used for credential rotation alerts.
+
+const CASHFREE_STUCK_ORDER_ALERT_LAST_SENT_KEY = SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_ALERT_LAST_SENT_AT;
+
+function buildStuckCashfreeOrderHtml(opts: {
+  stuck: number;
+  threshold: number;
+  staleMinutes: number;
+}): string {
+  const dashboardUrl = `${APP_DOMAIN}/admin/deposits?tab=upi`;
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8" /></head>
+<body style="font-family:sans-serif;background:#f9f9f9;padding:24px;">
+  <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:8px;padding:24px;border:1px solid #e5e7eb;">
+    <h2 style="color:#dc2626;margin-top:0;">🔴 Cashfree Stuck Orders Alert</h2>
+    <p style="color:#374151;">
+      <strong>${opts.stuck}</strong> Cashfree payin order${opts.stuck !== 1 ? "s are" : " is"} stuck in a
+      non-PAID status for more than <strong>${opts.staleMinutes} minute${opts.staleMinutes !== 1 ? "s" : ""}</strong>
+      (threshold: ${opts.threshold}).
+    </p>
+    <p style="color:#6b7280;font-size:14px;">
+      These orders may indicate a webhook delivery failure or a decryption/signature issue.
+      Check the Cashfree payin orders table and webhook logs immediately.
+    </p>
+    <a href="${dashboardUrl}"
+       style="display:inline-block;background:#dc2626;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:bold;margin-top:8px;">
+      View Payin Orders →
+    </a>
+    <p style="margin-top:24px;color:#9ca3af;font-size:12px;">
+      This alert was sent by RasoKart because the stuck order count exceeded the configured threshold.
+      To adjust the threshold or cooldown, update the system config keys
+      <code>cashfree_stuck_order_alert_threshold</code> and <code>cashfree_stuck_order_alert_cooldown_hours</code>.
+    </p>
+  </div>
+</body>
+</html>`;
+}
+
+/**
+ * Notify every active admin when the count of stuck Cashfree payin orders
+ * crosses the configured threshold. Respects cooldown to avoid alert storms.
+ *
+ * "Stuck" = status ≠ PAID and older than staleMinutes minutes.
+ * Uses getAllActiveAdminEmails() — no opt-out, same as credential rotation alerts.
+ */
+export async function notifyAdminsOfStuckCashfreeOrders(
+  opts: {
+    stuck: number;
+    threshold: number;
+    staleMinutes: number;
+    cooldownHours: number;
+  },
+  _sendMail: typeof sendMail = sendMail,
+): Promise<void> {
+  try {
+    const recipients = await getAllActiveAdminEmails();
+    if (recipients.length === 0) {
+      logger.info("No active admin emails found for stuck Cashfree order alert — skipping");
+      return;
+    }
+
+    // Cooldown check — avoid spamming during prolonged outages
+    const cooldownCutoff = new Date(Date.now() - opts.cooldownHours * 60 * 60 * 1000);
+    const [lastSentRow] = await db
+      .select({ value: systemConfigTable.value })
+      .from(systemConfigTable)
+      .where(eq(systemConfigTable.key, CASHFREE_STUCK_ORDER_ALERT_LAST_SENT_KEY))
+      .limit(1);
+
+    if (lastSentRow?.value) {
+      const lastSentAt = new Date(lastSentRow.value);
+      if (lastSentAt > cooldownCutoff) {
+        logger.info(
+          { cooldownHours: opts.cooldownHours, lastSentAt: lastSentRow.value },
+          "Cashfree stuck order alert suppressed — within cooldown window",
+        );
+        return;
+      }
+    }
+
+    const html = buildStuckCashfreeOrderHtml(opts);
+    const subject = `[RasoKart] 🔴 ${opts.stuck} Cashfree Payin Order${opts.stuck !== 1 ? "s" : ""} Stuck — Action Required`;
+
+    const results = await Promise.allSettled(
+      recipients.map(email => _sendMail({ to: email, subject, html })),
+    );
+
+    const sent = results.filter(r => r.status === "fulfilled" && (r as PromiseFulfilledResult<boolean>).value).length;
+
+    if (sent > 0) {
+      const now = new Date().toISOString();
+      await db
+        .insert(systemConfigTable)
+        .values({ key: CASHFREE_STUCK_ORDER_ALERT_LAST_SENT_KEY, value: now })
+        .onConflictDoUpdate({
+          target: systemConfigTable.key,
+          set: { value: now, updatedAt: sql`now()` },
+        });
+    }
+
+    logger.info(
+      { stuck: opts.stuck, threshold: opts.threshold, totalAdmins: recipients.length, sent },
+      "Admin stuck Cashfree order alert emails dispatched",
+    );
+  } catch (err) {
+    logger.error({ err }, "Failed to send admin stuck Cashfree order alert emails");
+  }
+}
+
+// ── PayU stuck payin order alert ─────────────────────────────────────────────
+// Payment-integrity alert: every active admin is notified (no opt-out),
+// matching the pattern used for credential rotation alerts.
+
+const PAYU_STUCK_ORDER_ALERT_LAST_SENT_KEY = SYSTEM_CONFIG_KEYS.PAYU_STUCK_ORDER_ALERT_LAST_SENT_AT;
+
+function buildStuckPayuOrderHtml(opts: {
+  stuck: number;
+  threshold: number;
+  staleMinutes: number;
+  recovered: number;
+  noCredsSkipped: boolean;
+}): string {
+  const dashboardUrl = `${APP_DOMAIN}/admin/deposits?tab=payu`;
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8" /></head>
+<body style="font-family:sans-serif;background:#f9f9f9;padding:24px;">
+  <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:8px;padding:24px;border:1px solid #e5e7eb;">
+    <h2 style="color:#dc2626;margin-top:0;">🔴 PayU Stuck Orders Alert</h2>
+    <p style="color:#374151;">
+      <strong>${opts.stuck}</strong> PayU payin order${opts.stuck !== 1 ? "s are" : " is"} stuck in a
+      non-SUCCESS status for more than <strong>${opts.staleMinutes} minute${opts.staleMinutes !== 1 ? "s" : ""}</strong>
+      (threshold: ${opts.threshold}).
+    </p>
+    ${opts.recovered > 0 ? `<p style="color:#16a34a;font-size:14px;">✅ ${opts.recovered} order${opts.recovered !== 1 ? "s were" : " was"} automatically recovered in this run.</p>` : ""}
+    ${opts.noCredsSkipped ? `<p style="color:#b45309;font-size:14px;">⚠️ PayU credentials were unavailable — automatic recovery was skipped. The remaining count may be higher than expected.</p>` : ""}
+    <p style="color:#6b7280;font-size:14px;">
+      These orders may indicate a webhook delivery failure. Check the PayU payin orders table and webhook logs immediately.
+    </p>
+    <a href="${dashboardUrl}"
+       style="display:inline-block;background:#dc2626;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:bold;margin-top:8px;">
+      View PayU Orders →
+    </a>
+    <p style="margin-top:24px;color:#9ca3af;font-size:12px;">
+      This alert was sent by RasoKart because the stuck order count exceeded the configured threshold.
+      To adjust the threshold or cooldown, update the system config keys
+      <code>payu_stuck_order_alert_threshold</code> and <code>payu_stuck_order_alert_cooldown_hours</code>.
+    </p>
+  </div>
+</body>
+</html>`;
+}
+
+/**
+ * Notify every active admin when the count of stuck PayU payin orders
+ * crosses the configured threshold. Respects cooldown to avoid alert storms.
+ *
+ * "Stuck" = status INITIATED or PENDING and older than staleMinutes minutes.
+ * Uses getAllActiveAdminEmails() — no opt-out, same as credential rotation alerts.
+ */
+export async function notifyAdminsOfStuckPayuOrders(
+  opts: {
+    stuck: number;
+    threshold: number;
+    staleMinutes: number;
+    cooldownHours: number;
+    recovered: number;
+    noCredsSkipped: boolean;
+  },
+  _sendMail: typeof sendMail = sendMail,
+): Promise<void> {
+  try {
+    const recipients = await getAllActiveAdminEmails();
+    if (recipients.length === 0) {
+      logger.info("No active admin emails found for stuck PayU order alert — skipping");
+      return;
+    }
+
+    // Cooldown check — avoid spamming during prolonged outages
+    const cooldownCutoff = new Date(Date.now() - opts.cooldownHours * 60 * 60 * 1000);
+    const [lastSentRow] = await db
+      .select({ value: systemConfigTable.value })
+      .from(systemConfigTable)
+      .where(eq(systemConfigTable.key, PAYU_STUCK_ORDER_ALERT_LAST_SENT_KEY))
+      .limit(1);
+
+    if (lastSentRow?.value) {
+      const lastSentAt = new Date(lastSentRow.value);
+      if (lastSentAt > cooldownCutoff) {
+        logger.info(
+          { cooldownHours: opts.cooldownHours, lastSentAt: lastSentRow.value },
+          "PayU stuck order alert suppressed — within cooldown window",
+        );
+        return;
+      }
+    }
+
+    const html = buildStuckPayuOrderHtml(opts);
+    const subject = `[RasoKart] 🔴 ${opts.stuck} PayU Payin Order${opts.stuck !== 1 ? "s" : ""} Stuck — Action Required`;
+
+    const results = await Promise.allSettled(
+      recipients.map(email => _sendMail({ to: email, subject, html })),
+    );
+
+    const sent = results.filter(r => r.status === "fulfilled" && (r as PromiseFulfilledResult<boolean>).value).length;
+
+    if (sent > 0) {
+      const now = new Date().toISOString();
+      await db
+        .insert(systemConfigTable)
+        .values({ key: PAYU_STUCK_ORDER_ALERT_LAST_SENT_KEY, value: now })
+        .onConflictDoUpdate({
+          target: systemConfigTable.key,
+          set: { value: now, updatedAt: sql`now()` },
+        });
+    }
+
+    logger.info(
+      { stuck: opts.stuck, threshold: opts.threshold, recovered: opts.recovered, totalAdmins: recipients.length, sent },
+      "Admin stuck PayU order alert emails dispatched",
+    );
+  } catch (err) {
+    logger.error({ err }, "Failed to send admin stuck PayU order alert emails");
+  }
+}
+
+// ── Constant for EKQR scheduler consecutive-failure alert ─────────────────────
+const EKQR_SCHEDULER_FAILURE_ALERT_LAST_SENT_KEY = "ekqr_scheduler_failure_alert_last_sent_at";
+
+function buildEkqrSchedulerFailureHtml(opts: {
+  consecutiveFailures: number;
+  firstFailedAt: string;
+}): string {
+  const { consecutiveFailures, firstFailedAt } = opts;
+  return `
+    <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
+      <h2 style="color:#dc2626">🔴 EKQR Sync Scheduler — ${consecutiveFailures} Consecutive Failures</h2>
+      <p>The EKQR automatic QR-code sync scheduler has failed <strong>${consecutiveFailures} times in a row</strong>.</p>
+      <table style="border-collapse:collapse;width:100%;margin:16px 0">
+        <tr>
+          <td style="padding:8px;border:1px solid #e5e7eb;font-weight:bold;background:#f9fafb">Consecutive Failures</td>
+          <td style="padding:8px;border:1px solid #e5e7eb">${consecutiveFailures}</td>
+        </tr>
+        <tr>
+          <td style="padding:8px;border:1px solid #e5e7eb;font-weight:bold;background:#f9fafb">First Failure Detected</td>
+          <td style="padding:8px;border:1px solid #e5e7eb">${firstFailedAt}</td>
+        </tr>
+        <tr>
+          <td style="padding:8px;border:1px solid #e5e7eb;font-weight:bold;background:#f9fafb">Impact</td>
+          <td style="padding:8px;border:1px solid #e5e7eb">Automatic EKQR QR-code deposit syncs are not running. Merchant deposits via EKQR QR codes may not be credited.</td>
+        </tr>
+      </table>
+      <p style="color:#6b7280;font-size:0.85em">
+        This alert fires on the 3rd consecutive failure and every 3rd thereafter.
+        It clears automatically once the scheduler runs successfully.
+        Check the EKQR sync logs and EKQR provider API status for root cause.
+      </p>
+    </div>
+  `;
+}
+
+/**
+ * Notify opted-in admins when the EKQR sync scheduler fails consecutively.
+ * This is distinct from the "stuck QR" alert which fires on individual sync
+ * runs where QR codes are stuck past a stale threshold. This alert fires when
+ * the scheduler itself cannot run at all — the entire sync pipeline is broken.
+ *
+ * Uses a separate cooldown key so the two alerts don't suppress each other.
+ */
+export async function notifyAdminsOfEkqrSchedulerConsecutiveFailure(
+  opts: {
+    consecutiveFailures: number;
+    cooldownHours: number;
+  },
+  _sendMail: typeof sendMail = sendMail,
+): Promise<void> {
+  try {
+    const recipients = await getAdminEmails("ekqrSyncAlertEmails");
+
+    if (recipients.length === 0) {
+      logger.info("No admins opted in to EKQR sync alert emails — skipping consecutive-failure alert");
+      return;
+    }
+
+    // Cooldown check — avoid spamming during prolonged outages
+    const cooldownCutoff = new Date(Date.now() - opts.cooldownHours * 60 * 60 * 1000);
+    const [lastSentRow] = await db
+      .select({ value: systemConfigTable.value })
+      .from(systemConfigTable)
+      .where(eq(systemConfigTable.key, EKQR_SCHEDULER_FAILURE_ALERT_LAST_SENT_KEY))
+      .limit(1);
+
+    if (lastSentRow?.value) {
+      const lastSentAt = new Date(lastSentRow.value);
+      if (lastSentAt > cooldownCutoff) {
+        logger.info(
+          { cooldownHours: opts.cooldownHours, lastSentAt: lastSentRow.value },
+          "EKQR scheduler consecutive-failure alert suppressed — within cooldown window",
+        );
+        return;
+      }
+    }
+
+    const firstFailedAt = new Date().toISOString();
+    const html = buildEkqrSchedulerFailureHtml({ consecutiveFailures: opts.consecutiveFailures, firstFailedAt });
+    const subject = `[RasoKart] 🔴 EKQR Sync Scheduler Down — ${opts.consecutiveFailures} Consecutive Failures`;
+
+    const results = await Promise.allSettled(
+      recipients.map(email => _sendMail({ to: email, subject, html })),
+    );
+
+    const sent = results.filter(r => r.status === "fulfilled" && r.value).length;
+
+    if (sent > 0) {
+      const now = new Date().toISOString();
+      await db
+        .insert(systemConfigTable)
+        .values({ key: EKQR_SCHEDULER_FAILURE_ALERT_LAST_SENT_KEY, value: now })
+        .onConflictDoUpdate({
+          target: systemConfigTable.key,
+          set: { value: now, updatedAt: sql`now()` },
+        });
+    }
+
+    logger.info(
+      { consecutiveFailures: opts.consecutiveFailures, totalAdmins: recipients.length, sent },
+      "EKQR scheduler consecutive-failure alert emails dispatched",
+    );
+  } catch (err) {
+    logger.error({ err }, "Failed to send EKQR scheduler consecutive-failure alert emails");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Merchant enrollment status change email (sent to the MERCHANT, not admins)
+// ---------------------------------------------------------------------------
+
+const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
+  phonepe:    "PhonePe Business",
+  paytm:      "Paytm Business",
+  bharatpe:   "BharatPe",
+  amazon_pay: "Amazon Pay for Business",
+  mobikwik:   "MobiKwik Business",
+};
+
+export function buildMerchantEnrollmentStatusHtml(opts: {
+  merchantBusinessName: string;
+  providerSlug: string;
+  newStatus: "active" | "suspended";
+  reason: string | null;
+  adminEmail: string;
+}): string {
+  const { merchantBusinessName, providerSlug, newStatus, reason, adminEmail } = opts;
+  const providerName = PROVIDER_DISPLAY_NAMES[providerSlug] ?? providerSlug;
+  const connectLink = `${APP_DOMAIN}/merchant/connect`;
+
+  const isActive = newStatus === "active";
+  const headerBg = isActive ? "#14532d" : "#7f1d1d";
+  const headerSubColor = isActive ? "#bbf7d0" : "#fca5a5";
+  const statusColor = isActive ? "#4ade80" : "#f87171";
+  const statusLabel = isActive ? "Active — payments are now live" : "Suspended";
+  const statusEmoji = isActive ? "✅" : "⚠️";
+
+  const reasonRow = reason
+    ? `<tr style="background: #111;">
+         <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px; width: 40%;">Reason</td>
+         <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; color: #d1d5db;">${reason}</td>
+       </tr>`
+    : "";
+
+  const bodyText = isActive
+    ? `Your API credentials for <strong>${providerName}</strong> have been reviewed and your integration is now <strong>live</strong>. Payments through this provider will start processing immediately.`
+    : `Your API credentials for <strong>${providerName}</strong> have been suspended by the RasoKart team. Please review the reason below and re-submit credentials or contact support if you need assistance.`;
+
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; background: #0f0f0f; color: #e5e5e5; margin: 0; padding: 24px;">
+  <div style="max-width: 600px; margin: 0 auto; background: #1a1a1a; border-radius: 8px; overflow: hidden; border: 1px solid #2a2a2a;">
+    <div style="background: ${headerBg}; padding: 20px 24px;">
+      <h1 style="margin: 0; font-size: 20px; color: #fff; letter-spacing: 0.5px;">RasoKart — Provider Integration ${isActive ? "Activated" : "Suspended"}</h1>
+      <p style="margin: 4px 0 0; color: ${headerSubColor}; font-size: 13px;">${providerName} credential review complete</p>
+    </div>
+    <div style="padding: 24px;">
+      <p style="margin: 0 0 16px; color: ${statusColor}; font-size: 14px; font-weight: 600;">
+        ${statusEmoji} ${merchantBusinessName}: ${statusLabel}
+      </p>
+      <p style="margin: 0 0 20px; color: #a1a1aa; font-size: 13px;">
+        ${bodyText}
+      </p>
+
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
+        <tr style="background: #111;">
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px; width: 40%;">Provider</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; font-weight: 600;">${providerName}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">New Status</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; color: ${statusColor}; font-weight: 600; text-transform: capitalize;">${newStatus}</td>
+        </tr>
+        ${reasonRow}
+      </table>
+
+      <div style="text-align: center; margin-bottom: 20px;">
+        <a href="${connectLink}"
+           style="display: inline-block; background: #7c3aed; color: #fff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-size: 14px; font-weight: 600; letter-spacing: 0.3px;">
+          View Provider Integrations
+        </a>
+      </div>
+
+      <p style="margin: 0; color: #71717a; font-size: 12px;">
+        If you have questions, please contact the RasoKart support team. Reference: ${adminEmail}<br>
+        <span style="color: #818cf8;">${connectLink}</span>
+      </p>
+    </div>
+    <div style="padding: 14px 24px; background: #111; border-top: 1px solid #2a2a2a;">
+      <p style="margin: 0; color: #52525b; font-size: 11px;">
+        This notification was sent by RasoKart regarding your provider integration status.
+      </p>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+export async function notifyMerchantOfEnrollmentStatusChange(opts: {
+  merchantId: number;
+  merchantEmail: string;
+  merchantBusinessName: string;
+  providerSlug: string;
+  newStatus: "active" | "suspended";
+  reason: string | null;
+  adminEmail: string;
+}): Promise<void> {
+  try {
+    const html = buildMerchantEnrollmentStatusHtml(opts);
+    const providerName = PROVIDER_DISPLAY_NAMES[opts.providerSlug] ?? opts.providerSlug;
+    const subject = opts.newStatus === "active"
+      ? `[RasoKart] ✅ Your ${providerName} integration is now live`
+      : `[RasoKart] ⚠️ Your ${providerName} integration has been suspended`;
+
+    const sent = await sendMail({ to: opts.merchantEmail, subject, html });
+
+    logger.info(
+      { merchantId: opts.merchantId, merchantEmail: opts.merchantEmail, providerSlug: opts.providerSlug, newStatus: opts.newStatus, sent },
+      "Merchant enrollment status change email dispatched"
+    );
+  } catch (err) {
+    logger.error(
+      { err, merchantId: opts.merchantId, providerSlug: opts.providerSlug },
+      "Failed to send merchant enrollment status change email"
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Merchant enrollment credential submission emails
+// ---------------------------------------------------------------------------
+
+/** Escape user-controlled text before interpolating into HTML email bodies. */
+function escapeHtml(raw: string): string {
+  return raw
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+export function buildMerchantCredentialSubmittedHtml(opts: {
+  merchantId: number;
+  merchantName: string;
+  providerSlug: string;
+  hasApiKey: boolean;
+  hasApiSecret: boolean;
+  hasWebhookSecret: boolean;
+}): string {
+  const { merchantId, hasApiKey, hasApiSecret, hasWebhookSecret } = opts;
+  const merchantName = escapeHtml(opts.merchantName);
+  const providerSlug = escapeHtml(opts.providerSlug);
+  const reviewLink = `${APP_DOMAIN}/admin/merchant-enrollments`;
+  const merchantLink = `${APP_DOMAIN}/admin/merchants/${merchantId}`;
+
+  const badge = (present: boolean, label: string) =>
+    `<span style="display:inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; background: ${present ? "#14532d" : "#1c1c1c"}; color: ${present ? "#4ade80" : "#71717a"}; border: 1px solid ${present ? "#166534" : "#2a2a2a"};">${present ? "✓" : "—"} ${label}</span>`;
+
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; background: #0f0f0f; color: #e5e5e5; margin: 0; padding: 24px;">
+  <div style="max-width: 600px; margin: 0 auto; background: #1a1a1a; border-radius: 8px; overflow: hidden; border: 1px solid #2a2a2a;">
+    <div style="background: #1e3a2f; padding: 20px 24px;">
+      <h1 style="margin: 0; font-size: 20px; color: #fff; letter-spacing: 0.5px;">RasoKart — New Provider Credentials Submitted</h1>
+      <p style="margin: 4px 0 0; color: #6ee7b7; font-size: 13px;">A merchant has submitted API credentials for review</p>
+    </div>
+    <div style="padding: 24px;">
+      <p style="margin: 0 0 16px; color: #d1fae5; font-size: 14px; font-weight: 600;">
+        🔑 ${merchantName} has submitted credentials for <strong>${providerSlug}</strong>.
+      </p>
+      <p style="margin: 0 0 20px; color: #a1a1aa; font-size: 13px;">
+        Please review the submitted credentials in the Merchant Enrollment panel and activate or reject the integration.
+      </p>
+
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+        <tr style="background: #111;">
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px; width: 40%;">Merchant</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; font-weight: 600;">${merchantName}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">Merchant ID</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px;">#${merchantId}</td>
+        </tr>
+        <tr style="background: #111;">
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">Provider</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; font-weight: 600;">${providerSlug}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">Credentials</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px;">
+            <span style="display: flex; gap: 6px; flex-wrap: wrap;">
+              ${badge(hasApiKey, "API Key")}
+              ${badge(hasApiSecret, "API Secret")}
+              ${badge(hasWebhookSecret, "Webhook Secret")}
+            </span>
+          </td>
+        </tr>
+      </table>
+
+      <div style="text-align: center; margin-bottom: 16px;">
+        <a href="${reviewLink}"
+           style="display: inline-block; background: #7c3aed; color: #fff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-size: 14px; font-weight: 600; letter-spacing: 0.3px;">
+          Review Enrollment in Admin Portal
+        </a>
+      </div>
+      <div style="text-align: center; margin-bottom: 20px;">
+        <a href="${merchantLink}"
+           style="display: inline-block; color: #818cf8; text-decoration: none; font-size: 13px;">
+          View Merchant Profile
+        </a>
+      </div>
+
+      <p style="margin: 0; color: #71717a; font-size: 12px;">
+        If the link above doesn't work, copy this URL into your browser:<br>
+        <span style="color: #818cf8;">${reviewLink}</span>
+      </p>
+    </div>
+    <div style="padding: 14px 24px; background: #111; border-top: 1px solid #2a2a2a;">
+      <p style="margin: 0; color: #52525b; font-size: 11px;">
+        This alert was sent by RasoKart. To stop receiving enrollment credential submission emails, update your notification preferences in Admin Settings.
+      </p>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+export async function notifyAdminsOfNewEnrollmentSubmission(opts: {
+  merchantId: number;
+  merchantName: string;
+  providerSlug: string;
+  hasApiKey: boolean;
+  hasApiSecret: boolean;
+  hasWebhookSecret: boolean;
+}): Promise<void> {
+  try {
+    const recipients = await getAdminEmails("enrollmentCredentialSubmittedEmails");
+
+    if (recipients.length === 0) {
+      logger.info({ merchantId: opts.merchantId }, "No admins opted in to enrollment credential submission emails — skipping");
+      return;
+    }
+
+    const html = buildMerchantCredentialSubmittedHtml(opts);
+    // Subject uses plain text — strip HTML special chars from merchant-controlled fields
+    const safeName = opts.merchantName.replace(/[<>"'&]/g, "");
+    const safeSlug = opts.providerSlug.replace(/[<>"'&]/g, "");
+    const subject = `[RasoKart] 🔑 New Provider Credentials Submitted — ${safeName} (${safeSlug})`;
+
+    const results = await Promise.allSettled(
+      recipients.map(email => sendMail({ to: email, subject, html }))
+    );
+
+    const sent = results.filter(r => r.status === "fulfilled" && r.value).length;
+    const failed = results.length - sent;
+
+    logger.info(
+      { merchantId: opts.merchantId, providerSlug: opts.providerSlug, totalAdmins: recipients.length, sent, failed },
+      "Admin enrollment credential submission emails dispatched"
+    );
+  } catch (err) {
+    logger.error({ err, merchantId: opts.merchantId, providerSlug: opts.providerSlug }, "Failed to send admin enrollment credential submission emails");
   }
 }

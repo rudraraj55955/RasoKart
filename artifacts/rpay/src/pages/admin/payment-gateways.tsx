@@ -16,6 +16,10 @@ import {
 import type { ProviderIntegration } from "@workspace/api-client-react";
 import { getToken } from "@/lib/auth";
 import { computeWillDisable } from "@/lib/disable-gateway-guard";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -33,7 +37,7 @@ import {
   CreditCard, Landmark, Zap, PlusCircle, CheckCircle2, XCircle, AlertCircle,
   Eye, EyeOff, Save, FlaskConical, Copy, ExternalLink, GitMerge,
   Users, ArrowRight, Shield, Activity, Settings2, Layers, Plug, Trash2,
-  Percent, Loader2, ReceiptText, Info,
+  Percent, Loader2, ReceiptText, Info, AlertTriangle,
 } from "lucide-react";
 
 const authHeader = () => ({ Authorization: `Bearer ${getToken()}` });
@@ -240,6 +244,8 @@ function PayuPanel() {
   const [verifying, setVerifying]         = useState(false);
   const [verifyResult, setVerifyResult]   = useState<any>(null);
   const [initialized, setInitialized]     = useState(false);
+  const [showLiveConfirm, setShowLiveConfirm] = useState(false);
+  const [pendingLiveEnv, setPendingLiveEnv]   = useState<"uat" | "live">("live");
 
   const loadConfig = () => {
     setLoading(true);
@@ -329,6 +335,16 @@ function PayuPanel() {
       toast.error(err.message ?? "Failed to save settings");
     } finally { setSaving(false); }
   };
+
+  function handleSettingsSave(envOverride?: "uat" | "live") {
+    const targetEnv = envOverride ?? activeEnv;
+    if (enabled && targetEnv === "live") {
+      setPendingLiveEnv(targetEnv);
+      setShowLiveConfirm(true);
+      return;
+    }
+    saveSettings(envOverride);
+  }
 
   const testHash = async () => {
     setTesting(true);
@@ -774,13 +790,13 @@ function PayuPanel() {
           </p>
         </div>
 
-        <Button onClick={() => saveSettings()} disabled={saving} size="sm">
+        <Button onClick={() => handleSettingsSave()} disabled={saving} size="sm">
           {saving ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Saving…</> : <><Save className="w-3.5 h-3.5 mr-1.5" />Save Settings</>}
         </Button>
 
         {activeEnv === "live" && allStepsPass && (
           <Button
-            onClick={() => saveSettings("live")}
+            onClick={() => handleSettingsSave("live")}
             disabled={saving}
             size="sm"
             className="ml-2 bg-emerald-600 hover:bg-emerald-700 text-white"
@@ -806,6 +822,42 @@ function PayuPanel() {
           <span>Refund, settlement, and payout are NOT active — these require separate provider activation. Do not present these as working features.</span>
         </div>
       </div>
+
+      {/* Live-mode enable confirmation dialog */}
+      <AlertDialog open={showLiveConfirm} onOpenChange={(v) => { if (!v) setShowLiveConfirm(false); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-400" />
+              Enable PayU in Live Mode?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-left">
+                <p>
+                  You are about to enable the <strong className="text-foreground">PayU Payment Gateway</strong> in{" "}
+                  <strong className="text-violet-400">Live mode</strong>. This will immediately start processing real payments.
+                </p>
+                <p>Make sure your Live Key and Live Salt have been saved and your integration is ready for production traffic.</p>
+                <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+                  <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  <span>
+                    Live mode charges real money. Verify your PayU merchant account is fully activated before confirming.
+                  </span>
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowLiveConfirm(false)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => { setShowLiveConfirm(false); saveSettings(pendingLiveEnv); }}
+              className="bg-violet-600 text-white hover:bg-violet-700"
+            >
+              Enable Live Mode
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -953,6 +1005,425 @@ function EkqrCard({ onConfigure }: { onConfigure: () => void }) {
         </Button>
       </CardContent>
     </Card>
+  );
+}
+
+// ── Pine Labs overview card ───────────────────────────────────────────────────
+
+function PineLabsCard({ onConfigure }: { onConfigure: () => void }) {
+  const { data: integrations = [], isLoading } = useListProviderIntegrations({
+    request: { headers: authHeader() },
+  } as any);
+  const integration = (integrations as ProviderIntegration[]).find(i => i.providerKey === "pinelabs");
+
+  return (
+    <Card className="border-border/50 hover:border-sky-500/30 transition-colors">
+      <CardHeader className="pb-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="p-2 rounded-lg bg-sky-500/10 border border-sky-500/20">
+            <CreditCard className="w-4 h-4 text-sky-400" />
+          </div>
+          <div className="flex flex-col items-end gap-1">
+            {!isLoading && integration && <StatusBadge enabled={integration.isEnabled} />}
+            {!isLoading && integration && <EnvBadge env={integration.environment} />}
+          </div>
+        </div>
+        <CardTitle className="text-sm font-semibold mt-2">Pine Labs Plural</CardTitle>
+        <CardDescription className="text-xs">
+          Cards, UPI, Wallets, Netbanking, EMI — Plural gateway
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-muted-foreground">Merchant ID (MID)</span>
+            <ConnectedBadge connected={(integration as any)?.clientIdSet ?? false} />
+          </div>
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-muted-foreground">Access Code</span>
+            <ConnectedBadge connected={integration?.apiKeySet ?? false} />
+          </div>
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-muted-foreground">Secret Key</span>
+            <ConnectedBadge connected={integration?.apiSecretSet ?? false} />
+          </div>
+        </div>
+        <Separator className="opacity-30" />
+        <Button size="sm" variant="outline" className="w-full h-7 text-xs" onClick={onConfigure}>
+          <Settings2 className="w-3 h-3 mr-1.5" />Configure
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Pine Labs config panel ────────────────────────────────────────────────────
+
+function PineLabsPanel() {
+  const qc = useQueryClient();
+  const { data: integrations = [], isLoading } = useListProviderIntegrations({
+    request: { headers: authHeader() },
+  } as any);
+  const integration = (integrations as ProviderIntegration[]).find(i => i.providerKey === "pinelabs");
+
+  const [enabled, setEnabled] = useState(false);
+  const [environment, setEnvironment] = useState<"test" | "live">("test");
+  const [merchantId, setMerchantId] = useState("");
+  const [accessCode, setAccessCode] = useState("");
+  const [secretKey, setSecretKey] = useState("");
+  const [showAccessCode, setShowAccessCode] = useState(false);
+  const [showSecretKey, setShowSecretKey] = useState(false);
+  const [initialized, setInitialized] = useState(false);
+  const [liveCredError, setLiveCredError] = useState<string | null>(null);
+  const [testing, setTesting] = useState(false);
+  const [showLiveConfirm, setShowLiveConfirm] = useState(false);
+  const [testResult, setTestResult] = useState<{ pass: boolean; message: string; detail: string; environment?: "uat" | "live" } | null>(null);
+
+  useEffect(() => {
+    if (integration && !initialized) {
+      setEnabled(integration.isEnabled);
+      setEnvironment((integration.environment ?? "test") as "test" | "live");
+      setInitialized(true);
+    }
+  }, [integration, initialized]);
+
+  const { mutate: saveConfig, isPending: saving } = useUpdateProviderIntegration({
+    request: { headers: authHeader() },
+    mutation: {
+      onSuccess: () => {
+        toast.success("Pine Labs settings saved");
+        setMerchantId(""); setAccessCode(""); setSecretKey("");
+        setTestResult(null);
+        qc.invalidateQueries({ queryKey: getListProviderIntegrationsQueryKey() });
+      },
+      onError: (err: Error) => toast.error((err as any)?.message ?? "Failed to save settings"),
+    },
+  } as any);
+
+  function doSave() {
+    const body: Record<string, unknown> = { isEnabled: enabled, environment };
+    if (merchantId.trim()) body["clientId"] = merchantId.trim();
+    if (accessCode.trim()) body["apiKey"] = accessCode.trim();
+    if (secretKey.trim()) body["apiSecret"] = secretKey.trim();
+    saveConfig({ key: "pinelabs", data: body as any });
+  }
+
+  function handleSave() {
+    setLiveCredError(null);
+    // Guard: live + enabled requires all three credentials to be present
+    if (enabled && environment === "live") {
+      const midOk    = (integration as any)?.clientIdSet || merchantId.trim().length > 0;
+      const accessOk = integration?.apiKeySet || accessCode.trim().length > 0;
+      const secretOk = integration?.apiSecretSet || secretKey.trim().length > 0;
+      if (!midOk || !accessOk || !secretOk) {
+        setLiveCredError(
+          "Cannot enable Pine Labs in Live mode — Merchant ID, Access Code, and Secret Key must all be saved first."
+        );
+        return;
+      }
+      // Show confirmation dialog before enabling in live mode
+      setShowLiveConfirm(true);
+      return;
+    }
+    doSave();
+  }
+
+  const testCredentials = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const r = await fetch("/api/admin/pinelabs/test-credentials", {
+        method: "POST",
+        headers: authHeader(),
+      });
+      const d = await r.json();
+      setTestResult(d);
+      if (d.pass) {
+        toast.success("Pine Labs credentials verified");
+      } else {
+        toast.error(d.message ?? "Credential test failed");
+      }
+    } catch {
+      setTestResult({ pass: false, message: "Request failed", detail: "Could not reach the server. Check your connection and try again." });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  if (isLoading) return (
+    <div className="flex items-center gap-2 text-sm text-muted-foreground py-8">
+      <Loader2 className="w-4 h-4 animate-spin" />Loading Pine Labs config…
+    </div>
+  );
+
+  if (!integration) return (
+    <div className="flex items-center gap-2 text-sm text-amber-400 py-8">
+      <AlertCircle className="w-4 h-4" />Pine Labs integration not found — restart the server to seed it.
+    </div>
+  );
+
+  const intg = integration as any;
+
+  return (
+    <div className="space-y-5 max-w-2xl">
+      {/* Header strip */}
+      <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/20 border border-border/40">
+        <div className="p-2 rounded-lg bg-sky-500/10 border border-sky-500/20">
+          <CreditCard className="w-4 h-4 text-sky-400" />
+        </div>
+        <div className="flex-1">
+          <p className="text-sm font-medium">Pine Labs Plural Gateway</p>
+          <p className="text-xs text-muted-foreground">Cards, UPI, Wallets, Netbanking, EMI — credentials encrypted (AES-256-GCM)</p>
+        </div>
+        <StatusBadge enabled={enabled} />
+      </div>
+
+      {/* Settings */}
+      <div className="border border-border/40 rounded-lg p-4 space-y-4">
+        <p className="text-sm font-medium">Settings</p>
+
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs font-medium">Enable Pine Labs</p>
+            <p className="text-[11px] text-muted-foreground">Accept payments via Pine Labs Plural</p>
+          </div>
+          <Switch checked={enabled} onCheckedChange={setEnabled} />
+        </div>
+
+        <div className="space-y-1.5">
+          <Label className="text-xs">Environment</Label>
+          <Select value={environment} onValueChange={(v) => setEnvironment(v as "test" | "live")}>
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="test" className="text-xs">Sandbox / Test</SelectItem>
+              <SelectItem value="live" className="text-xs">Live / Production</SelectItem>
+            </SelectContent>
+          </Select>
+          {environment === "live" && (
+            <p className="text-[11px] text-amber-400 flex items-center gap-1.5 mt-1">
+              <AlertCircle className="w-3 h-3" />Live mode — verify Pine Labs account activation before enabling
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Credentials */}
+      <div className={`border rounded-lg p-4 space-y-4 ${liveCredError ? "border-red-500/50" : "border-border/40"}`}>
+        <div>
+          <p className="text-sm font-medium">Credentials</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">
+            Find these in the Pine Labs Merchant Portal → Integration Settings.
+            Leave a field blank to keep the existing saved value.
+          </p>
+        </div>
+
+        {/* Merchant ID */}
+        {(() => {
+          const missing = liveCredError && !intg.clientIdSet && !merchantId.trim();
+          return (
+            <div className="space-y-1.5">
+              <Label className={`text-xs ${missing ? "text-red-400" : ""}`}>
+                Merchant ID (MID){missing && <span className="ml-1 text-red-400">· required for Live mode</span>}
+              </Label>
+              <div className={`rounded-md border px-3 py-1.5 bg-muted/10 min-h-[32px] flex items-center ${missing ? "border-red-500/60" : "border-border/60"}`}>
+                {intg.clientIdSet
+                  ? <span className="text-xs text-muted-foreground font-mono">{intg.clientIdMasked} (saved)</span>
+                  : <span className="text-xs text-zinc-500 flex items-center gap-1"><XCircle className="w-3 h-3" />Not configured</span>}
+              </div>
+              <Input
+                placeholder="Enter Merchant ID (MID) to update"
+                value={merchantId}
+                onChange={e => { setMerchantId(e.target.value); setLiveCredError(null); }}
+                className={`h-8 text-xs font-mono ${missing ? "border-red-500/60 focus-visible:ring-red-500/30" : ""}`}
+              />
+            </div>
+          );
+        })()}
+
+        {/* Access Code */}
+        {(() => {
+          const missing = liveCredError && !integration.apiKeySet && !accessCode.trim();
+          return (
+            <div className="space-y-1.5">
+              <Label className={`text-xs ${missing ? "text-red-400" : ""}`}>
+                Access Code{missing && <span className="ml-1 text-red-400">· required for Live mode</span>}
+              </Label>
+              <div className={`rounded-md border px-3 py-1.5 bg-muted/10 min-h-[32px] flex items-center ${missing ? "border-red-500/60" : "border-border/60"}`}>
+                {integration.apiKeySet
+                  ? <span className="text-xs text-muted-foreground font-mono">{integration.apiKeyMasked} (saved)</span>
+                  : <span className="text-xs text-zinc-500 flex items-center gap-1"><XCircle className="w-3 h-3" />Not configured</span>}
+              </div>
+              <div className="relative">
+                <Input
+                  placeholder="Enter new Access Code to update"
+                  value={accessCode}
+                  onChange={e => { setAccessCode(e.target.value); setLiveCredError(null); }}
+                  type={showAccessCode ? "text" : "password"}
+                  className={`h-8 text-xs font-mono pr-8 ${missing ? "border-red-500/60 focus-visible:ring-red-500/30" : ""}`}
+                />
+                <button type="button" onClick={() => setShowAccessCode(v => !v)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  {showAccessCode ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Secret Key */}
+        {(() => {
+          const missing = liveCredError && !integration.apiSecretSet && !secretKey.trim();
+          return (
+            <div className="space-y-1.5">
+              <Label className={`text-xs ${missing ? "text-red-400" : ""}`}>
+                Secret Key{missing && <span className="ml-1 text-red-400">· required for Live mode</span>}
+              </Label>
+              <div className={`rounded-md border px-3 py-1.5 bg-muted/10 min-h-[32px] flex items-center ${missing ? "border-red-500/60" : "border-border/60"}`}>
+                {integration.apiSecretSet
+                  ? <span className="text-xs text-muted-foreground font-mono">••••••••••• (saved)</span>
+                  : <span className="text-xs text-zinc-500 flex items-center gap-1"><XCircle className="w-3 h-3" />Not configured</span>}
+              </div>
+              <div className="relative">
+                <Input
+                  placeholder="Enter new Secret Key to update"
+                  value={secretKey}
+                  onChange={e => { setSecretKey(e.target.value); setLiveCredError(null); }}
+                  type={showSecretKey ? "text" : "password"}
+                  className={`h-8 text-xs font-mono pr-8 ${missing ? "border-red-500/60 focus-visible:ring-red-500/30" : ""}`}
+                />
+                <button type="button" onClick={() => setShowSecretKey(v => !v)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  {showSecretKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Inline error when live+enabled+missing creds */}
+        {liveCredError && (
+          <div className="flex items-start gap-2 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2.5">
+            <AlertCircle className="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" />
+            <p className="text-xs text-red-300">{liveCredError}</p>
+          </div>
+        )}
+      </div>
+
+      {/* Onboarding notes */}
+      <div className="border border-border/40 rounded-lg p-4 space-y-2">
+        <p className="text-sm font-medium flex items-center gap-2">
+          <Info className="w-3.5 h-3.5 text-blue-400" />Activation Notes
+        </p>
+        <ul className="text-[11px] text-muted-foreground space-y-1 list-disc pl-4">
+          <li>Pine Labs account activation required before switching to Live mode</li>
+          <li>Supported methods: Cards, UPI, Wallets, Netbanking, EMI</li>
+          <li>Sign up at <a href="https://www.pinelabs.com/payment-gateway" target="_blank" rel="noopener noreferrer" className="text-blue-400 underline underline-offset-2">pinelabs.com/payment-gateway</a></li>
+          <li>Onboarding timeline: 3–7 business days after KYC document submission</li>
+          <li>Retrieve credentials from Pine Labs Merchant Portal → Integration Settings</li>
+        </ul>
+      </div>
+
+      {/* Test Credentials — visible only when all three are saved */}
+      {(intg.clientIdSet && integration.apiKeySet && integration.apiSecretSet) && (
+        <div className="border border-border/40 rounded-lg p-4 space-y-3">
+          <div>
+            <p className="text-sm font-medium flex items-center gap-2">
+              <FlaskConical className="w-3.5 h-3.5 text-sky-400" />Test Credentials
+            </p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              {environment === "live"
+                ? "Probes the Pine Labs Live API (api.pinepg.in) with your saved credentials — no payment is triggered."
+                : "Probes the Pine Labs UAT API (uat.pinepg.in) with your saved credentials — no payment is triggered."}
+            </p>
+          </div>
+
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={testCredentials}
+            disabled={testing}
+            className="h-8 text-xs"
+          >
+            {testing
+              ? <><Loader2 className="w-3 h-3 mr-1.5 animate-spin" />Testing…</>
+              : <><FlaskConical className="w-3 h-3 mr-1.5" />Test Credentials</>}
+          </Button>
+
+          {testResult && (
+            <div className={`rounded-md border p-3 space-y-1 ${
+              testResult.pass
+                ? "border-emerald-500/30 bg-emerald-500/5"
+                : "border-red-500/30 bg-red-500/5"
+            }`}>
+              <div className="flex items-center gap-2">
+                {testResult.pass
+                  ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  : <XCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />}
+                <p className={`text-xs font-medium ${testResult.pass ? "text-emerald-300" : "text-red-300"}`}>
+                  {testResult.message}
+                </p>
+                {testResult.environment && (
+                  <span className={`ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                    testResult.environment === "live"
+                      ? "bg-orange-500/15 text-orange-300 border border-orange-500/20"
+                      : "bg-sky-500/15 text-sky-300 border border-sky-500/20"
+                  }`}>
+                    {testResult.environment === "live" ? "Live" : "UAT"}
+                  </span>
+                )}
+              </div>
+              {testResult.detail && (
+                <p className="text-[11px] text-muted-foreground pl-5 leading-relaxed">{testResult.detail}</p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      <Button size="sm" onClick={handleSave} disabled={saving} className="h-8 text-xs">
+        {saving
+          ? <><Loader2 className="w-3 h-3 mr-1.5 animate-spin" />Saving…</>
+          : <><Save className="w-3 h-3 mr-1.5" />Save Pine Labs Settings</>}
+      </Button>
+
+      {/* Live-mode enable confirmation dialog */}
+      <AlertDialog open={showLiveConfirm} onOpenChange={(v) => { if (!v) setShowLiveConfirm(false); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-400" />
+              Enable Pine Labs in Live Mode?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-left">
+                <p>
+                  You are about to enable the <strong className="text-foreground">Pine Labs Plural Gateway</strong> in{" "}
+                  <strong className="text-violet-400">Live mode</strong>. This will immediately start processing real payments.
+                </p>
+                <p>Make sure your credentials have been tested and your integration is ready for production traffic.</p>
+                <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+                  <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  <span>
+                    Live mode charges real money. Ensure your Merchant ID, Access Code, and Secret Key are correct before confirming.
+                  </span>
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowLiveConfirm(false)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => { setShowLiveConfirm(false); doSave(); }}
+              className="bg-violet-600 text-white hover:bg-violet-700"
+            >
+              Enable Live Mode
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
   );
 }
 
@@ -2192,6 +2663,7 @@ function CustomGatewayConfigPanel({ integration }: { integration: ProviderIntegr
   const [showApiSecret, setShowApiSecret] = useState(false);
   const [showWebhookSecret, setShowWebhookSecret] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [showLiveConfirm, setShowLiveConfirm] = useState(false);
 
   const { guardSave, dialog: disableGuardDialog } = useDisableGatewayGuard(
     integration.providerKey,
@@ -2242,6 +2714,10 @@ function CustomGatewayConfigPanel({ integration }: { integration: ProviderIntegr
   }
 
   function handleSave() {
+    if (enabled && environment === "live") {
+      setShowLiveConfirm(true);
+      return;
+    }
     const willDisable = computeWillDisable(integration.isEnabled, enabled);
     guardSave(willDisable, doSave);
   }
@@ -2421,6 +2897,46 @@ function CustomGatewayConfigPanel({ integration }: { integration: ProviderIntegr
           </div>
         )}
       </div>
+
+      {/* Live-mode enable confirmation dialog */}
+      <AlertDialog open={showLiveConfirm} onOpenChange={(v) => { if (!v) setShowLiveConfirm(false); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-400" />
+              Enable {integration.displayNamePublic} in Live Mode?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-left">
+                <p>
+                  You are about to enable <strong className="text-foreground">{integration.displayNamePublic}</strong> in{" "}
+                  <strong className="text-violet-400">Live / Production mode</strong>. This will immediately start processing real payments.
+                </p>
+                <p>Make sure your credentials have been tested and this integration is ready for production traffic.</p>
+                <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+                  <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  <span>
+                    Live mode charges real money. Double-check your API Key and Secret before confirming.
+                  </span>
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowLiveConfirm(false)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setShowLiveConfirm(false);
+                const willDisable = computeWillDisable(integration.isEnabled, enabled);
+                guardSave(willDisable, doSave);
+              }}
+              className="bg-violet-600 text-white hover:bg-violet-700"
+            >
+              Enable Live Mode
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {disableGuardDialog}
     </div>
@@ -2900,6 +3416,7 @@ export default function AdminPaymentGateways() {
               <CashfreePayinCard onConfigure={() => openConfigTab("cashfree-payin")} />
               <CashfreePayoutCard onConfigure={() => openConfigTab("cashfree-payout")} />
               <EkqrCard onConfigure={() => openConfigTab("ekqr")} />
+              <PineLabsCard onConfigure={() => openConfigTab("pinelabs")} />
               {customIntegrations.map((integration: ProviderIntegration) => (
                 <CustomGatewayCard
                   key={integration.providerKey}
@@ -2952,6 +3469,9 @@ export default function AdminPaymentGateways() {
                 <TabsTrigger value="ekqr" className="text-xs px-3">
                   <Zap className="w-3 h-3 mr-1.5" />UPI Gateway
                 </TabsTrigger>
+                <TabsTrigger value="pinelabs" className="text-xs px-3">
+                  <CreditCard className="w-3 h-3 mr-1.5" />Plural PG
+                </TabsTrigger>
                 {customIntegrations.map((integration: ProviderIntegration) => (
                   <TabsTrigger key={integration.providerKey} value={integration.providerKey} className="text-xs px-3">
                     <Plug className="w-3 h-3 mr-1.5" />{integration.displayNamePublic}
@@ -2962,6 +3482,7 @@ export default function AdminPaymentGateways() {
               <TabsContent value="payu"><PayuPanel /></TabsContent>
               <TabsContent value="cashfree-payin"><CashfreePayinPanel /></TabsContent>
               <TabsContent value="cashfree-payout"><CashfreePayoutPanel /></TabsContent>
+              <TabsContent value="pinelabs"><PineLabsPanel /></TabsContent>
               <TabsContent value="ekqr">
                 <Tabs defaultValue="qr-codes">
                   <TabsList className="h-8 mb-5">

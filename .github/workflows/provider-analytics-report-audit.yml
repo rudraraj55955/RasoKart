@@ -1,0 +1,46 @@
+name: Provider analytics report audit
+
+on:
+  schedule:
+    - cron: "23 4 * * 1"
+  workflow_dispatch: {}
+
+concurrency:
+  group: provider-analytics-report-audit
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Confirm provider reports exclude release checks
+    runs-on: ubuntu-latest
+    environment:
+      name: production-sensitive
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium
+        run: pnpm --filter @workspace/scripts exec playwright install --with-deps chromium
+
+      - name: Confirm provider reports exclude marked smoke events
+        run: pnpm --filter @workspace/scripts run smoke:production-analytics:dashboard
+        env:
+          PRODUCTION_BASE_URL: https://rasokart.com
+          UMAMI_API_KEY: ${{ secrets.UMAMI_API_KEY }}
+          UMAMI_PROVIDER_REPORT_SEGMENT_ID: ${{ secrets.UMAMI_PROVIDER_REPORT_SEGMENT_ID }}

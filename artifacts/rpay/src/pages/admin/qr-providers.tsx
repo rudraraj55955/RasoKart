@@ -9,8 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Search, Plus, Pencil, Trash2, QrCode, Link2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, Plus, Pencil, Trash2, QrCode, Link2, ChevronLeft, ChevronRight, Plug, CheckCircle2, AlertCircle, Clock, XCircle, FlaskConical } from "lucide-react";
 import { format } from "date-fns";
 
 const QR_PROVIDERS = [
@@ -24,6 +25,13 @@ const QR_PROVIDERS = [
 ];
 
 const CUSTOM_PROVIDER_COLOR = "bg-fuchsia-500/10 text-fuchsia-400 border-fuchsia-500/20";
+
+const CONNECTION_STATUS_META: Record<string, { label: string; className: string; Icon: React.ElementType }> = {
+  active:    { label: "Active",    className: "border-emerald-500/40 text-emerald-400", Icon: CheckCircle2 },
+  pending:   { label: "Pending",   className: "border-amber-500/40 text-amber-400",    Icon: Clock },
+  suspended: { label: "Suspended", className: "border-orange-500/40 text-orange-400",  Icon: AlertCircle },
+  failed:    { label: "Failed",    className: "border-rose-500/40 text-rose-400",       Icon: XCircle },
+};
 
 function getToken() { return localStorage.getItem("rasokart_token") ?? ""; }
 async function api(method: string, path: string, body?: object) {
@@ -47,15 +55,43 @@ function ProviderBadge({ provider, customLabels }: { provider: string; customLab
   );
 }
 
+function ConnectionStatusBadge({ status }: { status: string }) {
+  const meta = CONNECTION_STATUS_META[status] ?? { label: status, className: "border-muted text-muted-foreground", Icon: Plug };
+  const { label, className, Icon } = meta;
+  return (
+    <Badge variant="outline" className={`text-xs gap-1 ${className}`}>
+      <Icon className="w-3 h-3" />
+      {label}
+    </Badge>
+  );
+}
+
+interface FormState {
+  merchantId: string;
+  provider: string;
+  monthlyLimit: string;
+  isActive: boolean;
+  credentials: string;
+  capabilityQr: boolean;
+  capabilityPayin: boolean;
+  capabilityPaymentLinks: boolean;
+  notes: string;
+}
+
 export default function AdminQrProviders() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [providerFilter, setProviderFilter] = useState("all");
   const [page, setPage] = useState(1);
-  const [dialog, setDialog] = useState<"create" | "edit" | "delete" | null>(null);
+  const [dialog, setDialog] = useState<"create" | "edit" | "delete" | "test" | null>(null);
   const [editing, setEditing] = useState<any | null>(null);
   const [merchantSearch, setMerchantSearch] = useState("");
-  const [form, setForm] = useState({ merchantId: "", provider: "phonepe", monthlyLimit: "0", isActive: true, credentials: "" });
+  const [testResult, setTestResult] = useState<{ pass: boolean; message: string } | null>(null);
+  const [form, setForm] = useState<FormState>({
+    merchantId: "", provider: "phonepe", monthlyLimit: "0", isActive: true,
+    credentials: "", capabilityQr: true, capabilityPayin: true, capabilityPaymentLinks: false,
+    notes: "",
+  });
 
   // Fetch connections (QR provider assignments)
   const { data, isLoading } = useQuery({
@@ -106,9 +142,21 @@ export default function AdminQrProviders() {
     onError: (e: any) => toast.error(e.message),
   });
 
+  const testMutation = useMutation({
+    mutationFn: (id: number) => api("POST", `/connections/${id}/test`, {}),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["connections"] });
+      setTestResult({ pass: data.pass, message: data.message ?? (data.pass ? "Connection verified" : "Test failed") });
+    },
+    onError: (e: any) => {
+      setTestResult({ pass: false, message: e.message ?? "Test failed" });
+    },
+  });
+
   function resetForm() {
-    setForm({ merchantId: "", provider: "phonepe", monthlyLimit: "0", isActive: true, credentials: "" });
+    setForm({ merchantId: "", provider: "phonepe", monthlyLimit: "0", isActive: true, credentials: "", capabilityQr: true, capabilityPayin: true, capabilityPaymentLinks: false, notes: "" });
     setMerchantSearch("");
+    setTestResult(null);
   }
 
   function openCreate() { resetForm(); setEditing(null); setDialog("create"); }
@@ -120,8 +168,18 @@ export default function AdminQrProviders() {
       monthlyLimit: String(row.monthlyLimit ?? 0),
       isActive: row.isActive,
       credentials: row.credentials ?? "",
+      capabilityQr: row.capabilityQr !== false,
+      capabilityPayin: row.capabilityPayin !== false,
+      capabilityPaymentLinks: row.capabilityPaymentLinks === true,
+      notes: row.notes ?? "",
     });
     setEditing(row); setDialog("edit");
+  }
+
+  function openTest(row: any) {
+    setEditing(row);
+    setTestResult(null);
+    setDialog("test");
   }
 
   function handleSubmit() {
@@ -132,6 +190,10 @@ export default function AdminQrProviders() {
       monthlyLimit: form.monthlyLimit || "0",
       isActive: form.isActive,
       credentials: form.credentials || null,
+      capabilityQr: form.capabilityQr,
+      capabilityPayin: form.capabilityPayin,
+      capabilityPaymentLinks: form.capabilityPaymentLinks,
+      notes: form.notes || null,
     };
     if (dialog === "create") createMutation.mutate(body);
     else if (dialog === "edit" && editing) updateMutation.mutate({ id: editing.id, body });
@@ -176,8 +238,8 @@ export default function AdminQrProviders() {
                 <TableHead>Monthly Limit</TableHead>
                 <TableHead>Used This Month</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Connection</TableHead>
                 <TableHead>Assigned</TableHead>
-                <TableHead>Deactivated</TableHead>
                 <TableHead></TableHead>
               </TableRow>
             </TableHeader>
@@ -202,6 +264,7 @@ export default function AdminQrProviders() {
                 const hasLimit = limit > 0;
                 const pct = hasLimit ? Math.min(100, Math.round((used / limit) * 100)) : 0;
                 const usedColor = hasLimit && pct >= 100 ? "text-rose-400" : hasLimit && pct >= 80 ? "text-amber-400" : "text-foreground";
+                const connStatus = row.connectionStatus ?? (row.isActive ? "active" : "inactive");
                 return (
                 <TableRow key={row.id}>
                   <TableCell>
@@ -210,7 +273,22 @@ export default function AdminQrProviders() {
                       <p className="text-xs text-muted-foreground">{row.merchantEmail ?? `ID #${row.merchantId}`}</p>
                     </div>
                   </TableCell>
-                  <TableCell><ProviderBadge provider={row.provider} customLabels={customLabels} /></TableCell>
+                  <TableCell>
+                    <div className="space-y-1">
+                      <ProviderBadge provider={row.provider} customLabels={customLabels} />
+                      <div className="flex gap-1 flex-wrap">
+                        {row.capabilityQr !== false && (
+                          <span className="text-[10px] text-teal-400 bg-teal-500/10 border border-teal-500/20 rounded px-1">QR</span>
+                        )}
+                        {row.capabilityPayin !== false && (
+                          <span className="text-[10px] text-sky-400 bg-sky-500/10 border border-sky-500/20 rounded px-1">Payin</span>
+                        )}
+                        {row.capabilityPaymentLinks === true && (
+                          <span className="text-[10px] text-purple-400 bg-purple-500/10 border border-purple-500/20 rounded px-1">Links</span>
+                        )}
+                      </div>
+                    </div>
+                  </TableCell>
                   <TableCell className="font-mono text-sm">
                     {hasLimit ? `₹${limit.toLocaleString("en-IN")}` : <span className="text-muted-foreground text-xs">No limit</span>}
                   </TableCell>
@@ -229,20 +307,23 @@ export default function AdminQrProviders() {
                       {row.isActive ? "Active" : "Inactive"}
                     </Badge>
                   </TableCell>
+                  <TableCell>
+                    <ConnectionStatusBadge status={connStatus} />
+                    {row.lastTestResult && row.lastTestResult !== "untested" && (
+                      <p className="text-[10px] text-muted-foreground mt-1">
+                        Last: {row.lastTestResult === "pass" ? "✓ pass" : "✗ fail"}
+                        {row.lastTestedAt && ` · ${format(new Date(row.lastTestedAt), "MMM d")}`}
+                      </p>
+                    )}
+                  </TableCell>
                   <TableCell className="text-xs text-muted-foreground">
                     {format(new Date(row.createdAt), "MMM d, yyyy")}
                   </TableCell>
-                  <TableCell className="text-xs">
-                    {row.deactivatedAt ? (
-                      <span className="text-rose-400 font-medium tabular-nums">
-                        {format(new Date(row.deactivatedAt), "MMM d, yyyy")}
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1">
+                      <Button variant="ghost" size="icon" title="Test connection" onClick={() => openTest(row)}>
+                        <FlaskConical className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground" />
+                      </Button>
                       <Button variant="ghost" size="icon" onClick={() => openEdit(row)}>
                         <Pencil className="w-3.5 h-3.5" />
                       </Button>
@@ -272,7 +353,7 @@ export default function AdminQrProviders() {
 
       {/* Create / Edit Dialog */}
       <Dialog open={dialog === "create" || dialog === "edit"} onOpenChange={open => !open && setDialog(null)}>
-        <DialogContent>
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>{dialog === "create" ? "Assign QR Provider" : "Edit QR Provider"}</DialogTitle>
           </DialogHeader>
@@ -331,15 +412,96 @@ export default function AdminQrProviders() {
                 </p>
               </div>
             )}
+
+            {/* Capability flags */}
+            <div className="space-y-2 rounded-lg border border-border/50 bg-muted/10 p-3">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Capabilities</p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm">QR Payments</p>
+                  <p className="text-xs text-muted-foreground">Allow QR code creation for this provider</p>
+                </div>
+                <Switch checked={form.capabilityQr} onCheckedChange={v => setForm(f => ({ ...f, capabilityQr: v }))} />
+              </div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm">Payin</p>
+                  <p className="text-xs text-muted-foreground">Allow deposit / payin transactions</p>
+                </div>
+                <Switch checked={form.capabilityPayin} onCheckedChange={v => setForm(f => ({ ...f, capabilityPayin: v }))} />
+              </div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm">Payment Links</p>
+                  <p className="text-xs text-muted-foreground">Allow merchant to create payment links</p>
+                </div>
+                <Switch checked={form.capabilityPaymentLinks} onCheckedChange={v => setForm(f => ({ ...f, capabilityPaymentLinks: v }))} />
+              </div>
+            </div>
+
             <div className="flex items-center gap-3 p-3 rounded-lg border border-border/50 bg-muted/10">
               <Switch checked={form.isActive} onCheckedChange={v => setForm(f => ({ ...f, isActive: v }))} />
               <p className="text-sm">Active</p>
+            </div>
+
+            <div>
+              <Label className="text-xs text-muted-foreground">Notes (optional)</Label>
+              <Textarea
+                value={form.notes}
+                onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                placeholder="Internal notes about this assignment..."
+                className="text-sm resize-none h-16"
+              />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setDialog(null); resetForm(); }}>Cancel</Button>
             <Button onClick={handleSubmit} disabled={isSaving}>
               {isSaving ? "Saving..." : dialog === "create" ? "Assign" : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Test Connection Dialog */}
+      <Dialog open={dialog === "test"} onOpenChange={open => !open && setDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Test Connection</DialogTitle>
+            <DialogDescription>
+              Verify credentials for <strong>{editing?.businessName ?? `Merchant #${editing?.merchantId}`}</strong>
+              {" "}→ <strong>{allProviderOptions.find(p => p.value === editing?.provider)?.label ?? editing?.provider}</strong>.
+              No financial transactions will be created.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2 space-y-3">
+            {testResult && (
+              <div className={`flex items-start gap-3 rounded-lg border p-3 ${testResult.pass ? "border-emerald-500/30 bg-emerald-500/5" : "border-rose-500/30 bg-rose-500/5"}`}>
+                {testResult.pass
+                  ? <CheckCircle2 className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
+                  : <XCircle className="w-4 h-4 text-rose-400 mt-0.5 shrink-0" />}
+                <div>
+                  <p className={`text-sm font-medium ${testResult.pass ? "text-emerald-400" : "text-rose-400"}`}>
+                    {testResult.pass ? "Test passed" : "Test failed"}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{testResult.message}</p>
+                </div>
+              </div>
+            )}
+            {!testResult && (
+              <p className="text-sm text-muted-foreground">
+                Click <strong>Run Test</strong> to verify the provider credentials are valid and the connection is working.
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialog(null)}>Close</Button>
+            <Button
+              onClick={() => editing && testMutation.mutate(editing.id)}
+              disabled={testMutation.isPending}
+            >
+              <FlaskConical className="w-4 h-4 mr-2" />
+              {testMutation.isPending ? "Testing…" : "Run Test"}
             </Button>
           </DialogFooter>
         </DialogContent>

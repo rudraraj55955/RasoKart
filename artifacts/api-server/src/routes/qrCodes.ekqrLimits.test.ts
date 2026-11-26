@@ -154,6 +154,12 @@ const EKQR_CONNECTION_FIXTURE = {
   merchantId: MERCHANT_USER.merchantId,
   provider: "ekqr",
   isActive: true,
+  // Capability/status fields checked by the QR-capable connection filter in
+  // routes/qrCodes.ts — without these the fixture is filtered out and the
+  // route returns 403 CAPABILITY_DENIED before any limit check runs.
+  connectionStatus: "active",
+  capabilityQr: true,
+  visibilityEnabled: true,
   credentials: null,
   createdAt: new Date(),
   updatedAt: new Date(),

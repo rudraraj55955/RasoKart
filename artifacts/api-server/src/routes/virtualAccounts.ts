@@ -190,7 +190,7 @@ router.get("/export/csv", async (req, res) => {
 // POST /api/virtual-accounts/cleanup/run (admin only)
 router.post("/cleanup/run", requireAdmin, async (req, res) => {
   try {
-    const result = await runVaCleanup();
+    const result = await runVaCleanup("manual");
     req.log.info(result, "va_cleanup_manual_run");
 
     const user = (req as any).user;

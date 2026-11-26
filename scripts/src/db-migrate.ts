@@ -500,6 +500,28 @@ async function migrate() {
     -- ── merchants: add verification_status column ───────────────────────────────
     ALTER TABLE merchants ADD COLUMN IF NOT EXISTS verification_status TEXT NOT NULL DEFAULT 'pending';
 
+    -- ── merchants: registration columns (mirrors schemaGuard "merchants_registration") ──
+    ALTER TABLE merchants ADD COLUMN IF NOT EXISTS registration_stage TEXT NOT NULL DEFAULT 'REGISTERED';
+    ALTER TABLE merchants ADD COLUMN IF NOT EXISTS business_type TEXT;
+    ALTER TABLE merchants ADD COLUMN IF NOT EXISTS pan_number TEXT;
+
+    -- ── merchants: force-approve columns (mirrors schemaGuard "merchants_force_approve") ──
+    ALTER TABLE merchants ADD COLUMN IF NOT EXISTS force_approved_at TIMESTAMPTZ;
+    ALTER TABLE merchants ADD COLUMN IF NOT EXISTS force_approved_by_admin_id INTEGER;
+    ALTER TABLE merchants ADD COLUMN IF NOT EXISTS force_approved_by_email TEXT;
+    ALTER TABLE merchants ADD COLUMN IF NOT EXISTS force_approve_reason TEXT;
+    ALTER TABLE merchants ADD COLUMN IF NOT EXISTS force_approve_kyc_status TEXT;
+
+    -- ── merchants: timezone column (mirrors schemaGuard "merchants_timezone") ──
+    ALTER TABLE merchants ADD COLUMN IF NOT EXISTS timezone TEXT;
+
+    -- ── merchants: environment column (mirrors schemaGuard "merchants_environment") ──
+    ALTER TABLE merchants ADD COLUMN IF NOT EXISTS environment TEXT NOT NULL DEFAULT 'production';
+    UPDATE merchants
+    SET environment = 'demo'
+    WHERE email IN ('merchant@demo.com','merchant2@demo.com','merchant3@demo.com','payout_test@demo.com')
+      AND environment = 'production';
+
     -- ── users: notification preference columns ───────────────────────────────────
     ALTER TABLE users ADD COLUMN IF NOT EXISTS weekly_delivery_digest_emails BOOLEAN NOT NULL DEFAULT TRUE;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS ekqr_sync_alert_emails BOOLEAN NOT NULL DEFAULT TRUE;
@@ -837,18 +859,33 @@ async function migrate() {
     -- Must be created before transactions (which has an FK to this table).
     -- Also accessed by the providerLimitScheduler at startup.
     CREATE TABLE IF NOT EXISTS merchant_connections (
-      id SERIAL PRIMARY KEY,
-      merchant_id INTEGER NOT NULL,
-      provider TEXT NOT NULL,
-      credentials TEXT,
-      monthly_limit NUMERIC(18,2) NOT NULL DEFAULT 0,
-      is_active BOOLEAN NOT NULL DEFAULT TRUE,
-      deactivated_at TIMESTAMPTZ,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      id                       SERIAL PRIMARY KEY,
+      merchant_id              INTEGER NOT NULL,
+      provider                 TEXT NOT NULL,
+      credentials              TEXT,
+      monthly_limit            NUMERIC(18,2) NOT NULL DEFAULT 0,
+      is_active                BOOLEAN NOT NULL DEFAULT TRUE,
+      deactivated_at           TIMESTAMPTZ,
+      -- MC-1: 13 capability + status columns (schemaGuard.ts has ALTER TABLE
+      -- guards for existing installs; these ensure fresh-install parity)
+      connection_status        TEXT NOT NULL DEFAULT 'active',
+      last_tested_at           TIMESTAMPTZ,
+      last_test_result         TEXT NOT NULL DEFAULT 'untested',
+      ownership                TEXT NOT NULL DEFAULT 'rasokart_owned',
+      capability_payin         BOOLEAN NOT NULL DEFAULT TRUE,
+      capability_payout        BOOLEAN NOT NULL DEFAULT FALSE,
+      capability_upi           BOOLEAN NOT NULL DEFAULT TRUE,
+      capability_qr            BOOLEAN NOT NULL DEFAULT TRUE,
+      capability_payment_links BOOLEAN NOT NULL DEFAULT FALSE,
+      capability_refunds       BOOLEAN NOT NULL DEFAULT FALSE,
+      capability_settlement    BOOLEAN NOT NULL DEFAULT FALSE,
+      visibility_enabled       BOOLEAN NOT NULL DEFAULT TRUE,
+      notes                    TEXT,
+      created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
     CREATE INDEX IF NOT EXISTS merchant_connections_merchant_id_idx ON merchant_connections(merchant_id);
-    -- Columns added after initial production deploy — self-heal existing DB:
+    -- self-heal for any pre-MC-1 installs that lack deactivated_at:
     ALTER TABLE merchant_connections ADD COLUMN IF NOT EXISTS deactivated_at TIMESTAMPTZ;
 
     -- ── withdrawals ─────────────────────────────────────────────────────────
@@ -1036,116 +1073,117 @@ async function migrate() {
     -- merchant_plans was originally guarded with CREATE UNIQUE INDEX (not an inline
     -- UNIQUE constraint), so it gets DROP INDEX + ADD CONSTRAINT instead of RENAME.
     DO $$ BEGIN
-      -- merchant_features
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_features_merchant_id_key' AND conrelid='merchant_features'::regclass)
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_features_merchant_id_unique' AND conrelid='merchant_features'::regclass)
+      -- merchant_features (use oid subquery — ::regclass throws on a fresh DB when the table
+      -- does not yet exist; schemaGuard.ts uses the same safe pattern for this table)
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_features_merchant_id_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchant_features'))
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_features_merchant_id_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchant_features'))
       THEN ALTER TABLE merchant_features RENAME CONSTRAINT merchant_features_merchant_id_key TO merchant_features_merchant_id_unique; END IF;
 
       -- merchants
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchants_email_key' AND conrelid='merchants'::regclass)
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchants_email_unique' AND conrelid='merchants'::regclass)
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchants_email_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchants'))
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchants_email_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchants'))
       THEN ALTER TABLE merchants RENAME CONSTRAINT merchants_email_key TO merchants_email_unique; END IF;
 
       -- merchant_plans (guarded with CREATE UNIQUE INDEX — convert to named constraint)
       IF EXISTS (SELECT 1 FROM pg_indexes WHERE tablename='merchant_plans' AND indexname='merchant_plans_merchant_id_uniq')
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_plans_merchant_id_unique' AND conrelid='merchant_plans'::regclass)
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_plans_merchant_id_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchant_plans'))
       THEN
         DROP INDEX merchant_plans_merchant_id_uniq;
         ALTER TABLE merchant_plans ADD CONSTRAINT merchant_plans_merchant_id_unique UNIQUE (merchant_id);
       END IF;
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_plans_merchant_id_key' AND conrelid='merchant_plans'::regclass)
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_plans_merchant_id_unique' AND conrelid='merchant_plans'::regclass)
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_plans_merchant_id_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchant_plans'))
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_plans_merchant_id_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchant_plans'))
       THEN ALTER TABLE merchant_plans RENAME CONSTRAINT merchant_plans_merchant_id_key TO merchant_plans_merchant_id_unique; END IF;
 
       -- payment_links
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='payment_links_slug_key' AND conrelid='payment_links'::regclass)
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='payment_links_slug_unique' AND conrelid='payment_links'::regclass)
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='payment_links_slug_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='payment_links'))
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='payment_links_slug_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='payment_links'))
       THEN ALTER TABLE payment_links RENAME CONSTRAINT payment_links_slug_key TO payment_links_slug_unique; END IF;
 
       -- plans
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='plans_name_key' AND conrelid='plans'::regclass)
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='plans_name_unique' AND conrelid='plans'::regclass)
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='plans_name_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='plans'))
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='plans_name_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='plans'))
       THEN ALTER TABLE plans RENAME CONSTRAINT plans_name_key TO plans_name_unique; END IF;
 
       -- providers
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='providers_slug_key' AND conrelid='providers'::regclass)
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='providers_slug_unique' AND conrelid='providers'::regclass)
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='providers_slug_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='providers'))
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='providers_slug_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='providers'))
       THEN ALTER TABLE providers RENAME CONSTRAINT providers_slug_key TO providers_slug_unique; END IF;
 
       -- transactions
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='transactions_utr_key' AND conrelid='transactions'::regclass)
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='transactions_utr_unique' AND conrelid='transactions'::regclass)
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='transactions_utr_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='transactions'))
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='transactions_utr_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='transactions'))
       THEN ALTER TABLE transactions RENAME CONSTRAINT transactions_utr_key TO transactions_utr_unique; END IF;
 
       -- users
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='users_email_key' AND conrelid='users'::regclass)
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='users_email_unique' AND conrelid='users'::regclass)
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='users_email_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='users'))
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='users_email_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='users'))
       THEN ALTER TABLE users RENAME CONSTRAINT users_email_key TO users_email_unique; END IF;
 
       -- virtual_accounts
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='virtual_accounts_account_number_key' AND conrelid='virtual_accounts'::regclass)
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='virtual_accounts_account_number_unique' AND conrelid='virtual_accounts'::regclass)
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='virtual_accounts_account_number_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='virtual_accounts'))
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='virtual_accounts_account_number_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='virtual_accounts'))
       THEN ALTER TABLE virtual_accounts RENAME CONSTRAINT virtual_accounts_account_number_key TO virtual_accounts_account_number_unique; END IF;
 
       -- webhooks
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='webhooks_merchant_id_key' AND conrelid='webhooks'::regclass)
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='webhooks_merchant_id_unique' AND conrelid='webhooks'::regclass)
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='webhooks_merchant_id_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='webhooks'))
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='webhooks_merchant_id_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='webhooks'))
       THEN ALTER TABLE webhooks RENAME CONSTRAINT webhooks_merchant_id_key TO webhooks_merchant_id_unique; END IF;
 
       -- agents (3 columns: email, referral_code, agent_code)
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='agents_email_key' AND conrelid='agents'::regclass)
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='agents_email_unique' AND conrelid='agents'::regclass)
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='agents_email_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='agents'))
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='agents_email_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='agents'))
       THEN ALTER TABLE agents RENAME CONSTRAINT agents_email_key TO agents_email_unique; END IF;
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='agents_referral_code_key' AND conrelid='agents'::regclass)
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='agents_referral_code_unique' AND conrelid='agents'::regclass)
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='agents_referral_code_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='agents'))
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='agents_referral_code_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='agents'))
       THEN ALTER TABLE agents RENAME CONSTRAINT agents_referral_code_key TO agents_referral_code_unique; END IF;
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='agents_agent_code_key' AND conrelid='agents'::regclass)
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='agents_agent_code_unique' AND conrelid='agents'::regclass)
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='agents_agent_code_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='agents'))
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='agents_agent_code_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='agents'))
       THEN ALTER TABLE agents RENAME CONSTRAINT agents_agent_code_key TO agents_agent_code_unique; END IF;
 
       -- cashfree_payment_orders
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='cashfree_payment_orders_cashfree_order_id_key' AND conrelid='cashfree_payment_orders'::regclass)
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='cashfree_payment_orders_cashfree_order_id_unique' AND conrelid='cashfree_payment_orders'::regclass)
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='cashfree_payment_orders_cashfree_order_id_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='cashfree_payment_orders'))
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='cashfree_payment_orders_cashfree_order_id_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='cashfree_payment_orders'))
       THEN ALTER TABLE cashfree_payment_orders RENAME CONSTRAINT cashfree_payment_orders_cashfree_order_id_key TO cashfree_payment_orders_cashfree_order_id_unique; END IF;
 
       -- merchant_kyc_data
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_kyc_data_merchant_id_key' AND conrelid='merchant_kyc_data'::regclass)
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_kyc_data_merchant_id_unique' AND conrelid='merchant_kyc_data'::regclass)
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_kyc_data_merchant_id_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchant_kyc_data'))
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_kyc_data_merchant_id_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchant_kyc_data'))
       THEN ALTER TABLE merchant_kyc_data RENAME CONSTRAINT merchant_kyc_data_merchant_id_key TO merchant_kyc_data_merchant_id_unique; END IF;
 
       -- merchant_kyc_verifications
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_kyc_verifications_merchant_id_key' AND conrelid='merchant_kyc_verifications'::regclass)
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_kyc_verifications_merchant_id_unique' AND conrelid='merchant_kyc_verifications'::regclass)
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_kyc_verifications_merchant_id_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchant_kyc_verifications'))
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_kyc_verifications_merchant_id_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchant_kyc_verifications'))
       THEN ALTER TABLE merchant_kyc_verifications RENAME CONSTRAINT merchant_kyc_verifications_merchant_id_key TO merchant_kyc_verifications_merchant_id_unique; END IF;
 
       -- merchant_onboarding_sessions
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_onboarding_sessions_verification_id_key' AND conrelid='merchant_onboarding_sessions'::regclass)
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_onboarding_sessions_verification_id_unique' AND conrelid='merchant_onboarding_sessions'::regclass)
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_onboarding_sessions_verification_id_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchant_onboarding_sessions'))
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_onboarding_sessions_verification_id_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchant_onboarding_sessions'))
       THEN ALTER TABLE merchant_onboarding_sessions RENAME CONSTRAINT merchant_onboarding_sessions_verification_id_key TO merchant_onboarding_sessions_verification_id_unique; END IF;
 
       -- merchant_verifications
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_verifications_merchant_id_key' AND conrelid='merchant_verifications'::regclass)
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_verifications_merchant_id_unique' AND conrelid='merchant_verifications'::regclass)
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_verifications_merchant_id_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchant_verifications'))
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='merchant_verifications_merchant_id_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='merchant_verifications'))
       THEN ALTER TABLE merchant_verifications RENAME CONSTRAINT merchant_verifications_merchant_id_key TO merchant_verifications_merchant_id_unique; END IF;
 
       -- payu_payment_orders
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='payu_payment_orders_txnid_key' AND conrelid='payu_payment_orders'::regclass)
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='payu_payment_orders_txnid_unique' AND conrelid='payu_payment_orders'::regclass)
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='payu_payment_orders_txnid_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='payu_payment_orders'))
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='payu_payment_orders_txnid_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='payu_payment_orders'))
       THEN ALTER TABLE payu_payment_orders RENAME CONSTRAINT payu_payment_orders_txnid_key TO payu_payment_orders_txnid_unique; END IF;
 
       -- permissions
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='permissions_key_key' AND conrelid='permissions'::regclass)
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='permissions_key_unique' AND conrelid='permissions'::regclass)
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='permissions_key_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='permissions'))
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='permissions_key_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='permissions'))
       THEN ALTER TABLE permissions RENAME CONSTRAINT permissions_key_key TO permissions_key_unique; END IF;
 
       -- provider_integrations
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='provider_integrations_provider_key_key' AND conrelid='provider_integrations'::regclass)
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='provider_integrations_provider_key_unique' AND conrelid='provider_integrations'::regclass)
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='provider_integrations_provider_key_key' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='provider_integrations'))
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='provider_integrations_provider_key_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='provider_integrations'))
       THEN ALTER TABLE provider_integrations RENAME CONSTRAINT provider_integrations_provider_key_key TO provider_integrations_provider_key_unique; END IF;
 
       -- provider_products (_uniq → _unique)
-      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='provider_products_product_key_uniq' AND conrelid='provider_products'::regclass)
-         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='provider_products_product_key_unique' AND conrelid='provider_products'::regclass)
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='provider_products_product_key_uniq' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='provider_products'))
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='provider_products_product_key_unique' AND conrelid IN (SELECT oid FROM pg_class WHERE relname='provider_products'))
       THEN ALTER TABLE provider_products RENAME CONSTRAINT provider_products_product_key_uniq TO provider_products_product_key_unique; END IF;
     END $$;
 
@@ -1740,6 +1778,220 @@ async function migrate() {
       ON role_permissions(role);
     CREATE INDEX IF NOT EXISTS user_permissions_user_id_idx
       ON user_permissions(user_id);
+  `);
+
+  // ── Section N: merchant_provider_enrollments ─────────────────────────────
+  await runSection("merchant_provider_enrollments", sql`
+    CREATE TABLE IF NOT EXISTS merchant_provider_enrollments (
+      id                       SERIAL PRIMARY KEY,
+      merchant_id              INTEGER NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
+      provider_slug            TEXT NOT NULL,
+      enrollment_status        TEXT NOT NULL DEFAULT 'pending_kyc',
+      encrypted_api_key        TEXT,
+      encrypted_api_secret     TEXT,
+      encrypted_webhook_secret TEXT,
+      masked_identifier        TEXT,
+      onboarding_url           TEXT,
+      connected_at             TIMESTAMPTZ,
+      last_verified_at         TIMESTAMPTZ,
+      disconnected_at          TIMESTAMPTZ,
+      disconnected_by          TEXT,
+      failure_reason           TEXT,
+      created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS merchant_provider_enrollments_uniq
+      ON merchant_provider_enrollments(merchant_id, provider_slug);
+    CREATE INDEX IF NOT EXISTS merchant_provider_enrollments_merchant_id_idx
+      ON merchant_provider_enrollments(merchant_id);
+  `);
+
+  // ── Section O: merchant portal OTP lifecycle ──────────────────────────────
+  // Matches merchantPortalSessions Drizzle schema. All limits/timestamps are
+  // server-authoritative; this migration also upgrades pre-existing tables.
+  await runSection("merchant_portal_sessions_otp_lifecycle", sql`
+    CREATE TABLE IF NOT EXISTS merchant_portal_sessions (
+      id                           SERIAL PRIMARY KEY,
+      merchant_id                  INTEGER NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
+      provider_slug                TEXT NOT NULL,
+      status                       TEXT NOT NULL DEFAULT 'PENDING',
+      encrypted_session            TEXT,
+      step_failure_count           INTEGER NOT NULL DEFAULT 0,
+      otp_verification_failure_count INTEGER NOT NULL DEFAULT 0,
+      otp_resend_count             INTEGER NOT NULL DEFAULT 0,
+      otp_resend_available_at      TIMESTAMPTZ,
+      otp_expires_at               TIMESTAMPTZ,
+      processing_lease_id           TEXT,
+      processing_lease_expires_at   TIMESTAMPTZ,
+      last_error_code              TEXT,
+      last_status_message          TEXT,
+      expires_at                   TIMESTAMPTZ,
+      connected_at                 TIMESTAMPTZ,
+      ended_at                     TIMESTAMPTZ,
+      end_reason                   TEXT,
+      dry_run                      BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (merchant_id, provider_slug)
+    );
+    ALTER TABLE merchant_portal_sessions ADD COLUMN IF NOT EXISTS otp_verification_failure_count INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE merchant_portal_sessions ADD COLUMN IF NOT EXISTS otp_resend_count INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE merchant_portal_sessions ADD COLUMN IF NOT EXISTS otp_resend_available_at TIMESTAMPTZ;
+    ALTER TABLE merchant_portal_sessions ADD COLUMN IF NOT EXISTS otp_expires_at TIMESTAMPTZ;
+    ALTER TABLE merchant_portal_sessions ADD COLUMN IF NOT EXISTS processing_lease_id TEXT;
+    ALTER TABLE merchant_portal_sessions ADD COLUMN IF NOT EXISTS processing_lease_expires_at TIMESTAMPTZ;
+  `);
+
+  // ── Section P: legacy email delivery reconciliation ─────────────────────
+  // Older production databases may already contain these tables with only a
+  // subset of the current delivery columns. Every operation is additive and
+  // idempotent; existing delivery rows are never dropped, truncated, or
+  // recreated.
+  await runSection("white-label-tables", sql`
+    CREATE TABLE IF NOT EXISTS white_label_tenants (
+      id SERIAL PRIMARY KEY,
+      slug TEXT NOT NULL,
+      display_name TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'draft',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS white_label_domains (
+      id SERIAL PRIMARY KEY,
+      tenant_id INTEGER NOT NULL REFERENCES white_label_tenants(id),
+      hostname TEXT NOT NULL,
+      portal_kind TEXT NOT NULL DEFAULT 'admin',
+      ownership_status TEXT NOT NULL DEFAULT 'pending',
+      verification_token_hash TEXT,
+      verified_at TIMESTAMPTZ,
+      tls_status TEXT NOT NULL DEFAULT 'pending',
+      is_primary BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS white_label_branding (
+      tenant_id INTEGER PRIMARY KEY REFERENCES white_label_tenants(id),
+      logo_url TEXT,
+      favicon_url TEXT,
+      primary_color TEXT NOT NULL DEFAULT '#172C54',
+      support_email TEXT,
+      settings JSONB,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS white_label_memberships (
+      id SERIAL PRIMARY KEY,
+      tenant_id INTEGER NOT NULL REFERENCES white_label_tenants(id),
+      user_id INTEGER NOT NULL,
+      role TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS white_label_merchant_assignments (
+      merchant_id INTEGER PRIMARY KEY,
+      tenant_id INTEGER NOT NULL REFERENCES white_label_tenants(id),
+      assigned_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS white_label_features (
+      id SERIAL PRIMARY KEY,
+      tenant_id INTEGER NOT NULL REFERENCES white_label_tenants(id),
+      feature_key TEXT NOT NULL,
+      enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      limits JSONB
+    );
+    CREATE TABLE IF NOT EXISTS white_label_finance_commands (
+      id SERIAL PRIMARY KEY,
+      tenant_id INTEGER NOT NULL REFERENCES white_label_tenants(id),
+      merchant_id INTEGER NOT NULL,
+      operation TEXT NOT NULL,
+      idempotency_key TEXT NOT NULL,
+      payload_hash TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'reserved',
+      result JSONB,
+      created_by INTEGER NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      completed_at TIMESTAMPTZ
+    );
+    CREATE TABLE IF NOT EXISTS white_label_finance_audit (
+      id SERIAL PRIMARY KEY,
+      tenant_id INTEGER NOT NULL REFERENCES white_label_tenants(id),
+      merchant_id INTEGER NOT NULL,
+      command_id INTEGER REFERENCES white_label_finance_commands(id),
+      actor_id INTEGER NOT NULL,
+      action TEXT NOT NULL,
+      outcome TEXT NOT NULL,
+      metadata JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS wl_tenants_slug_unique ON white_label_tenants(slug);
+    CREATE UNIQUE INDEX IF NOT EXISTS wl_domains_hostname_unique ON white_label_domains(hostname);
+    CREATE INDEX IF NOT EXISTS wl_domains_tenant_idx ON white_label_domains(tenant_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS wl_membership_tenant_user_unique ON white_label_memberships(tenant_id, user_id);
+    CREATE INDEX IF NOT EXISTS wl_membership_user_idx ON white_label_memberships(user_id);
+    CREATE INDEX IF NOT EXISTS wl_merchant_tenant_idx ON white_label_merchant_assignments(tenant_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS wl_tenant_feature_unique ON white_label_features(tenant_id, feature_key);
+    CREATE UNIQUE INDEX IF NOT EXISTS wl_fin_cmd_unique_request ON white_label_finance_commands(tenant_id, merchant_id, operation, idempotency_key);
+    CREATE INDEX IF NOT EXISTS wl_fin_cmd_tenant_created ON white_label_finance_commands(tenant_id, created_at);
+    CREATE INDEX IF NOT EXISTS wl_fin_audit_tenant_created ON white_label_finance_audit(tenant_id, created_at);
+  `);
+
+  await runSection("email_delivery_legacy_reconciliation", sql`
+    CREATE TABLE IF NOT EXISTS email_delivery_logs (
+      id SERIAL PRIMARY KEY,
+      recipient_hash TEXT NOT NULL DEFAULT '',
+      recipient_masked TEXT NOT NULL DEFAULT '',
+      purpose TEXT NOT NULL DEFAULT 'unknown',
+      provider TEXT NOT NULL DEFAULT 'unknown',
+      status TEXT NOT NULL DEFAULT 'accepted',
+      provider_message_id TEXT,
+      provider_event_id TEXT,
+      error_reason TEXT,
+      otp_id INTEGER,
+      user_id INTEGER,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_event_at TIMESTAMPTZ
+    );
+    ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS recipient_hash TEXT NOT NULL DEFAULT '';
+    ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS recipient_masked TEXT NOT NULL DEFAULT '';
+    ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS purpose TEXT NOT NULL DEFAULT 'unknown';
+    ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS provider TEXT NOT NULL DEFAULT 'unknown';
+    ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'accepted';
+    ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS provider_message_id TEXT;
+    ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS provider_event_id TEXT;
+    ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS error_reason TEXT;
+    ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS otp_id INTEGER;
+    ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS user_id INTEGER;
+    ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+    ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+    ALTER TABLE email_delivery_logs ADD COLUMN IF NOT EXISTS last_event_at TIMESTAMPTZ;
+    CREATE INDEX IF NOT EXISTS email_delivery_logs_created_at_idx ON email_delivery_logs(created_at DESC);
+    CREATE INDEX IF NOT EXISTS email_delivery_logs_purpose_created_at_idx ON email_delivery_logs(purpose, created_at DESC);
+    CREATE INDEX IF NOT EXISTS email_delivery_logs_status_idx ON email_delivery_logs(status);
+    CREATE INDEX IF NOT EXISTS email_delivery_logs_provider_message_id_idx ON email_delivery_logs(provider_message_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS email_delivery_logs_provider_event_id_unique
+      ON email_delivery_logs(provider_event_id) WHERE provider_event_id IS NOT NULL;
+
+    CREATE TABLE IF NOT EXISTS email_delivery_events (
+      id SERIAL PRIMARY KEY,
+      delivery_log_id INTEGER,
+      provider TEXT NOT NULL DEFAULT 'unknown',
+      provider_message_id TEXT,
+      provider_event_id TEXT,
+      status TEXT NOT NULL DEFAULT 'accepted',
+      failure_summary TEXT,
+      received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    ALTER TABLE email_delivery_events ADD COLUMN IF NOT EXISTS delivery_log_id INTEGER;
+    ALTER TABLE email_delivery_events ADD COLUMN IF NOT EXISTS provider TEXT NOT NULL DEFAULT 'unknown';
+    ALTER TABLE email_delivery_events ADD COLUMN IF NOT EXISTS provider_message_id TEXT;
+    ALTER TABLE email_delivery_events ADD COLUMN IF NOT EXISTS provider_event_id TEXT;
+    ALTER TABLE email_delivery_events ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'accepted';
+    ALTER TABLE email_delivery_events ADD COLUMN IF NOT EXISTS failure_summary TEXT;
+    ALTER TABLE email_delivery_events ADD COLUMN IF NOT EXISTS received_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+    ALTER TABLE email_delivery_events ALTER COLUMN provider_event_id DROP NOT NULL;
+    CREATE INDEX IF NOT EXISTS email_delivery_events_delivery_log_received_at_idx
+      ON email_delivery_events(delivery_log_id, received_at DESC);
+    CREATE UNIQUE INDEX IF NOT EXISTS email_delivery_events_provider_event_id_unique
+      ON email_delivery_events(provider_event_id) WHERE provider_event_id IS NOT NULL;
   `);
 
   console.log("DB migrations complete.");

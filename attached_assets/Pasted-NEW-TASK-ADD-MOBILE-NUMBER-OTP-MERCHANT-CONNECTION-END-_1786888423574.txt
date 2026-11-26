@@ -1,0 +1,145 @@
+NEW TASK — ADD MOBILE NUMBER + OTP MERCHANT CONNECTION END-TO-END
+
+OBJECTIVE
+
+Extend the existing live Merchant Connect framework so eligible providers can also connect through the merchant’s authorized mobile number + OTP flow.
+
+Keep the existing provider-issued API credentials connection unchanged.
+
+REQUIRED UI
+
+Every eligible provider must show separate options:
+
+1. Connect with Mobile Number + OTP
+2. Connect using Provider-Issued Credentials
+3. Apply for New Merchant Account
+
+MOBILE + OTP FLOW
+
+1. Merchant selects “Connect with Mobile Number + OTP”.
+2. Merchant enters their registered mobile number.
+3. Backend validates format and applies rate limits.
+4. Start the provider’s officially supported authentication/session flow.
+5. Provider sends OTP to the merchant’s registered mobile.
+6. Merchant enters OTP directly in the secure RasoKart form.
+7. Never display, log or permanently store the OTP.
+8. After successful provider authentication, store only an encrypted authorized session/token.
+9. Verify the authenticated provider account and merchant identifier.
+10. Display Connected, Session Expired, Reconnect or Failed status.
+11. Add secure Disconnect/Revoke functionality.
+
+PROVIDERS TO CHECK AND IMPLEMENT
+
+- PhonePe Business
+- Paytm Business
+- BharatPe
+- Amazon Pay
+- MobiKwik
+- Google Pay Business
+- Any other provider currently listed in RasoKart that officially supports merchant mobile/OTP authentication
+
+PROVIDER SAFETY RULE
+
+Implement Mobile + OTP only where the provider officially and technically permits an authenticated merchant connection.
+
+Do not:
+
+- Fake a successful connection
+- Treat opening the provider portal as a connection
+- Intercept SMS
+- Read OTP automatically
+- Bypass CAPTCHA, 2FA or device verification
+- Circumvent provider restrictions
+- Store passwords or OTPs
+- Use consumer accounts instead of approved business/merchant accounts
+
+If a provider does not expose an authorized reusable session/API after mobile login, display:
+
+“Mobile + OTP direct connection is not supported by this provider. Use provider-issued credentials or complete merchant onboarding.”
+
+Do not incorrectly mark that provider Connected.
+
+PAY-IN VERIFICATION
+
+For every genuinely supported Mobile + OTP connector:
+
+- Read only the authorized merchant’s payment/deposit records.
+- Verify merchant ownership, transaction ID, order/reference, amount and final status.
+- Enforce idempotency and prevent duplicate wallet credit.
+- Never credit PENDING, FAILED, UNKNOWN or unverified payments.
+- Create correct transaction, wallet and immutable ledger records.
+- Add session-expiry and reconnect alerts.
+
+Do not enable payout, refund, approve/reject, bank changes or security-setting changes through this connector.
+
+SECURITY
+
+- Encrypt mobile identifiers and provider sessions where appropriate.
+- Mask mobile numbers in UI.
+- Enforce tenant and merchant isolation.
+- Rate-limit send-OTP and verify-OTP endpoints.
+- Add OTP expiry, attempt limits and replay protection.
+- Use CSRF/state protection.
+- Maintain non-secret audit logs.
+- Never expose credentials, sessions or OTPs in frontend responses, logs, commits or reports.
+
+TESTING
+
+Test:
+
+- Valid/invalid mobile format
+- OTP send and resend limits
+- Wrong/expired/replayed OTP
+- Successful connection
+- CAPTCHA/device-confirmation handoff
+- Session expiry/reconnect
+- Disconnect/revoke
+- Merchant isolation
+- Duplicate transaction protection
+- Wallet/ledger consistency
+- Existing API-credentials flow regression
+- Login/signup/JWT/IAM/payment-provider regression
+
+Use sandbox/test accounts where available.
+Do not initiate an unauthorized real financial transaction.
+
+DEPLOYMENT
+
+Complete implementation, tests, CI, merge and production deployment in one uninterrupted workflow.
+
+Do not send repeated plans or partial reports.
+Do not wait for another approval.
+Stop only for a genuine provider-side requirement such as an authorized merchant OTP, CAPTCHA, device approval, KYC or unavailable credentials.
+
+FINAL REPORT
+
+Provide one table per provider:
+
+- Mobile + OTP officially supported
+- Connection implemented
+- Authentication/session method
+- Test result
+- Sandbox/Live status
+- Pay-in monitoring status
+- Auto-deposit status
+- Exact human action required
+- Final verdict
+
+Also provide:
+
+- PR and merge SHA
+- Production SHA
+- Changed files/migrations
+- CI/test/security results
+- Live UI and backend verification
+- Merchant-isolation and ledger results
+- Rollback point
+
+Final statuses:
+
+1. MOBILE + OTP CONNECTED AND LIVE
+2. MOBILE + OTP READY — AUTHORIZED MERCHANT OTP REQUIRED
+3. MOBILE + OTP UNSUPPORTED — USE API CREDENTIALS
+4. PROVIDER ONBOARDING/KYC REQUIRED
+
+Do not mark this task complete merely because the UI button exists. Completion requires a real working backend flow for supported providers and an honest unsupported status for all others.

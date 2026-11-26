@@ -7,6 +7,13 @@
     "hello": "tsx ./src/hello.ts",
     "db-migrate": "tsx ./src/db-migrate.ts",
     "github-sync": "tsx ./src/github-sync.ts",
+    "test:github-sync-concurrency": "node --import tsx/esm --test ./src/github-sync-git-auth.test.ts",
+    "test:deployment-workflow-policy": "node --import tsx/esm --test ./src/deployment-workflow-policy.test.ts",
+    "audit:branch-protection": "tsx ./src/branch-protection-audit.ts",
+    "test:branch-protection-audit": "node --import tsx/esm --test ./src/branch-protection-audit.test.ts",
+    "verify-git-remotes": "tsx ./src/verify-git-remotes.ts",
+    "test:verify-git-remotes": "node --import tsx/esm --test ./src/verify-git-remotes.test.ts",
+    "test:ts-project-references": "node --test ./validate-ts-project-references.test.mjs",
     "fix-credentials": "tsx ./src/fix-credentials.ts",
     "verify-demo-credentials": "tsx ./src/verify-demo-credentials.ts",
     "verify-settings-persistence": "tsx ./src/verify-settings-persistence.ts",
@@ -28,7 +35,11 @@
     "test:schema-guard-column-diff": "node --import tsx/esm --test ./src/schema-guard-column-diff.test.ts",
     "schema-guard-column-diff:negtest": "node --import tsx/esm --test ./src/schema-guard-column-diff.negtest.ts",
     "verify-schema-guard-ci-contract": "tsx ./src/verify-schema-guard-ci-contract.ts",
-    "test:plan-feature-gates": "playwright test --config=playwright.config.ts e2e/plan-feature-gates.spec.ts"
+    "test:plan-feature-gates": "playwright test --config=playwright.config.ts e2e/plan-feature-gates.spec.ts",
+    "smoke:production-analytics": "playwright test --config=playwright.production.config.ts",
+    "smoke:production-analytics:dashboard": "playwright test --config=playwright.production.config.ts --grep \"automated dashboard verification excludes smoke events\"",
+    "backfill:cashfree-payin-credits": "tsx ./src/backfill-cashfree-payin-credits.ts",
+    "test:backfill-cashfree-payin-credits": "node --import tsx/esm --test ./src/backfill-cashfree-payin-credits.test.ts"
   },
   "dependencies": {
     "@workspace/db": "workspace:*",

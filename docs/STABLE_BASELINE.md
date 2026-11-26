@@ -125,6 +125,10 @@ cd artifacts/rpay && node --import tsx/esm --test src/lib/gateway-panel-coverage
 # System config coverage (3 tests)
 cd lib/db && node --import tsx/esm --test src/schema/systemConfig.coverage.test.ts
 
+# Password-reset delivery cleanup history (3 tests)
+# Covers scheduled/manual history, safe failure summaries, recovery ordering,
+# and the newest-20-attempt cap.
+pnpm --filter @workspace/api-server run test:password-reset-delivery-cleanup
 
 # Schema guard coverage (static analysis — all Drizzle tables guarded)
 pnpm --filter @workspace/scripts run schema-guard-coverage

@@ -299,6 +299,7 @@ import type {
   MerchantPlanWithDetails,
   MerchantProduct,
   MerchantProfileUpdateInput,
+  MerchantReadiness,
   MerchantRegisterInput,
   MerchantSavedFilter,
   MerchantVolumeListResponse,
@@ -2115,6 +2116,49 @@ export const getUpdateMerchantProfileUrl = () => {
 
 
   return `/api/merchants/me`
+}
+
+export const getGetMerchantReadinessUrl = () => {
+  return `/api/merchants/me/readiness`
+}
+
+export const getMerchantReadiness = async (options?: RequestInit): Promise<MerchantReadiness> => {
+  return customFetch<MerchantReadiness>(getGetMerchantReadinessUrl(), {
+    ...options,
+    method: 'GET',
+  });
+}
+
+export const getGetMerchantReadinessQueryKey = () => {
+  return [`/api/merchants/me/readiness`] as const;
+}
+
+export const getGetMerchantReadinessQueryOptions = <
+  TData = Awaited<ReturnType<typeof getMerchantReadiness>>,
+  TError = ErrorType<ErrorResponse>
+>(options?: {
+  query?: UseQueryOptions<Awaited<ReturnType<typeof getMerchantReadiness>>, TError, TData>,
+  request?: SecondParameter<typeof customFetch>
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetMerchantReadinessQueryKey();
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getMerchantReadiness>>> = ({ signal }) =>
+    getMerchantReadiness({ signal, ...requestOptions });
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getMerchantReadiness>>, TError, TData
+  > & { queryKey: QueryKey };
+}
+
+export function useGetMerchantReadiness<
+  TData = Awaited<ReturnType<typeof getMerchantReadiness>>,
+  TError = ErrorType<ErrorResponse>
+>(options?: {
+  query?: UseQueryOptions<Awaited<ReturnType<typeof getMerchantReadiness>>, TError, TData>,
+  request?: SecondParameter<typeof customFetch>
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetMerchantReadinessQueryOptions(options);
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return { ...query, queryKey: queryOptions.queryKey };
 }
 
 /**

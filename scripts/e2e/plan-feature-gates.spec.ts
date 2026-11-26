@@ -21,6 +21,7 @@
 
 import { test, expect } from "@playwright/test";
 import { execSync } from "child_process";
+import { readCachedMerchantToken } from "./token-cache";
 
 const BASE = "http://localhost:80";
 const API = `${BASE}/api`;
@@ -84,11 +85,14 @@ let starterToken = "";
 let goldToken = "";
 
 test.beforeAll(async () => {
-  // Login both merchants once; reuse tokens for all tests in this file.
-  [starterToken, goldToken] = await Promise.all([
-    login(STARTER.email, STARTER.password),
-    login(GOLD.email, GOLD.password),
-  ]);
+  // The Gold merchant (merchant2@demo.com) token is already cached by
+  // global-setup.ts, which always logs in as merchant2@demo.com.  Reusing
+  // that token avoids an extra hit on the DB-backed login rate-limiter
+  // (10 attempts / 15 min per IP shared across the entire CI test suite).
+  // The Starter merchant (merchant@demo.com) is NOT cached by global-setup,
+  // so one fresh login call is still needed here.
+  goldToken = readCachedMerchantToken();
+  starterToken = await login(STARTER.email, STARTER.password);
 });
 
 // ─── Starter merchant — API key gate ─────────────────────────────────────────

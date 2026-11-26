@@ -834,6 +834,36 @@
           "response": []
         },
         {
+          "name": "Get canonical readiness for the authenticated merchant",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{merchant_token}}",
+                "description": "JWT from POST /auth/login"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/merchants/me/readiness",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "merchants",
+                "me",
+                "readiness"
+              ]
+            },
+            "description": "Get canonical readiness for the authenticated merchant"
+          },
+          "response": []
+        },
+        {
           "name": "Get merchant by ID",
           "request": {
             "method": "GET",

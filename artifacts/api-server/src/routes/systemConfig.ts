@@ -1,10 +1,10 @@
 import { Router } from "express";
-import { db, systemConfigTable, SYSTEM_CONFIG_KEYS, SYSTEM_CONFIG_DEFAULTS, auditLogsTable, signatureFailureAlertLogsTable, webhookFailureAlertLogsTable, ekqrSyncAlertLogsTable, storageCleanupRunsTable, uploadedObjectsTable, merchantsTable, merchantConnectionsTable, qrCodesTable, cashfreePaymentOrdersTable, cashfreePayoutsTable, providerIntegrationsTable } from "@workspace/db";
+import { db, systemConfigTable, SYSTEM_CONFIG_KEYS, SYSTEM_CONFIG_DEFAULTS, auditLogsTable, signatureFailureAlertLogsTable, webhookFailureAlertLogsTable, ekqrSyncAlertLogsTable, storageCleanupRunsTable, uploadedObjectsTable, merchantsTable, merchantConnectionsTable, qrCodesTable, cashfreePaymentOrdersTable, cashfreePayoutsTable, providerIntegrationsTable, PAYIN_ORDER_STATUS } from "@workspace/db";
 import { ekqrCreateOrder, ekqrClientTxnId, ekqrCheckOrderStatus, ekqrFormatDate } from "../helpers/ekqr";
 import { testPayoutConnection, cashfreePayoutGetTransferStatus, normalizeCashfreePayoutStatus, type CashfreePayoutEnv } from "../helpers/cashfreePayout";
 import { cashfreeCreateOrder, type CashfreeEnv } from "../helpers/cashfree";
 import { encryptSecret, decryptSecret } from "../helpers/cryptoUtils";
-import { inArray, desc, count, countDistinct, sql, eq, and, isNotNull } from "drizzle-orm";
+import { inArray, desc, count, countDistinct, sql, eq, and, isNotNull, lte } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { requireAuth, requireAdmin, requirePermission } from "../middlewares/auth";
 import { PERMISSIONS } from "../permissions";
@@ -12,6 +12,7 @@ import { rescheduleFromDb, getNextRunTime } from "../helpers/reconScheduler";
 import { loadQrCleanupRetentionDays, loadQrCleanupLastRun, runQrCleanup, loadQrCleanupHistory, clearQrCleanupHistory } from "../helpers/qrCleanupScheduler";
 import { loadVaCleanupRetentionDays, loadVaCleanupLastRun, runVaCleanup, loadVaCleanupHistory, clearVaCleanupHistory } from "../helpers/vaCleanupScheduler";
 import { loadTestEmailRetentionDays, runTestEmailRetentionCleanup } from "../helpers/testEmailRetentionScheduler";
+import { loadPasswordResetDeliveryCleanupHistory, loadPasswordResetDeliveryRetentionDays, runPasswordResetDeliveryCleanup } from "../helpers/passwordResetDeliveryRetentionScheduler";
 import { loadAuditReportLogRetentionDays, runAuditReportLogCleanup } from "../helpers/auditReportRetentionScheduler";
 import { resetAlertRateLimit } from "../helpers/signatureFailureAlert";
 import { notifyAdminsOfCredentialRotation } from "../helpers/adminNotifyEmail";
@@ -337,6 +338,8 @@ router.get("/qr-cleanup/history", async (req, res, next) => {
         id: r.id,
         trigger: r.trigger,
         ranAt: r.ranAt.toISOString(),
+        status: r.status,
+        summary: r.summary,
         expired: r.expired ?? null,
         deleted: r.deleted,
         retentionDays: r.retentionDays,
@@ -367,6 +370,8 @@ router.get("/va-cleanup/history", async (req, res, next) => {
         id: r.id,
         trigger: r.trigger,
         ranAt: r.ranAt.toISOString(),
+        status: r.status,
+        summary: r.summary,
         closed: r.closed ?? null,
         deleted: r.deleted,
         retentionDays: r.retentionDays,
@@ -653,6 +658,69 @@ router.post("/test-email-retention/run", async (req, res, next) => {
     const { deleted } = await runTestEmailRetentionCleanup();
     req.log.info({ deleted }, "Test email history retention cleanup triggered manually");
     res.json({ deleted });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Password-reset delivery metadata is retained for at least seven days so
+// current delivery incidents remain available for troubleshooting.
+router.get("/password-reset-delivery-retention", async (_req, res, next) => {
+  try {
+    const [retentionDays, history] = await Promise.all([
+      loadPasswordResetDeliveryRetentionDays(),
+      loadPasswordResetDeliveryCleanupHistory(),
+    ]);
+    res.json({
+      retentionDays,
+      minimumRetentionDays: 7,
+      schedule: "Nightly at 02:45 server time",
+      history: history.map((row) => ({ ...row, ranAt: row.ranAt.toISOString() })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put("/password-reset-delivery-retention", async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+    const { retentionDays } = req.body;
+    if (!Number.isInteger(retentionDays) || retentionDays < 7 || retentionDays > 365) {
+      res.status(400).json({ error: "retentionDays must be an integer between 7 and 365" });
+      return;
+    }
+    const currentRetentionDays = await loadPasswordResetDeliveryRetentionDays();
+    await db.insert(systemConfigTable).values({
+      key: SYSTEM_CONFIG_KEYS.PASSWORD_RESET_DELIVERY_RETENTION_DAYS,
+      value: String(retentionDays),
+      updatedByEmail: user.email,
+    }).onConflictDoUpdate({
+      target: systemConfigTable.key,
+      set: { value: String(retentionDays), updatedByEmail: user.email, updatedAt: sql`now()` },
+    });
+    if (currentRetentionDays !== retentionDays) {
+      await db.insert(auditLogsTable).values({
+        adminId: user.id,
+        adminEmail: user.email,
+        action: "system_config_updated",
+        targetType: "system_config",
+        targetId: null,
+        details: JSON.stringify({ section: "password_reset_delivery_retention", retentionDays }),
+        ipAddress: req.ip ?? null,
+      });
+    }
+    res.json({ retentionDays, minimumRetentionDays: 7 });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/password-reset-delivery-retention/run", async (req, res, next) => {
+  try {
+    const result = await runPasswordResetDeliveryCleanup("manual");
+    req.log.info(result, "Password reset delivery retention cleanup triggered manually");
+    res.json(result);
   } catch (err) {
     next(err);
   }
@@ -2525,6 +2593,188 @@ router.post("/ekqr/test", async (req, res, next) => {
     req.log.info({ status: parsed.status, msg: parsed.msg }, "EKQR test connection result");
     res.json({ ok: parsed.status === true, msg: parsed.msg, raw });
   } catch (err) { next(err); }
+});
+
+// GET /api/system-config/cashfree-stuck-order-alert
+router.get("/cashfree-stuck-order-alert", async (req, res, next) => {
+  try {
+    const keys = [
+      SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_ALERT_THRESHOLD,
+      SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_STALE_MINUTES,
+      SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_ALERT_COOLDOWN_HOURS,
+    ];
+
+    const rows = await db
+      .select()
+      .from(systemConfigTable)
+      .where(inArray(systemConfigTable.key, keys));
+
+    const map = new Map(rows.map((r) => [r.key, r.value]));
+
+    res.json({
+      threshold: parseInt(
+        map.get(SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_ALERT_THRESHOLD) ??
+          SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_ALERT_THRESHOLD]
+      ),
+      staleMinutes: parseInt(
+        map.get(SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_STALE_MINUTES) ??
+          SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_STALE_MINUTES]
+      ),
+      cooldownHours: parseInt(
+        map.get(SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_ALERT_COOLDOWN_HOURS) ??
+          SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_ALERT_COOLDOWN_HOURS]
+      ),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /api/system-config/cashfree-stuck-order-alert
+router.put("/cashfree-stuck-order-alert", async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+    const { threshold, staleMinutes, cooldownHours } = req.body;
+
+    if (typeof threshold !== "number" || !Number.isInteger(threshold)) {
+      res.status(400).json({ error: "threshold must be an integer" });
+      return;
+    }
+    if (threshold < 1 || threshold > 10000) {
+      res.status(400).json({ error: "threshold must be between 1 and 10000" });
+      return;
+    }
+
+    if (typeof staleMinutes !== "number" || !Number.isInteger(staleMinutes)) {
+      res.status(400).json({ error: "staleMinutes must be an integer" });
+      return;
+    }
+    if (staleMinutes < 5 || staleMinutes > 1440) {
+      res.status(400).json({ error: "staleMinutes must be between 5 and 1440" });
+      return;
+    }
+
+    if (typeof cooldownHours !== "number" || !Number.isInteger(cooldownHours)) {
+      res.status(400).json({ error: "cooldownHours must be an integer" });
+      return;
+    }
+    if (cooldownHours < 1 || cooldownHours > 168) {
+      res.status(400).json({ error: "cooldownHours must be between 1 and 168" });
+      return;
+    }
+
+    const entries = [
+      { key: SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_ALERT_THRESHOLD,      value: String(threshold),    updatedByEmail: user.email },
+      { key: SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_STALE_MINUTES,        value: String(staleMinutes), updatedByEmail: user.email },
+      { key: SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_ALERT_COOLDOWN_HOURS, value: String(cooldownHours), updatedByEmail: user.email },
+    ];
+
+    for (const entry of entries) {
+      await db
+        .insert(systemConfigTable)
+        .values(entry)
+        .onConflictDoUpdate({
+          target: systemConfigTable.key,
+          set: { value: entry.value, updatedByEmail: entry.updatedByEmail, updatedAt: sql`now()` },
+        });
+    }
+
+    await db.insert(auditLogsTable).values({
+      adminId: user.id,
+      adminEmail: user.email,
+      action: "system_config_updated",
+      targetType: "system_config",
+      targetId: null,
+      details: JSON.stringify({ section: "cashfree_stuck_order_alert", threshold, staleMinutes, cooldownHours }),
+      ipAddress: (req as any).ip ?? null,
+    });
+
+    req.log.info({ threshold, staleMinutes, cooldownHours }, "Cashfree stuck order alert config updated");
+
+    res.json({ threshold, staleMinutes, cooldownHours });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/system-config/cashfree-stuck-order-status
+// Returns the live count of stuck Cashfree payin orders plus last-alert metadata.
+// Read-only: performs the same count query as the scheduler but never sends an alert.
+// Used by the settings card to display a live signal alongside the threshold controls.
+router.get("/cashfree-stuck-order-status", async (req, res, next) => {
+  try {
+    // Load config values needed for the count query and cooldown calculation
+    const configRows = await db
+      .select()
+      .from(systemConfigTable)
+      .where(
+        inArray(systemConfigTable.key, [
+          SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_STALE_MINUTES,
+          SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_ALERT_COOLDOWN_HOURS,
+          SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_ALERT_LAST_SENT_AT,
+        ]),
+      );
+    const configMap = new Map(configRows.map((r) => [r.key, r.value]));
+
+    const staleMinutes = Math.max(
+      1,
+      parseInt(
+        configMap.get(SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_STALE_MINUTES) ??
+          SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_STALE_MINUTES],
+      ) || 15,
+    );
+    const cooldownHours = Math.max(
+      1,
+      parseInt(
+        configMap.get(SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_ALERT_COOLDOWN_HOURS) ??
+          SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_ALERT_COOLDOWN_HOURS],
+      ) || 4,
+    );
+    const rawLastSentAt = configMap.get(SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_ALERT_LAST_SENT_AT) ?? null;
+
+    // Scope to production merchants, exclude WLOAD orders, only CREATED/PENDING
+    const staleThreshold = new Date(Date.now() - staleMinutes * 60 * 1000);
+    const prodMerchantIds = db
+      .select({ id: merchantsTable.id })
+      .from(merchantsTable)
+      .where(eq(merchantsTable.environment, "production"));
+
+    const [row] = await db
+      .select({ cnt: count() })
+      .from(cashfreePaymentOrdersTable)
+      .where(
+        and(
+          inArray(cashfreePaymentOrdersTable.status, [
+            PAYIN_ORDER_STATUS.CREATED,
+            PAYIN_ORDER_STATUS.PENDING,
+          ]),
+          lte(cashfreePaymentOrdersTable.createdAt, staleThreshold),
+          sql`${cashfreePaymentOrdersTable.cashfreeOrderId} NOT LIKE 'WLOAD_%'`,
+          inArray(cashfreePaymentOrdersTable.merchantId, prodMerchantIds),
+        ),
+      );
+
+    const stuckCount = row?.cnt ?? 0;
+
+    // Compute cooldown state
+    const lastSentDate = rawLastSentAt ? new Date(rawLastSentAt) : null;
+    const lastSentValid = lastSentDate != null && !isNaN(lastSentDate.getTime());
+    const lastSentAt = lastSentValid ? lastSentDate!.toISOString() : null;
+    const cooldownExpiresAt = lastSentValid
+      ? new Date(lastSentDate!.getTime() + cooldownHours * 60 * 60 * 1000).toISOString()
+      : null;
+    const cooldownActive = cooldownExpiresAt ? new Date(cooldownExpiresAt) > new Date() : false;
+
+    res.json({
+      stuckCount,
+      staleMinutes,
+      lastSentAt,
+      cooldownExpiresAt,
+      cooldownActive,
+    });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // POST /api/system-config/ekqr/test-status

@@ -790,6 +790,9 @@ export async function seed() {
       { name: "Cashfree Payments",    slug: "cashfree",        category: "gateway", status: "live",        description: "Cashfree multi-mode payment gateway",                        sortOrder: 15 },
       { name: "PayU",                 slug: "payu",            category: "gateway", status: "live",        description: "PayU merchant payment gateway",                              sortOrder: 16 },
       { name: "EKQR / UPI Gateway",   slug: "ekqr",            category: "gateway", status: "sandbox",     description: "EKQR UPI payment gateway — dynamic QR & auto-credit deposits", sortOrder: 17 },
+      { name: "Pine Labs Plural",      slug: "pinelabs",        category: "gateway", status: "sandbox",     description: "Pine Labs Plural payment gateway — cards, UPI, wallets, EMI",  sortOrder: 18 },
+      { name: "Pine Labs ONE",         slug: "pinelabs_one",    category: "gateway", status: "live",        description: "Connect your Pine Labs ONE POS/QR merchant account to sync transactions and monitor settlement status", sortOrder: 19 },
+      { name: "Paytm Business",        slug: "paytm_merchant",  category: "upi",     status: "sandbox",     description: "Paytm Business portal — mobile OTP portal session connector (read-only transaction sync)", sortOrder: 20 },
     ];
     for (const p of PROVIDERS) {
       await db.insert(providersTable).values(p).onConflictDoUpdate({ target: providersTable.slug, set: { name: p.name, status: p.status, sortOrder: p.sortOrder } });
@@ -797,11 +800,73 @@ export async function seed() {
     console.log("Providers seeded");
   }
 
+
   // ── Idempotent upsert for EKQR (ensures it exists even on already-seeded DBs) ─
   await db.insert(providersTable).values({
     name: "EKQR / UPI Gateway", slug: "ekqr", category: "gateway", status: "sandbox",
     description: "EKQR UPI payment gateway — dynamic QR & auto-credit deposits", sortOrder: 17,
   }).onConflictDoUpdate({ target: providersTable.slug, set: { name: "EKQR / UPI Gateway", status: "sandbox", sortOrder: 17 } });
+
+  // ── Idempotent upsert for Pine Labs Plural PG ────────────────────────────────
+  // Renamed from "Pine Labs" to "Pine Labs Plural" to clearly distinguish from
+  // the separate Pine Labs ONE POS/QR merchant product (pinelabs_one).
+  await db.insert(providersTable).values({
+    name: "Pine Labs Plural", slug: "pinelabs", category: "gateway", status: "sandbox",
+    description: "Pine Labs Plural payment gateway — cards, UPI, wallets, EMI", sortOrder: 18,
+  }).onConflictDoUpdate({ target: providersTable.slug, set: { name: "Pine Labs Plural", sortOrder: 18 } });
+
+  // ── Idempotent upsert for Pine Labs ONE (POS/QR merchant account) ────────────
+  // Pine Labs ONE (one.pinelabs.com) is a separate product from Pine Labs Plural PG.
+  // Authentication uses the portal_session_connector (Playwright browser automation),
+  // NOT partner API credentials. Status: "live" so resolveVisible() returns true for
+  // all merchants by default — merchants can connect their own Pine Labs ONE accounts.
+  await db.insert(providersTable).values({
+    name: "Pine Labs ONE", slug: "pinelabs_one", category: "gateway", status: "live",
+    description: "Connect your Pine Labs ONE POS/QR merchant account to sync transactions and monitor settlement status",
+    sortOrder: 19,
+  }).onConflictDoUpdate({ target: providersTable.slug, set: {
+    name: "Pine Labs ONE", category: "gateway", status: "live",
+    description: "Connect your Pine Labs ONE POS/QR merchant account to sync transactions and monitor settlement status",
+    sortOrder: 19,
+  } });
+
+  // ── Idempotent upsert for Paytm Business (portal session connector) ─────────
+  // Paytm Business (business.paytm.com) — portal_session_connector using
+  // registered mobile + OTP login via browser automation. Status: live so that
+  // merchants can see the "Paytm Business Merchant Connector" card on the Connect
+  // page. The adapter is fully operational; dry_run=true and auto_credited=false
+  // are enforced at all times. Changing status to "live" makes resolveVisible()
+  // return true for all merchants (no per-merchant visibility override needed).
+  await db.insert(providersTable).values({
+    name: "Paytm Business Merchant Connector", slug: "paytm_merchant", category: "upi", status: "live",
+    description: "Connect your Paytm Business account with Mobile Number + OTP to sync transaction history (read-only)", sortOrder: 20,
+  }).onConflictDoUpdate({ target: providersTable.slug, set: { name: "Paytm Business Merchant Connector", category: "upi", status: "live", description: "Connect your Paytm Business account with Mobile Number + OTP to sync transaction history (read-only)", sortOrder: 20 } });
+
+  // ── Idempotent upsert for Pine Labs provider_integrations row ─────────────
+  // Pine Labs is a gateway-category platform integration; it is not UPI/bank so
+  // it is NOT included in the UPI backfill loop below. Seed it here so admins
+  // can enable/configure it from the payment-gateways admin panel immediately.
+  {
+    const [existingPinelabs] = await db.select({ id: providerIntegrationsTable.id })
+      .from(providerIntegrationsTable)
+      .where(eq(providerIntegrationsTable.providerKey, "pinelabs"))
+      .limit(1);
+    if (!existingPinelabs) {
+      await db.insert(providerIntegrationsTable).values({
+        providerKey: "pinelabs",
+        providerNameInternal: "Pine Labs Plural",
+        displayNamePublic: "Pine Labs",
+        environment: "test",
+        isEnabled: false,
+        isCustom: false,
+        productType: "payin",
+        supportsDynamicQr: false,
+        supportsStaticQr: false,
+        supportsPaymentLinks: false,
+        supportsWebhooks: false,
+      }).onConflictDoNothing();
+    }
+  }
 
   // Note: provider_integrations UPI columns (is_custom, *_encrypted, etc) are
   // now guaranteed by ensureSchemaGuard() above — see lib/schemaGuard.ts.

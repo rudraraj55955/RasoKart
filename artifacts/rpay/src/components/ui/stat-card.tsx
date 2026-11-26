@@ -34,7 +34,7 @@ export function StatCard({ title, value, icon, description, className, href }: S
   );
 
   if (href) {
-    return <Link href={href}>{card}</Link>;
+    return <Link href={href} className="block w-full">{card}</Link>;
   }
   return card;
 }

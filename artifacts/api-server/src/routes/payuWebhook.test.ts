@@ -490,4 +490,62 @@ describe("PayU browser-return callback — /api/payment/payu-return", () => {
       `S2S must not produce INTERNAL_ERROR. Body: ${res.body.slice(0, 200)}`,
     );
   });
+
+  // ── Tests 12–14 (required status reachability coverage) ─────────────────────
+
+  it("12. POST /api/payment/payu-s2s SUCCESS event — returns 200 { success: true }", async () => {
+    stubForOrder(null);
+
+    const res = await postUrlEncoded(server, "/api/payment/payu-s2s", {
+      key: "test-key",
+      txnid: "PAYU-REACHABILITY-SUCCESS",
+      amount: "100.00",
+      productinfo: "Test payment",
+      firstname: "Test",
+      email: "test@example.com",
+      status: "success",
+      hash: "test-hash",
+    });
+
+    assert.equal(res.status, 200, `Expected 200 but got ${res.status} — route may be mounted at the wrong path`);
+    assert.deepEqual(JSON.parse(res.body), { success: true });
+  });
+
+  it("13. POST /api/payment/payu-s2s FAILURE event — returns 200 { success: true }", async () => {
+    stubForOrder(null);
+
+    const res = await postUrlEncoded(server, "/api/payment/payu-s2s", {
+      key: "test-key",
+      txnid: "PAYU-REACHABILITY-FAILURE",
+      amount: "250.00",
+      productinfo: "Test payment",
+      firstname: "Test",
+      email: "test@example.com",
+      status: "failure",
+      hash: "test-hash",
+      error_Message: "Payment declined",
+    });
+
+    assert.equal(res.status, 200, `Expected 200 but got ${res.status} — route may be mounted at the wrong path`);
+    assert.deepEqual(JSON.parse(res.body), { success: true });
+  });
+
+  it("14. POST /api/payment/payu-s2s with missing hash — returns 200 { success: true }", async () => {
+    stubForOrder(null);
+
+    const res = await postUrlEncoded(server, "/api/payment/payu-s2s", {
+      key: "test-key",
+      txnid: "PAYU-REACHABILITY-MISSING-HASH",
+      amount: "50.00",
+      productinfo: "Test payment",
+      firstname: "Test",
+      email: "test@example.com",
+      status: "success",
+      // PayU may send malformed callbacks; the handler must still ACK them.
+    });
+
+    assert.equal(res.status, 200, `Expected 200 but got ${res.status} — route may be mounted at the wrong path`);
+    assert.deepEqual(JSON.parse(res.body), { success: true });
+  });
+
 });

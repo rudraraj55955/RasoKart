@@ -7,7 +7,7 @@ export const merchantAuthOtpsTable = pgTable("merchant_auth_otps", {
   merchantId: integer("merchant_id"),
   identifierHash: text("identifier_hash").notNull(),
   otpHash: text("otp_hash").notNull(),
-  purpose: text("purpose").notNull(), // LOGIN | PASSWORD_RESET
+  purpose: text("purpose").notNull(), // LOGIN | PASSWORD_RESET | other verification purposes
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   consumedAt: timestamp("consumed_at", { withTimezone: true }),
   attempts: integer("attempts").notNull().default(0),

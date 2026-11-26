@@ -1,0 +1,48 @@
+name: Emergency Production Bypass Alert
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+    inputs:
+      integration_check:
+        description: Exercise the live alert API safely without pushing to main
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: write
+
+jobs:
+  alert_owner:
+    name: Alert owner about emergency direct push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout alert implementation
+        uses: actions/checkout@v4
+
+      - name: Notify owner when the push did not come from a pull request
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const {
+              runEmergencyBypassAlert,
+              runIntegrationCheck,
+            } = require("./.github/scripts/emergency-production-bypass-alert.cjs");
+            if (context.eventName === "workflow_dispatch" || context.eventName === "schedule") {
+              if (
+                context.eventName === "workflow_dispatch" &&
+                context.payload.inputs?.integration_check !== "true"
+              ) {
+                core.setFailed("The manual path is only available for the integration check.");
+                return;
+              }
+              await runIntegrationCheck({ github, context, core });
+              return;
+            }
+            await runEmergencyBypassAlert({ github, context, core });

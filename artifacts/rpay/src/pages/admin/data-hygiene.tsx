@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,19 +15,78 @@ import {
   useGetDummyDataCleanupHistory,
   useGetMe,
 } from "@workspace/api-client-react";
+import { getToken } from "@/lib/auth";
 
 const CONFIRM_PHRASE = "CLEAN_DUMMY_DATA";
 
+type DeliveryRetention = {
+  retentionDays: number;
+  minimumRetentionDays: number;
+  schedule: string;
+  history: Array<{
+    id: number;
+    trigger: string;
+    ranAt: string;
+    status: "success" | "failed";
+    summary: string | null;
+    deleted: number;
+    retentionDays: number;
+  }>;
+};
+
+async function retentionRequest(path: string, init?: RequestInit) {
+  const response = await fetch(`/api/system-config/password-reset-delivery-retention${path}`, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${getToken()}`,
+      ...(init?.body ? { "Content-Type": "application/json" } : {}),
+    },
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? "Password reset delivery cleanup request failed");
+  }
+  return response.json();
+}
+
 export default function AdminDataHygiene() {
   const { data: me } = useGetMe();
+  const isSuperAdmin = me?.isSuperAdmin ?? false;
   const [confirmText, setConfirmText] = useState("");
   const [hasRunDryRun, setHasRunDryRun] = useState(false);
+  const [deliveryRetentionDays, setDeliveryRetentionDays] = useState(30);
+  const queryClient = useQueryClient();
 
   const dryRun = useDryRunDummyDataCleanup({ query: { enabled: false, queryKey: ["dummy-data-dry-run"] } });
   const history = useGetDummyDataCleanupHistory();
   const confirmCleanup = useConfirmDummyDataCleanup();
-
-  const isSuperAdmin = me?.isSuperAdmin ?? false;
+  const deliveryRetention = useQuery<DeliveryRetention>({
+    queryKey: ["password-reset-delivery-retention"],
+    queryFn: () => retentionRequest(""),
+    enabled: isSuperAdmin,
+  });
+  useEffect(() => {
+    if (deliveryRetention.data) setDeliveryRetentionDays(deliveryRetention.data.retentionDays);
+  }, [deliveryRetention.data]);
+  const saveDeliveryRetention = useMutation({
+    mutationFn: () => retentionRequest("", {
+      method: "PUT",
+      body: JSON.stringify({ retentionDays: deliveryRetentionDays }),
+    }),
+    onSuccess: () => {
+      toast.success("Password reset delivery retention saved");
+      queryClient.invalidateQueries({ queryKey: ["password-reset-delivery-retention"] });
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+  const runDeliveryCleanup = useMutation({
+    mutationFn: () => retentionRequest("/run", { method: "POST" }),
+    onSuccess: (result: { deleted: number }) => {
+      toast.success(`Cleanup complete — deleted ${result.deleted} expired delivery record${result.deleted === 1 ? "" : "s"}.`);
+      queryClient.invalidateQueries({ queryKey: ["password-reset-delivery-retention"] });
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
 
   if (!isSuperAdmin) {
     return (
@@ -42,6 +102,7 @@ export default function AdminDataHygiene() {
 
   const findings = dryRun.data?.findings ?? [];
   const totalRows = dryRun.data?.totalRows ?? 0;
+  const latestDeliveryCleanup = deliveryRetention.data?.history[0];
 
   async function runDryRun() {
     setHasRunDryRun(false);
@@ -131,6 +192,88 @@ export default function AdminDataHygiene() {
                 </Table>
               )}
             </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Password Reset Delivery Retention</CardTitle>
+          <CardDescription>
+            Sanitized recipient and provider metadata is removed nightly after its last delivery activity.
+            A minimum of 7 days is always retained for current troubleshooting.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="delivery-retention-days">Retention period (days)</Label>
+              <Input
+                id="delivery-retention-days"
+                type="number"
+                min={7}
+                max={365}
+                className="w-36"
+                value={deliveryRetentionDays}
+                onChange={(event) => setDeliveryRetentionDays(Number(event.target.value))}
+              />
+            </div>
+            <Button
+              onClick={() => saveDeliveryRetention.mutate()}
+              disabled={saveDeliveryRetention.isPending || deliveryRetentionDays < 7 || deliveryRetentionDays > 365}
+            >
+              Save retention
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => runDeliveryCleanup.mutate()}
+              disabled={runDeliveryCleanup.isPending}
+            >
+              {runDeliveryCleanup.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Run cleanup now
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {deliveryRetention.data?.schedule ?? "Nightly cleanup"} · Current policy: {deliveryRetention.data?.retentionDays ?? 30} days
+          </p>
+          {latestDeliveryCleanup?.status === "failed" && (
+            <Alert variant="destructive">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Password reset delivery cleanup failed</AlertTitle>
+              <AlertDescription>
+                {new Date(latestDeliveryCleanup.ranAt).toLocaleString()} · {latestDeliveryCleanup.summary}
+              </AlertDescription>
+            </Alert>
+          )}
+          {(deliveryRetention.data?.history.length ?? 0) === 0 ? (
+            <p className="text-sm text-muted-foreground">No password reset delivery cleanup runs yet.</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>When</TableHead>
+                  <TableHead>Trigger</TableHead>
+                   <TableHead>Status</TableHead>
+                  <TableHead>Retention</TableHead>
+                  <TableHead>Deleted</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {deliveryRetention.data!.history.map((run) => (
+                  <TableRow key={run.id}>
+                    <TableCell>{new Date(run.ranAt).toLocaleString()}</TableCell>
+                    <TableCell className="capitalize">{run.trigger}</TableCell>
+                     <TableCell>
+                       <Badge variant={run.status === "failed" ? "destructive" : "secondary"}>
+                         {run.status === "failed" ? "Failed" : "Succeeded"}
+                       </Badge>
+                     </TableCell>
+                     <TableCell>{run.retentionDays > 0 ? `${run.retentionDays} days` : "Unavailable"}</TableCell>
+                     <TableCell>{run.status === "failed" ? "—" : run.deleted}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           )}
         </CardContent>
       </Card>

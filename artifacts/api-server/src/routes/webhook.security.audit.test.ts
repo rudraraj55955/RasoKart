@@ -10,7 +10,11 @@
  *  W4.  Missing x-webhook-timestamp → 401 rejected
  *  W5.  Stale timestamp (>5 min old) → 401 rejected  [replay protection]
  *  W6.  Future timestamp (>5 min ahead) → 401 rejected
- *  W7.  No secret configured → 200 but processingResult=received, no state
+ *  W7.  No secret configured → 200 ACK; processingResult=received; no state mutation
+ *  W8.  LOW_BALANCE_ALERT body-signed (no header auth) → 200 ACK-only; signatureVerified=false;
+ *       processingResult=ignored_unverified_info; ZERO mutations (body-sig algo undocumented)
+ *  W8b. Arbitrary forged JSON with body.signature → same as W8; NOT authenticated; no mutation
+ *  W9.  Missing timestamp AND no body signature → 401 missing_timestamp
  *
  *  OUTGOING CALLBACK RETRY ISOLATION (callbacks.ts)
  *  C1.  Admin retry on failed log → 200, audit log written
@@ -214,7 +218,22 @@ const WH_CONFIG_A = {
 
 // ── Stub state ────────────────────────────────────────────────────────────────
 
-let savedInserts: unknown[] = [];
+/**
+ * Typed shape of every row captured by the insert stub.
+ * `vals` carries the exact object passed to Drizzle's `.values()` call; the
+ * index signature lets us access additional fields without widening to `any`.
+ */
+interface CapturedDbInsert {
+  tbl: unknown;
+  vals: {
+    signatureVerified?: boolean | null;
+    processingResult?: string;
+    details?: string;
+    [key: string]: unknown;
+  };
+}
+
+let savedInserts: CapturedDbInsert[] = [];
 let savedUpdates: unknown[] = [];
 
 // ── Test server ───────────────────────────────────────────────────────────────
@@ -272,8 +291,11 @@ describe("W — Payout webhook signature verification", () => {
     // insert should record without error and support .returning() for createBulkNotifications
     (db as any).insert = (tbl: unknown) => ({
       values: (vals: unknown) => {
-        savedInserts.push({ tbl, vals });
-        const p = Promise.resolve([]) as any;
+        savedInserts.push({ tbl, vals: vals as CapturedDbInsert["vals"] });
+        const p = Promise.resolve([]) as unknown as Promise<unknown[]> & {
+          returning: () => Promise<unknown[]>;
+          onConflictDoNothing: () => { returning: () => Promise<unknown[]> };
+        };
         p.returning = () => Promise.resolve([]);
         p.onConflictDoNothing = () => ({ returning: () => Promise.resolve([]) });
         return p;
@@ -343,7 +365,6 @@ describe("W — Payout webhook signature verification", () => {
   });
 
   it("W7 — no secret configured → 200 but processingResult=received, no state mutation, alert sent", async () => {
-    // Reset in-process rate limit so the alert fires even if W7 runs after another test
     resetPayoutNoSecretAlertRateLimit();
     stubPayoutWebhookDb(null);
     const ts = String(Math.floor(Date.now() / 1000));
@@ -358,11 +379,9 @@ describe("W — Payout webhook signature verification", () => {
     assert.equal(body.ok, true);
     assert.equal(body.received, true);
 
-    // A rate-limited admin notification must have been inserted for the no-secret condition.
-    // createBulkNotifications calls db.insert(notificationsTable).values([...]).returning().
-    const notifInsert = savedInserts.find((i: any) => i.tbl === notificationsTable);
+    const notifInsert = savedInserts.find((i) => i.tbl === notificationsTable);
     assert.ok(notifInsert, "Expected a notifications table insert for the no-secret admin alert");
-    const notifVals = (notifInsert as any).vals as Array<{ userId: number; type: string; title: string; body: string; metadata: Record<string, unknown> }>;
+    const notifVals = notifInsert.vals as unknown as Array<{ userId: number; type: string; title: string; body: string; metadata: Record<string, unknown> }>;
     assert.ok(Array.isArray(notifVals) && notifVals.length >= 2, `Expected ≥2 notification rows (admin + payout_super_admin), got ${notifVals.length}`);
     // All rows must have the correct type
     for (const v of notifVals) {
@@ -372,6 +391,116 @@ describe("W — Payout webhook signature verification", () => {
     const meta0 = notifVals[0].metadata ?? {};
     assert.ok(typeof meta0["dedupeKey"] === "string" && (meta0["dedupeKey"] as string).length === 13,
       `Expected dedupeKey to be a 13-char UTC-hour string, got: ${JSON.stringify(meta0["dedupeKey"])}`);
+  });
+
+  it("W8 — LOW_BALANCE_ALERT (body-signed, no header auth) → 200 ACK-only; event NOT authenticated", async () => {
+    // Cashfree LOW_BALANCE_ALERT arrives without x-webhook-timestamp or x-webhook-signature
+    // headers; it embeds a "signature" field in the JSON body instead.
+    // SECURITY CONTRACT:
+    //   - HTTP 200 is returned as an operational ACK to stop Cashfree retry storms only.
+    //   - The event is NOT authenticated (body-signature algorithm undocumented by Cashfree).
+    //   - signatureVerified must be explicit false (never null) in the DB log.
+    //   - processingResult must be "ignored_unverified_info" (not "info_event").
+    //   - ZERO payout/wallet/ledger state mutations.
+    stubPayoutWebhookDb(ENCRYPTED_PAYOUT_SECRET);
+    savedInserts.length = 0; // reset before this test
+    const alertPayload = {
+      event: "LOW_BALANCE_ALERT",
+      alertTime: "2026-08-15 02:36:52",
+      currentBalance: "100.00",
+      signature: "some_cashfree_body_signature_value_that_wont_match",
+    };
+    const r = await post(server, "/api/cashfree-payout/webhook", alertPayload, {
+      "Content-Type": "application/json",
+      // Deliberately omit x-webhook-timestamp and x-webhook-signature headers
+    });
+    assert.equal(r.status, 200, `Expected 200 ACK for LOW_BALANCE_ALERT, got ${r.status}`);
+    const body = r.json<{ ok: boolean; received: boolean }>();
+    assert.equal(body.ok, true, "Response body.ok must be true");
+    assert.equal(body.received, true, "Response body.received must be true");
+    // Allow the event loop to drain so the post-response insertLog resolves
+    await new Promise(resolve => setImmediate(resolve));
+    // Verify the DB log entry records the event as NOT authenticated
+    const logInsert = savedInserts[savedInserts.length - 1];
+    assert.ok(logInsert, "A log row must be written");
+    const logVals = logInsert?.vals;
+    assert.strictEqual(
+      logVals?.signatureVerified,
+      false,
+      `signatureVerified must be explicit false (got ${logVals?.signatureVerified}); ACK-only events are NOT authenticated`,
+    );
+    assert.strictEqual(
+      logVals?.processingResult,
+      "ignored_unverified_info",
+      `processingResult must be 'ignored_unverified_info', got '${logVals?.processingResult}'`,
+    );
+  });
+
+  it("W8b — arbitrary forged JSON with body.signature field → 200 ACK-only; NOT authenticated; no mutation", async () => {
+    // Security property: an attacker sending arbitrary JSON with a body "signature" field
+    // must NOT be treated as an authenticated event. The handler must return 200 ACK-only
+    // (to avoid retry storms) but mark signatureVerified=false and perform no state mutations.
+    stubPayoutWebhookDb(ENCRYPTED_PAYOUT_SECRET);
+    savedInserts.length = 0;
+    const forgedPayload = {
+      event: "TRANSFER_SUCCESS",       // high-value event type
+      transfer: { transfer_id: "ATTACKER_CONTROLLED", cf_transfer_id: "EVIL", transfer_status: "SUCCESS", transfer_utr: "UTR_FAKE" },
+      signature: "i_am_a_forged_body_signature",  // forged; no x-webhook-timestamp header
+    };
+    const r = await post(server, "/api/cashfree-payout/webhook", forgedPayload, {
+      "Content-Type": "application/json",
+      // No x-webhook-timestamp — forces body-signed path, NOT the standard Format A path
+    });
+    assert.equal(r.status, 200, `Expected 200 ACK for forged body-signed event, got ${r.status}`);
+    const body = r.json<{ ok: boolean; received: boolean }>();
+    assert.equal(body.ok, true);
+    // Allow event loop to drain
+    await new Promise(resolve => setImmediate(resolve));
+    const logInsert = savedInserts[savedInserts.length - 1];
+    const logVals = logInsert?.vals;
+    // The forged event MUST be recorded as unverified
+    assert.strictEqual(
+      logVals?.signatureVerified,
+      false,
+      `Forged body-signed event must have signatureVerified=false, got ${logVals?.signatureVerified}`,
+    );
+    assert.strictEqual(
+      logVals?.processingResult,
+      "ignored_unverified_info",
+      `Forged event must have processingResult='ignored_unverified_info', got '${logVals?.processingResult}'`,
+    );
+    // No wallet mutations: transferId/cfTransferId must be absent/undefined
+    // (insertLog converts null → undefined via ?? so the key may be absent from vals)
+    assert.ok(
+      logVals?.transferId == null,
+      `Forged event must not record transferId (no lookup attempted), got '${logVals?.transferId}'`,
+    );
+    assert.ok(
+      logVals?.cfTransferId == null,
+      `Forged event must not record cfTransferId (no lookup attempted), got '${logVals?.cfTransferId}'`,
+    );
+  });
+
+  it("W9 — missing timestamp AND no body signature → 401 missing_timestamp", async () => {
+    // A request with no x-webhook-timestamp AND no body signature field is malformed.
+    // It matches neither Cashfree Format A (standard) nor the body-signed pattern.
+    // Must be rejected 401; Cashfree will retry but there is no safe way to process it.
+    stubPayoutWebhookDb(ENCRYPTED_PAYOUT_SECRET);
+    const malformedPayload = {
+      event: "transfer_failed",
+      transfer: { transfer_id: "NO_SIG_NO_TIMESTAMP" },
+      // No "signature" field in body
+    };
+    const r = await post(server, "/api/cashfree-payout/webhook", malformedPayload, {
+      "Content-Type": "application/json",
+      // No x-webhook-timestamp, no x-webhook-signature, no body signature
+    });
+    assert.equal(r.status, 401, `Expected 401 for missing timestamp + no body sig, got ${r.status}`);
+    const body = r.json<{ error: string }>();
+    assert.ok(
+      body.error?.toLowerCase().includes("missing") || body.error?.toLowerCase().includes("timestamp"),
+      `Expected missing-timestamp error, got: ${body.error}`,
+    );
   });
 
   it("W7b — concurrent no-secret webhooks → exactly one notification batch (rate-limit concurrency guard)", async () => {
@@ -523,7 +652,7 @@ describe("C — Admin callback retry isolation", () => {
     });
     (db as any).insert = (tbl: unknown) => ({
       values: (vals: unknown) => {
-        savedInserts.push({ tbl, vals });
+        savedInserts.push({ tbl, vals: vals as CapturedDbInsert["vals"] });
         return Promise.resolve([{ id: 1 }]);
       },
     });
@@ -739,3 +868,8 @@ describe("M — API monitoring scope (GET /api/api-monitoring)", () => {
     assert.equal(r.status, 401, `Unauthenticated request must be rejected. Got ${r.status}`);
   });
 });
+
+// NOTE: The Cashfree payin webhook secret clear round-trip tests (stateful,
+// covering set → clear → re-set via PUT /api/system-config/cashfree) live in
+// the dedicated file:
+//   cashfree-payin-webhook-secret-roundtrip.test.ts

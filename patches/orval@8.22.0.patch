@@ -1,0 +1,12 @@
+diff --git a/dist/config-CotJKggp.mjs b/dist/config-CotJKggp.mjs
+index f761758..83ce29f 100644
+--- a/dist/config-CotJKggp.mjs
++++ b/dist/config-CotJKggp.mjs
+@@ -7,6 +7,6 @@ import { upgrade, validate } from "@scalar/openapi-parser";
+ import fs, { access, readFile } from "node:fs/promises";
+ import { isNullish as isNullish$1, pick, unique } from "remeda";
+-import jsYaml from "js-yaml";
++import * as jsYaml from "js-yaml";
+ import * as mock from "@orval/mock";
+ import { dedupeStrictMockTypeDeclarations, generateFakerForSchemas, generateMockImports, getDefaultMockOptionsForType } from "@orval/mock";
+ import angular from "@orval/angular";

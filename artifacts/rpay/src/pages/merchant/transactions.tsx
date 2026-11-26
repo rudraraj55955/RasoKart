@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useSearch } from "wouter";
+import { PortalSyncSection } from "@/components/merchant/portal-sync-section";
 import { useListTransactions, useSearchByUtr, useGetTransaction, useGetPaymentLink, useListMerchantSavedFilters, useCreateMerchantSavedFilter, useDeleteMerchantSavedFilter, useRenameMerchantSavedFilter, useReorderMerchantSavedFilters, useListGatewayOptions } from "@workspace/api-client-react";
 import { useCrossTabSync } from "@/hooks/use-cross-tab-sync";
 import { AllFiltersSheet } from "@/components/merchant/all-filters-sheet";
@@ -1913,6 +1914,9 @@ export default function MerchantTransactions() {
         utrSearch={utrSearch}
       />
       <AllFiltersSheet open={showAllFilters} onOpenChange={setShowAllFilters} />
+
+      {/* Portal-synced transactions — shown only when a Paytm Business session is CONNECTED */}
+      <PortalSyncSection />
     </div>
   );
 }

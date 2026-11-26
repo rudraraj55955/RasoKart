@@ -3,15 +3,16 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { db, usersTable, merchantsTable, credentialEventsTable, merchantTrustedIpsTable, auditLogsTable, merchantAuthOtpsTable, authProvidersTable, socialProviderSettingsTable } from "@workspace/db";
 import { DbRateLimitStore } from "../lib/rateLimitStore";
-import { eq, and, count, desc } from "drizzle-orm";
-import { generateToken, requireAuth, resolveUserPermissions } from "../middlewares/auth";
+import { eq, and, count, desc, sql, isNull } from "drizzle-orm";
+import { generateToken, requireAuth, requireAdmin, resolveUserPermissions } from "../middlewares/auth";
 import { logger } from "../lib/logger";
 import { makeRateLimiter, safeIpKey } from "../helpers/makeRateLimiter";
 import { sendNewLoginAlertEmail } from "../helpers/newLoginEmail";
 import { sendPrefChangeUnknownDeviceEmail } from "../helpers/prefChangeEmail";
 import { createNotification } from "../helpers/notifications";
-import { sendMerchantOtpEmail } from "../helpers/merchantOtpEmail";
-import { sendOtpSms, loadOtpSmsSettings } from "../helpers/sendOtpSms";
+import { sendMerchantOtpEmail, sendMerchantOtpEmailWithResult } from "../helpers/merchantOtpEmail";
+import { recordPasswordResetEmailDelivery } from "../helpers/emailDelivery";
+import { sendOtpSms } from "../helpers/sendOtpSms";
 import { checkAuthLock, recordWindowExhaustion } from "../helpers/authLock";
 import { verifyGoogleIdToken, isGoogleConfigured } from "../helpers/googleAuth";
 import {
@@ -25,8 +26,11 @@ import {
   maskIdentifier,
   validatePasswordStrength,
   OTP_EXPIRY_MS,
+  MERCHANT_LOGIN_OTP_EXPIRY_MS,
   OTP_MAX_ATTEMPTS,
   OTP_RESEND_COOLDOWN_MS,
+  MERCHANT_LOGIN_MAX_RESENDS,
+  MERCHANT_LOGIN_RESEND_LOCK_MS,
 } from "../helpers/otp";
 // Dev-only: capture plaintext OTPs for test automation (no-op in production)
 import { captureDevOtp } from "../lib/devOtpStore";
@@ -749,6 +753,7 @@ router.get("/me", requireAuth, async (req, res, next) => {
         webhookFailureEmails: usersTable.webhookFailureEmails,
         reportFailureAlertEmails: usersTable.reportFailureAlertEmails,
         githubSyncFailureAlertEmails: usersTable.githubSyncFailureAlertEmails,
+        enrollmentCredentialSubmittedEmails: usersTable.enrollmentCredentialSubmittedEmails,
         weeklyDeliveryDigestEmails: usersTable.weeklyDeliveryDigestEmails,
         apiKeyGeneratedEmails: usersTable.apiKeyGeneratedEmails,
         apiKeyRevokedEmails: usersTable.apiKeyRevokedEmails,
@@ -834,6 +839,7 @@ router.get("/me", requireAuth, async (req, res, next) => {
       webhookFailureEmails: row?.webhookFailureEmails ?? true,
       reportFailureAlertEmails: row?.reportFailureAlertEmails ?? true,
       githubSyncFailureAlertEmails: row?.githubSyncFailureAlertEmails ?? true,
+      enrollmentCredentialSubmittedEmails: row?.enrollmentCredentialSubmittedEmails ?? true,
       weeklyDeliveryDigestEmails: row?.weeklyDeliveryDigestEmails ?? true,
       apiKeyGeneratedEmails: row?.apiKeyGeneratedEmails ?? true,
       apiKeyRevokedEmails: row?.apiKeyRevokedEmails ?? true,
@@ -879,7 +885,7 @@ router.get("/me", requireAuth, async (req, res, next) => {
 router.put("/preferences", requireAuth, prefChangeLimiter, async (req, res, next) => {
   try {
     const user = (req as any).user;
-    const { reconciliationAlertEmails, planExpiryAlertEmails, settlementStateEmails, signatureFailureAlertEmails, webhookFailureEmails, reportFailureAlertEmails, githubSyncFailureAlertEmails, weeklyDeliveryDigestEmails, apiKeyGeneratedEmails, apiKeyRevokedEmails, loginAlertEmails, reportScheduleChangedEmails, settlementStateChangedEmails, ekqrSyncAlertEmails, ekqrCapAlertEmails, planChangeEmails, reconciliationAlertNotifs, planExpiryAlertNotifs, settlementStateNotifs, signatureFailureAlertNotifs, webhookFailureNotifs, ekqrSyncAlertNotifs, ekqrCapAlertNotifs, reportFailureAlertNotifs, weeklyDeliveryDigestNotifs, apiKeyGeneratedNotifs, apiKeyRevokedNotifs, loginAlertNotifs, reportScheduleChangedNotifs, settlementStateChangedNotifs, planChangeNotifs, quietHoursStart, quietHoursEnd, quietHoursTimezone, notificationSoundEnabled, notificationVibrationEnabled } = req.body;
+    const { reconciliationAlertEmails, planExpiryAlertEmails, settlementStateEmails, signatureFailureAlertEmails, webhookFailureEmails, reportFailureAlertEmails, githubSyncFailureAlertEmails, enrollmentCredentialSubmittedEmails, weeklyDeliveryDigestEmails, apiKeyGeneratedEmails, apiKeyRevokedEmails, loginAlertEmails, reportScheduleChangedEmails, settlementStateChangedEmails, ekqrSyncAlertEmails, ekqrCapAlertEmails, planChangeEmails, reconciliationAlertNotifs, planExpiryAlertNotifs, settlementStateNotifs, signatureFailureAlertNotifs, webhookFailureNotifs, ekqrSyncAlertNotifs, ekqrCapAlertNotifs, reportFailureAlertNotifs, weeklyDeliveryDigestNotifs, apiKeyGeneratedNotifs, apiKeyRevokedNotifs, loginAlertNotifs, reportScheduleChangedNotifs, settlementStateChangedNotifs, planChangeNotifs, quietHoursStart, quietHoursEnd, quietHoursTimezone, notificationSoundEnabled, notificationVibrationEnabled } = req.body;
 
     const patch: Record<string, boolean | Date | string | null | Record<string, string>> = {};
 
@@ -937,6 +943,14 @@ router.put("/preferences", requireAuth, prefChangeLimiter, async (req, res, next
         return;
       }
       patch["githubSyncFailureAlertEmails"] = githubSyncFailureAlertEmails;
+    }
+
+    if (enrollmentCredentialSubmittedEmails !== undefined) {
+      if (typeof enrollmentCredentialSubmittedEmails !== "boolean") {
+        res.status(400).json({ error: "enrollmentCredentialSubmittedEmails must be a boolean" });
+        return;
+      }
+      patch["enrollmentCredentialSubmittedEmails"] = enrollmentCredentialSubmittedEmails;
     }
 
     if (weeklyDeliveryDigestEmails !== undefined) {
@@ -1099,6 +1113,7 @@ router.put("/preferences", requireAuth, prefChangeLimiter, async (req, res, next
       "webhookFailureEmails",
       "reportFailureAlertEmails",
       "githubSyncFailureAlertEmails",
+      "enrollmentCredentialSubmittedEmails",
       "weeklyDeliveryDigestEmails",
       "apiKeyGeneratedEmails",
       "apiKeyRevokedEmails",
@@ -1134,6 +1149,7 @@ router.put("/preferences", requireAuth, prefChangeLimiter, async (req, res, next
         webhookFailureEmails: usersTable.webhookFailureEmails,
         reportFailureAlertEmails: usersTable.reportFailureAlertEmails,
         githubSyncFailureAlertEmails: usersTable.githubSyncFailureAlertEmails,
+        enrollmentCredentialSubmittedEmails: usersTable.enrollmentCredentialSubmittedEmails,
         weeklyDeliveryDigestEmails: usersTable.weeklyDeliveryDigestEmails,
         apiKeyGeneratedEmails: usersTable.apiKeyGeneratedEmails,
         apiKeyRevokedEmails: usersTable.apiKeyRevokedEmails,
@@ -1555,6 +1571,7 @@ router.post("/logout", (_req, res) => {
 
 const SAFE_OTP_REQUEST_MESSAGE = "If this account is registered, an OTP has been sent.";
 const SAFE_PASSWORD_RESET_MESSAGE = "If this account is registered, password reset instructions have been sent.";
+const OTP_DELIVERY_FAILURE_MESSAGE = "We couldn't send a new code right now. Please try again.";
 
 const otpRequestLimiter = makeRateLimiter({
   windowMs: 15 * 60 * 1000,
@@ -1731,6 +1748,160 @@ async function findMerchantUserByIdentifier(identifier: string): Promise<{ id: n
   return user ?? null;
 }
 
+function normalizeMerchantLoginIdentifier(identifier: string): string {
+  const normalized = normalizeIdentifier(identifier);
+  if (isEmailIdentifier(normalized)) return normalized;
+  const digits = normalized.replace(/\D/g, "");
+  return digits.length === 12 && digits.startsWith("91") ? digits.slice(2) : digits;
+}
+
+type MerchantLoginOtpResult = "sent" | "cooldown" | "locked" | "missing" | "failed";
+
+class OtpDeliveryError extends Error {
+  constructor() {
+    super("OTP delivery failed");
+    this.name = "OtpDeliveryError";
+  }
+}
+
+async function sendMerchantLoginOtpDelivery(
+  req: import("express").Request,
+  identifier: string,
+  otp: string,
+  user: { merchantId: number | null; email: string },
+): Promise<boolean> {
+  try {
+    if (!isEmailIdentifier(identifier)) {
+      const smsResult = await sendOtpSms({
+        mobile: normalizeMerchantLoginIdentifier(identifier),
+        otp,
+        purpose: "LOGIN",
+        merchantId: user.merchantId,
+      });
+      req.log.info(
+        { purpose: "LOGIN", smsSent: smsResult.sent, provider: smsResult.provider, fallback: smsResult.fallbackUsed },
+        "merchant_otp_sent",
+      );
+      return smsResult.sent;
+    }
+
+    const sent = await sendMerchantOtpEmail({ to: user.email, otp, purpose: "LOGIN" });
+    req.log.info({ purpose: "LOGIN", sent }, "merchant_otp_sent");
+    return sent;
+  } catch (err) {
+    req.log.warn({ err, purpose: "LOGIN" }, "merchant_otp_delivery_error");
+    return false;
+  }
+}
+
+/**
+ * Creates a merchant LOGIN challenge while holding a transaction-scoped
+ * advisory lock for the identifier. The row is only committed when delivery
+ * succeeds, so provider failures cannot consume a resend allowance.
+ */
+async function createMerchantLoginOtp(opts: {
+  req: import("express").Request;
+  identifier: string;
+  user: { id: number; email: string; merchantId: number | null };
+  mode: "initial" | "resend";
+}): Promise<MerchantLoginOtpResult> {
+  const { req, identifier, user, mode } = opts;
+  const canonicalIdentifier = normalizeMerchantLoginIdentifier(identifier);
+  const identifierHash = hashIdentifier(canonicalIdentifier);
+  const ipHash = hashIp(requestIp(req));
+
+  try {
+    return await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${identifierHash}))`);
+
+      const [latest] = await tx
+        .select({
+          id: merchantAuthOtpsTable.id,
+          createdAt: merchantAuthOtpsTable.createdAt,
+          consumedAt: merchantAuthOtpsTable.consumedAt,
+          resendCount: merchantAuthOtpsTable.resendCount,
+        })
+        .from(merchantAuthOtpsTable)
+        .where(and(
+          eq(merchantAuthOtpsTable.identifierHash, identifierHash),
+          eq(merchantAuthOtpsTable.purpose, "LOGIN"),
+        ))
+        .orderBy(desc(merchantAuthOtpsTable.createdAt))
+        .limit(1);
+
+      const ageMs = latest ? Date.now() - latest.createdAt.getTime() : Number.POSITIVE_INFINITY;
+
+      if (mode === "initial") {
+        // Repeated form submits and browser retries are idempotent during the
+        // cooldown. Once resending has started, the request endpoint cannot
+        // bypass the resend cap by resetting the counter.
+        if (latest && ageMs < OTP_RESEND_COOLDOWN_MS) {
+          return "cooldown";
+        }
+        if (latest && latest.resendCount > 0 && ageMs < MERCHANT_LOGIN_RESEND_LOCK_MS) {
+          return latest.resendCount >= MERCHANT_LOGIN_MAX_RESENDS ? "locked" : "cooldown";
+        }
+      } else {
+        if (!latest || latest.consumedAt) return "missing";
+        if (ageMs < OTP_RESEND_COOLDOWN_MS) return "cooldown";
+        if (latest.resendCount >= MERCHANT_LOGIN_MAX_RESENDS) return "locked";
+      }
+
+      const otp = generateOtp();
+      const otpHash = await hashOtp(otp);
+      const resendCount = mode === "resend" ? (latest?.resendCount ?? 0) + 1 : 0;
+
+      // Invalidate every previous challenge before inserting the new one.
+      // The surrounding transaction restores the previous state if delivery
+      // fails.
+      await tx.update(merchantAuthOtpsTable)
+        .set({ consumedAt: new Date() })
+        .where(and(
+          eq(merchantAuthOtpsTable.identifierHash, identifierHash),
+          eq(merchantAuthOtpsTable.purpose, "LOGIN"),
+        ));
+
+      await tx.insert(merchantAuthOtpsTable).values({
+        merchantId: user.merchantId,
+        identifierHash,
+        otpHash,
+        purpose: "LOGIN",
+        expiresAt: new Date(Date.now() + MERCHANT_LOGIN_OTP_EXPIRY_MS),
+        attempts: 0,
+        resendCount,
+        ipHash,
+      });
+
+      if (!await sendMerchantLoginOtpDelivery(req, canonicalIdentifier, otp, user)) {
+        throw new OtpDeliveryError();
+      }
+
+      // This is a dev-only test hook and is deliberately called only after
+      // the provider has accepted the message.
+      captureDevOtp(identifierHash, "LOGIN", otp);
+      req.log.info({ purpose: "LOGIN", mode }, "merchant_otp_requested");
+      return "sent";
+    });
+  } catch (err) {
+    if (err instanceof OtpDeliveryError) return "failed";
+    throw err;
+  }
+}
+
+async function cancelMerchantLoginOtp(identifier: string): Promise<void> {
+  const identifierHash = hashIdentifier(normalizeMerchantLoginIdentifier(identifier));
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${identifierHash}))`);
+    await tx.update(merchantAuthOtpsTable)
+      .set({ consumedAt: new Date() })
+      .where(and(
+        eq(merchantAuthOtpsTable.identifierHash, identifierHash),
+        eq(merchantAuthOtpsTable.purpose, "LOGIN"),
+        isNull(merchantAuthOtpsTable.consumedAt),
+      ));
+  });
+}
+
 async function createAndSendOtp(opts: {
   req: import("express").Request;
   identifier: string;
@@ -1762,7 +1933,7 @@ async function createAndSendOtp(opts: {
   const otpHash = await hashOtp(otp);
   const resendCount = existing ? existing.resendCount + 1 : 0;
 
-  await db.insert(merchantAuthOtpsTable).values({
+  const [createdOtp] = await db.insert(merchantAuthOtpsTable).values({
     merchantId: user.merchantId,
     identifierHash,
     otpHash,
@@ -1771,7 +1942,7 @@ async function createAndSendOtp(opts: {
     attempts: 0,
     resendCount,
     ipHash,
-  });
+  }).returning({ id: merchantAuthOtpsTable.id });
 
   req.log.info({ purpose, hasUser: true }, "merchant_otp_requested");
 
@@ -1789,6 +1960,35 @@ async function createAndSendOtp(opts: {
       req.log.info({ purpose, smsSent: smsResult.sent, provider: smsResult.provider, fallback: smsResult.fallbackUsed }, "merchant_otp_sent");
     }).catch((err: unknown) => {
       req.log.warn({ err, purpose }, "merchant_otp_sms_error");
+    });
+  } else if (purpose === "PASSWORD_RESET") {
+    sendMerchantOtpEmailWithResult({ to: user.email, otp, purpose }).then(async result => {
+      await recordPasswordResetEmailDelivery({
+        to: user.email,
+        provider: result.provider,
+        status: result.sent ? "accepted" : "failed",
+        providerMessageId: result.providerMessageId,
+        errorReason: result.errorReason,
+        otpId: createdOtp.id,
+        userId: user.id,
+      }).catch((err: unknown) => {
+        req.log.warn({ err, purpose }, "password_reset_email_delivery_log_failed");
+      });
+      if (!result.sent) {
+        await db
+          .update(merchantAuthOtpsTable)
+          .set({ consumedAt: new Date() })
+          .where(and(
+            eq(merchantAuthOtpsTable.id, createdOtp.id),
+            isNull(merchantAuthOtpsTable.consumedAt),
+          ))
+          .catch((err: unknown) => {
+            req.log.warn({ err, purpose }, "password_reset_otp_invalidate_failed");
+          });
+      }
+      req.log.info({ purpose, sent: result.sent, provider: result.provider }, "merchant_otp_sent");
+    }).catch((err: unknown) => {
+      req.log.warn({ err, purpose }, "merchant_otp_send_error");
     });
   } else {
     sendMerchantOtpEmail({ to: user.email, otp, purpose }).then(sent => {
@@ -1824,23 +2024,25 @@ router.post("/merchant/otp/resend", otpResendLimiter, otpResendPerIdentifierLimi
       res.json({ message: SAFE_OTP_REQUEST_MESSAGE });
       return;
     }
-    const settings = await loadOtpSmsSettings();
-    const maxResend = settings?.maxResendCount ?? 3;
-    const identifierHash = hashIdentifier(normalizeIdentifier(identifier));
-    const [existing] = await db
-      .select({ id: merchantAuthOtpsTable.id, resendCount: merchantAuthOtpsTable.resendCount })
-      .from(merchantAuthOtpsTable)
-      .where(and(
-        eq(merchantAuthOtpsTable.identifierHash, identifierHash),
-        eq(merchantAuthOtpsTable.purpose, "LOGIN"),
-      ))
-      .orderBy(desc(merchantAuthOtpsTable.createdAt))
-      .limit(1);
-    if (existing && existing.resendCount >= maxResend) {
+    const result = await createMerchantLoginOtp({ req, identifier, user, mode: "resend" });
+    if (result === "locked") {
       res.status(429).json({ error: "Maximum resend limit reached. Please start a new login." });
       return;
     }
-    await createAndSendOtp({ req, identifier, purpose: "LOGIN", user });
+    if (result === "cooldown") {
+      res.status(429).json({ error: "Please wait before requesting another code." });
+      return;
+    }
+    if (result === "missing") {
+      await padToMinResponseTime(_tOtpStart);
+      res.json({ message: SAFE_OTP_REQUEST_MESSAGE });
+      return;
+    }
+    if (result === "failed") {
+      await padToMinResponseTime(_tOtpStart);
+      res.status(503).json({ error: OTP_DELIVERY_FAILURE_MESSAGE });
+      return;
+    }
     await padToMinResponseTime(_tOtpStart);
     res.json({ message: "A new code has been sent." });
   } catch (err) {
@@ -1877,8 +2079,27 @@ router.post("/merchant/otp/request", otpRequestLimiter, otpRequestPerIdentifierL
       res.json({ message: SAFE_OTP_REQUEST_MESSAGE });
       return;
     }
-    await createAndSendOtp({ req, identifier, purpose: "LOGIN", user });
+    const result = await createMerchantLoginOtp({ req, identifier, user, mode: "initial" });
+    if (result === "failed") {
+      // Keep this branch opaque: callers must not be able to distinguish a
+      // real account whose provider failed from an unknown identifier.
+      req.log.warn({ purpose: "LOGIN" }, "merchant_otp_delivery_failed");
+    }
     await padToMinResponseTime(_tOtpStart);
+    res.json({ message: SAFE_OTP_REQUEST_MESSAGE });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/auth/merchant/otp/cancel — cancel a login challenge when the
+// visitor changes identifiers. The response is intentionally always opaque.
+router.post("/merchant/otp/cancel", async (req, res, next) => {
+  try {
+    const { identifier } = req.body as { identifier?: string };
+    if (typeof identifier === "string" && identifier.trim()) {
+      await cancelMerchantLoginOtp(identifier);
+    }
     res.json({ message: SAFE_OTP_REQUEST_MESSAGE });
   } catch (err) {
     next(err);
@@ -1901,38 +2122,56 @@ router.post("/merchant/otp/verify", otpVerifyLimiter, async (req, res, next) => 
       return;
     }
 
-    const identifierHash = hashIdentifier(identifier);
-    const [otpRow] = await db
-      .select()
-      .from(merchantAuthOtpsTable)
-      .where(and(
-        eq(merchantAuthOtpsTable.identifierHash, identifierHash),
-        eq(merchantAuthOtpsTable.purpose, "LOGIN"),
-      ))
-      .orderBy(desc(merchantAuthOtpsTable.createdAt))
-      .limit(1);
+    const identifierHash = hashIdentifier(normalizeMerchantLoginIdentifier(identifier));
+    const verification = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${identifierHash}))`);
+      const [otpRow] = await tx
+        .select()
+        .from(merchantAuthOtpsTable)
+        .where(and(
+          eq(merchantAuthOtpsTable.identifierHash, identifierHash),
+          eq(merchantAuthOtpsTable.purpose, "LOGIN"),
+        ))
+        .orderBy(desc(merchantAuthOtpsTable.createdAt))
+        .limit(1);
 
-    if (!otpRow || otpRow.consumedAt || otpRow.expiresAt.getTime() < Date.now()) {
-      req.log.warn({ userId: user.id, purpose: "LOGIN", reason: "no_active_otp" }, "merchant_otp_failed");
-      res.status(400).json({ error: "Invalid or expired code. Please request a new one." });
-      return;
-    }
+      if (!otpRow || otpRow.consumedAt || otpRow.expiresAt.getTime() < Date.now()) {
+        return "invalid" as const;
+      }
+      if (otpRow.attempts >= OTP_MAX_ATTEMPTS) {
+        return "locked" as const;
+      }
 
-    if (otpRow.attempts >= OTP_MAX_ATTEMPTS) {
+      const valid = await verifyOtpHash(otp, otpRow.otpHash);
+      if (!valid) {
+        await tx.update(merchantAuthOtpsTable)
+          .set({ attempts: sql`${merchantAuthOtpsTable.attempts} + 1` })
+          .where(and(
+            eq(merchantAuthOtpsTable.id, otpRow.id),
+            isNull(merchantAuthOtpsTable.consumedAt),
+          ));
+        return "invalid" as const;
+      }
+
+      await tx.update(merchantAuthOtpsTable)
+        .set({ consumedAt: new Date() })
+        .where(and(
+          eq(merchantAuthOtpsTable.id, otpRow.id),
+          isNull(merchantAuthOtpsTable.consumedAt),
+        ));
+      return "valid" as const;
+    });
+
+    if (verification === "locked") {
       req.log.warn({ userId: user.id, purpose: "LOGIN" }, "merchant_otp_rate_limited");
       res.status(429).json({ error: "Too many attempts. Please request a new code." });
       return;
     }
-
-    const valid = await verifyOtpHash(otp, otpRow.otpHash);
-    if (!valid) {
-      await db.update(merchantAuthOtpsTable).set({ attempts: otpRow.attempts + 1 }).where(eq(merchantAuthOtpsTable.id, otpRow.id));
-      req.log.warn({ userId: user.id, purpose: "LOGIN", reason: "mismatch" }, "merchant_otp_failed");
+    if (verification !== "valid") {
+      req.log.warn({ userId: user.id, purpose: "LOGIN", reason: "invalid_or_expired" }, "merchant_otp_failed");
       res.status(400).json({ error: "Invalid or expired code. Please request a new one." });
       return;
     }
-
-    await db.update(merchantAuthOtpsTable).set({ consumedAt: new Date() }).where(eq(merchantAuthOtpsTable.id, otpRow.id));
 
     const [fullUser] = await db.select().from(usersTable).where(eq(usersTable.id, user.id)).limit(1);
     if (!fullUser || !fullUser.isActive) {
@@ -2799,25 +3038,65 @@ router.post("/admin/password/forgot", adminPasswordForgotLimiter, adminPasswordF
     const otpHash = await hashOtp(otp);
     const resendCount = existing ? existing.resendCount + 1 : 0;
 
-    await db.insert(merchantAuthOtpsTable).values({
-      merchantId: null,
-      identifierHash,
-      otpHash,
-      purpose: "ADMIN_PASSWORD_RESET",
-      expiresAt: new Date(Date.now() + OTP_EXPIRY_MS),
-      attempts: 0,
-      resendCount,
-      ipHash,
-    });
+    const [createdOtp] = await db
+      .insert(merchantAuthOtpsTable)
+      .values({
+        merchantId: null,
+        identifierHash,
+        otpHash,
+        purpose: "ADMIN_PASSWORD_RESET",
+        expiresAt: new Date(Date.now() + OTP_EXPIRY_MS),
+        attempts: 0,
+        resendCount,
+        ipHash,
+      })
+      .returning({ id: merchantAuthOtpsTable.id });
 
     req.log.info({ purpose: "ADMIN_PASSWORD_RESET", userId: adminUser.id }, "admin_pwd_reset_otp_created");
 
-    // Fire-and-forget: decouple email delivery latency from response time.
-    sendMerchantOtpEmail({ to: normalizedEmail, otp, purpose: "ADMIN_PASSWORD_RESET" }).then(sent => {
-      req.log.info({ purpose: "ADMIN_PASSWORD_RESET", sent }, "admin_pwd_reset_otp_sent");
+    // Wait for the provider result so the request log captures the complete
+    // delivery attempt. Keep the public response opaque to avoid revealing
+    // whether an admin account exists.
+    const delivery = await sendMerchantOtpEmailWithResult({
+      to: normalizedEmail,
+      otp,
+      purpose: "ADMIN_PASSWORD_RESET",
     }).catch((err: unknown) => {
       req.log.warn({ err, purpose: "ADMIN_PASSWORD_RESET" }, "admin_pwd_reset_email_error");
+      return {
+        sent: false,
+        provider: "msg91+smtp" as const,
+        providerMessageId: null,
+        errorReason: "Unexpected email dispatch error",
+      };
     });
+
+    await recordPasswordResetEmailDelivery({
+      to: normalizedEmail,
+      provider: delivery.provider,
+      status: delivery.sent ? "accepted" : "failed",
+      providerMessageId: delivery.providerMessageId,
+      errorReason: delivery.errorReason,
+      otpId: createdOtp.id,
+      userId: adminUser.id,
+    }).catch((err: unknown) => {
+      req.log.warn({ err, purpose: "ADMIN_PASSWORD_RESET" }, "password_reset_email_delivery_log_failed");
+    });
+
+    req.log.info({ purpose: "ADMIN_PASSWORD_RESET", sent: delivery.sent, provider: delivery.provider }, "admin_pwd_reset_otp_sent");
+
+    if (!delivery.sent) {
+      // An undelivered code must never remain usable. Mark only the row created
+      // by this request as consumed while preserving the opaque public response.
+      await db
+        .update(merchantAuthOtpsTable)
+        .set({ consumedAt: new Date() })
+        .where(and(
+          eq(merchantAuthOtpsTable.id, createdOtp.id),
+          isNull(merchantAuthOtpsTable.consumedAt),
+        ));
+      req.log.warn({ purpose: "ADMIN_PASSWORD_RESET", userId: adminUser.id }, "admin_pwd_reset_otp_invalidated_after_delivery_failure");
+    }
 
     await padToMinResponseTime(_tOtpStart);
     res.json({ message: SAFE_ADMIN_PASSWORD_RESET_MESSAGE });
@@ -2898,5 +3177,141 @@ router.post("/admin/password/reset", adminPasswordResetLimiter, async (req, res,
     next(err);
   }
 });
+
+// ─── Admin self-service password change ──────────────────────────────────────
+// POST /api/auth/admin/change-password
+// Allows any authenticated admin (or super-admin) to change their OWN password.
+// Never accepts a target user ID — always operates on req.user.id only.
+
+const adminPasswordChangeLimiter = makeRateLimiter({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5,
+  store: new DbRateLimitStore(),
+  message: { error: "Too many password change attempts. Please try again later." },
+  keyGenerator: (req) => {
+    // Key by authenticated user ID when available, fall back to IP.
+    const userId = (req as any).user?.id;
+    return userId != null
+      ? `admin-pw-change:${userId}`
+      : `admin-pw-change-ip:${safeIpKey(req)}`;
+  },
+});
+
+router.post(
+  "/admin/change-password",
+  requireAuth,
+  requireAdmin,
+  adminPasswordChangeLimiter,
+  async (req, res, next) => {
+    try {
+      const { currentPassword, newPassword, confirmPassword } = req.body ?? {};
+
+      // ── 1. Input presence ───────────────────────────────────────────────
+      if (
+        typeof currentPassword !== "string" ||
+        typeof newPassword !== "string" ||
+        typeof confirmPassword !== "string" ||
+        !currentPassword || !newPassword || !confirmPassword
+      ) {
+        res.status(400).json({ error: "All fields are required." });
+        return;
+      }
+
+      // ── 2. New == Confirm ───────────────────────────────────────────────
+      if (newPassword !== confirmPassword) {
+        res.status(400).json({ error: "New password and confirmation do not match." });
+        return;
+      }
+
+      // ── 3. Strength — admin rules are stricter than the shared helper ────
+      // (min-10, uppercase, lowercase, number, special char)
+      // We enforce these inline rather than modifying the shared helper so
+      // that merchant / OTP-reset flows are not affected.
+      const ADMIN_PW_RULES: { re: RegExp; msg: string }[] = [
+        { re: /.{10,}/, msg: "Password must be at least 10 characters." },
+        { re: /[A-Z]/, msg: "Password must contain at least one uppercase letter." },
+        { re: /[a-z]/, msg: "Password must contain at least one lowercase letter." },
+        { re: /[0-9]/, msg: "Password must contain at least one number." },
+        { re: /[^A-Za-z0-9]/, msg: "Password must contain at least one special character." },
+      ];
+      for (const rule of ADMIN_PW_RULES) {
+        if (!rule.re.test(newPassword)) {
+          res.status(400).json({ error: rule.msg });
+          return;
+        }
+      }
+
+      // ── 4. Fetch own record (never a caller-supplied target ID) ──────────
+      const reqUser = (req as any).user;
+      const selfId: number = reqUser?.id;
+      const [selfUser] = await db
+        .select({
+          id: usersTable.id,
+          email: usersTable.email,
+          passwordHash: usersTable.passwordHash,
+          isActive: usersTable.isActive,
+        })
+        .from(usersTable)
+        .where(eq(usersTable.id, selfId))
+        .limit(1);
+
+      if (!selfUser || !selfUser.isActive || !selfUser.passwordHash) {
+        // Generic — do not reveal why
+        res.status(401).json({ error: "Authentication failed. Please sign in again." });
+        return;
+      }
+
+      // ── 5. Verify current password ───────────────────────────────────────
+      const currentMatches = await bcrypt.compare(currentPassword, selfUser.passwordHash);
+      if (!currentMatches) {
+        req.log.warn({ userId: selfId }, "admin_pw_change_wrong_current");
+        res.status(401).json({ error: "Current password is incorrect." });
+        return;
+      }
+
+      // ── 6. New must differ from current ─────────────────────────────────
+      const sameAsCurrent = await bcrypt.compare(newPassword, selfUser.passwordHash);
+      if (sameAsCurrent) {
+        res.status(400).json({ error: "New password must differ from your current password." });
+        return;
+      }
+
+      // ── 7. Hash and persist ──────────────────────────────────────────────
+      const newHash = await bcrypt.hash(newPassword, 10);
+      const changedAt = new Date();
+      await db
+        .update(usersTable)
+        .set({ passwordHash: newHash, passwordUpdatedAt: changedAt })
+        .where(eq(usersTable.id, selfId));
+
+      // ── 8. Audit log (no password / hash values stored) ─────────────────
+      try {
+        await db.insert(auditLogsTable).values({
+          adminId: selfId,
+          adminEmail: selfUser.email,
+          action: "admin.password_changed",
+          targetType: "user",
+          targetId: selfId,
+          details: JSON.stringify({ reason: "self_service" }),
+          ipAddress: req.ip ?? null,
+        });
+      } catch (auditErr) {
+        // Audit failure must never block the password change itself
+        req.log.error({ err: auditErr, userId: selfId }, "admin_pw_change_audit_log_failed");
+      }
+
+      req.log.info({ userId: selfId }, "admin_pw_change_ok");
+
+      // ── 9. Success — existing JWTs are now invalidated by passwordUpdatedAt
+      res.json({
+        success: true,
+        message:
+          "Password changed. Your previous sessions have been invalidated — please sign in again.",
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
 
 export default router;

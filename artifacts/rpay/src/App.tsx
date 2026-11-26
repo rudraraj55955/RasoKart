@@ -16,6 +16,7 @@ import { PageErrorBoundary } from "@/components/error-boundary";
 import { Spinner } from "@/components/ui/spinner";
 import { UserRole } from "@workspace/api-client-react";
 import { useNoIndexSync } from "@/lib/use-no-index";
+import { CANONICAL_LOGIN_ROUTE, LEGACY_MERCHANT_REDIRECTS } from "@/lib/merchant-route-redirects";
 import NotFound from "@/pages/not-found";
 import PayoutSlipPublic from "@/pages/payout-slip-public";
 import PayoutVerifyPublic from "@/pages/payout-verify-public";
@@ -112,6 +113,8 @@ import AdminUserRoles from "@/pages/admin/user-roles";
 import AdminFeatureControl from "@/pages/admin/feature-control";
 import AdminAccountDetails from "@/pages/admin/account-details";
 import AdminQrProviders from "@/pages/admin/qr-providers";
+import AdminMerchantConnect from "@/pages/admin/merchant-connect";
+import AdminMerchantEnrollments from "@/pages/admin/merchant-enrollments";
 import AdminProviders from "@/pages/admin/providers";
 import AdminVisibilityRules from "@/pages/admin/visibility-rules";
 import AdminMerchantAccess from "@/pages/admin/merchant-access";
@@ -120,8 +123,10 @@ import AdminReconciliation from "@/pages/admin/reconciliation";
 import AdminPaymentLinks from "@/pages/admin/payment-links";
 import AdminSettings from "@/pages/admin/settings";
 import AdminCompanyBranding from "@/pages/admin/company-branding";
+import AdminWhiteLabels from "@/pages/admin/white-labels";
 import AdminOtpSettings from "@/pages/admin/otp-settings";
 import AdminOtpEmailSettings from "@/pages/admin/otp-email-settings";
+import AdminEmailDelivery from "@/pages/admin/email-delivery";
 import AdminSocialProviders from "@/pages/admin/social-providers";
 import AdminDataHygiene from "@/pages/admin/data-hygiene";
 import AdminSecureIdSettings from "@/pages/admin/secure-id-settings";
@@ -151,6 +156,7 @@ import AdminRazorpayWebhookLogs from "@/pages/admin/razorpay-webhook-logs";
 import AdminRazorpayCapabilities from "@/pages/admin/razorpay-capabilities";
 import AdminRazorpayAnalytics from "@/pages/admin/razorpay-analytics";
 import AdminRazorpayRefunds from "@/pages/admin/razorpay-refunds";
+import AdminCashfreePayinRecon from "@/pages/admin/cashfree-payin-recon";
 import PayPage from "@/pages/pay";
 import QrPayPage from "@/pages/qr-pay";
 import VaPayPage from "@/pages/va-pay";
@@ -217,8 +223,14 @@ function extractApiError(error: unknown): string | null {
 const queryClient = new QueryClient({
   mutationCache: new MutationCache({
     onError(error, _variables, _context, mutation) {
-      // Skip if the mutation has a specific onError handler
+      // Skip if the useMutation() call has a specific onError handler.
       if (mutation.options.onError) return;
+      // Skip if the hook call explicitly opted out of the global toast.
+      // Use `mutation.meta.suppressGlobalError = true` at useMutation() level
+      // to suppress for mutations that pass onError to mutate() instead.
+      // (React Query v5 stores per-call callbacks on private #observers so they
+      // cannot be inspected here; meta is the clean opt-out mechanism.)
+      if ((mutation.meta as Record<string, unknown> | undefined)?.suppressGlobalError) return;
       const msg = extractApiError(error);
       toast.error(msg ?? "An error occurred. Please try again.");
     },
@@ -450,6 +462,8 @@ function DocsSubdomainRedirect() {
   return null;
 }
 
+const RedirectToPayouts = () => <Redirect to={LEGACY_MERCHANT_REDIRECTS["/merchant/withdrawals"]} />;
+
 function Router() {
   useNoIndexSync();
   return (
@@ -479,6 +493,7 @@ function Router() {
       <Route path="/merchant/suspended" component={MerchantSuspended} />
 
       {/* Login aliases — smart: redirect if already authenticated for that role */}
+      <Route path="/login"><Redirect to={CANONICAL_LOGIN_ROUTE} /></Route>
       <Route path="/admin/login" component={SmartAdminLogin} />
       <Route path="/merchant/login" component={SmartMerchantLogin} />
       <Route path="/payout-admin/login" component={PayoutAdminLogin} />
@@ -527,16 +542,21 @@ function Router() {
       <Route path="/admin/feature-control"><AdminRoute component={AdminFeatureControl} /></Route>
       <Route path="/admin/account-details"><AdminRoute component={AdminAccountDetails} /></Route>
       <Route path="/admin/qr-providers"><AdminRoute component={AdminQrProviders} /></Route>
+      <Route path="/admin/merchant-connect"><AdminRoute component={AdminMerchantConnect} /></Route>
+      <Route path="/admin/merchant-enrollments"><AdminRoute component={AdminMerchantEnrollments} /></Route>
       <Route path="/admin/providers"><AdminRoute component={AdminProviders} /></Route>
       <Route path="/admin/visibility-rules"><AdminRoute component={AdminVisibilityRules} /></Route>
       <Route path="/admin/merchant-access"><AdminRoute component={AdminMerchantAccess} /></Route>
       <Route path="/admin/ledger"><AdminRoute component={AdminLedger} /></Route>
       <Route path="/admin/reconciliation"><AdminRoute component={AdminReconciliation} /></Route>
+      <Route path="/admin/cashfree-payin-recon"><AdminRoute component={AdminCashfreePayinRecon} /></Route>
       <Route path="/admin/payment-links"><AdminRoute component={AdminPaymentLinks} /></Route>
       <Route path="/admin/settings"><AdminRoute component={AdminSettings} /></Route>
       <Route path="/admin/company-branding"><AdminRoute component={AdminCompanyBranding} /></Route>
+      <Route path="/admin/white-labels"><AdminRoute component={AdminWhiteLabels} /></Route>
       <Route path="/admin/otp-settings"><AdminRoute component={AdminOtpSettings} /></Route>
       <Route path="/admin/otp-email-settings"><AdminRoute component={AdminOtpEmailSettings} /></Route>
+      <Route path="/admin/email-delivery"><AdminRoute component={AdminEmailDelivery} /></Route>
       <Route path="/admin/social-providers"><AdminRoute component={AdminSocialProviders} /></Route>
       <Route path="/admin/data-hygiene"><AdminRoute component={AdminDataHygiene} /></Route>
       <Route path="/admin/secure-id-settings"><AdminRoute component={AdminSecureIdSettings} /></Route>
@@ -581,7 +601,7 @@ function Router() {
       {/* Merchant Routes */}
       <Route path="/merchant/dashboard"><MerchantRoute component={MerchantDashboard} /></Route>
       <Route path="/merchant/transactions"><MerchantRoute component={MerchantTransactions} /></Route>
-      <Route path="/merchant/withdrawals"><Redirect to="/merchant/payouts" /></Route>
+      <Route path="/merchant/withdrawals"><MerchantRoute component={RedirectToPayouts} /></Route>
       <Route path="/merchant/payouts"><MerchantRoute component={MerchantPayouts} /></Route>
       <Route path="/merchant/api-keys"><MerchantRoute component={MerchantApiKeys} /></Route>
       <Route path="/merchant/webhook"><MerchantRoute component={MerchantWebhook} /></Route>

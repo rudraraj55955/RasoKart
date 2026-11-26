@@ -1,0 +1,459 @@
+/**
+ * Integration coverage for submit-step recovery after a browser runtime failure.
+ *
+ * This exercises the authenticated HTTP route, not just the lease SQL:
+ *   1. reserve an OTP attempt through submit-step;
+ *   2. inject a BrowserRuntimeUnavailableError from the registered adapter;
+ *   3. verify the sanitized 503 and restored lease/lifecycle state;
+ *   4. submit again and verify the session can be reserved again.
+ *
+ * Password and MPIN sessions follow the same recovery contract and are covered
+ * below with their own sessions so the lifecycle assertions remain independent.
+ */
+import { after, before, describe, it } from "node:test";
+import assert from "node:assert/strict";
+import http from "node:http";
+import { and, eq } from "drizzle-orm";
+import {
+  db,
+  merchantPortalSessionsTable,
+  merchantsTable,
+  usersTable,
+} from "@workspace/db";
+import app from "../app";
+import { generateToken } from "../middlewares/auth";
+import { getAdapter } from "../helpers/connectorEngine/adapters/registry";
+import { BrowserRuntimeUnavailableError } from "../helpers/connectorEngine/browserPool";
+
+type HttpResult = {
+  status: number;
+  body: Record<string, unknown>;
+};
+
+function post(
+  server: http.Server,
+  path: string,
+  token: string,
+  body: Record<string, unknown>,
+): Promise<HttpResult> {
+  const address = server.address() as { port: number };
+  const payload = JSON.stringify(body);
+
+  return new Promise((resolve, reject) => {
+    const request = http.request(
+      {
+        hostname: "127.0.0.1",
+        port: address.port,
+        path,
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(payload),
+        },
+      },
+      (response) => {
+        let raw = "";
+        response.on("data", (chunk: Buffer) => { raw += chunk.toString(); });
+        response.on("end", () => {
+          try {
+            resolve({ status: response.statusCode!, body: JSON.parse(raw) });
+          } catch {
+            resolve({ status: response.statusCode!, body: { _raw: raw } });
+          }
+        });
+      },
+    );
+    request.on("error", reject);
+    request.end(payload);
+  });
+}
+
+describe("merchant portal submit-step browser failure recovery (real DB)", () => {
+  let server: http.Server;
+  let merchantId: number;
+  let passwordMerchantId: number;
+  let mpinMerchantId: number;
+  let userId: number;
+  let passwordUserId: number;
+  let mpinUserId: number;
+  let sessionId: number;
+  let passwordSessionId: number;
+  let mpinSessionId: number;
+  let token: string;
+  let passwordToken: string;
+  let mpinToken: string;
+  const providerSlug = "pinelabs_one";
+  const email = `portal-browser-failure-${Date.now()}@example.invalid`;
+  const passwordEmail = `portal-browser-failure-password-${Date.now()}@example.invalid`;
+  const mpinEmail = `portal-browser-failure-mpin-${Date.now()}@example.invalid`;
+  const adapter = getAdapter(providerSlug);
+
+  before(async () => {
+    assert.ok(adapter, "Pine Labs adapter must be registered");
+
+    const [merchant] = await db.insert(merchantsTable).values({
+      businessName: "Browser failure recovery test",
+      contactName: "Browser Failure Test",
+      email,
+      phone: "9999999999",
+      status: "active",
+    }).returning({ id: merchantsTable.id });
+    merchantId = merchant.id;
+
+    const [user] = await db.insert(usersTable).values({
+      email,
+      name: "Browser Failure Test",
+      role: "merchant",
+      merchantId,
+    }).returning({ id: usersTable.id });
+    userId = user.id;
+    token = generateToken({ userId, role: "merchant" });
+
+    const [session] = await db.insert(merchantPortalSessionsTable).values({
+      merchantId,
+      providerSlug,
+      status: "AWAITING_OTP",
+      encryptedSession: "enc:test-browser-failure-session",
+      otpVerificationFailureCount: 1,
+      otpResendCount: 2,
+      otpResendAvailableAt: new Date(Date.now() - 1_000),
+      otpExpiresAt: new Date(Date.now() + 10 * 60 * 1_000),
+    }).returning({ id: merchantPortalSessionsTable.id });
+    sessionId = session.id;
+
+    const [passwordMerchant] = await db.insert(merchantsTable).values({
+      businessName: "Password browser failure recovery test",
+      contactName: "Password Browser Failure Test",
+      email: passwordEmail,
+      phone: "8888888888",
+      status: "active",
+    }).returning({ id: merchantsTable.id });
+    passwordMerchantId = passwordMerchant.id;
+
+    const [passwordUser] = await db.insert(usersTable).values({
+      email: passwordEmail,
+      name: "Password Browser Failure Test",
+      role: "merchant",
+      merchantId: passwordMerchantId,
+    }).returning({ id: usersTable.id });
+    passwordUserId = passwordUser.id;
+    passwordToken = generateToken({ userId: passwordUserId, role: "merchant" });
+
+    const [passwordSession] = await db.insert(merchantPortalSessionsTable).values({
+      merchantId: passwordMerchantId,
+      providerSlug,
+      status: "AWAITING_PASSWORD",
+      encryptedSession: "enc:test-browser-failure-password-session",
+      stepFailureCount: 1,
+      otpVerificationFailureCount: 2,
+      otpResendCount: 1,
+      otpResendAvailableAt: new Date(Date.now() + 30_000),
+      otpExpiresAt: new Date(Date.now() + 10 * 60 * 1_000),
+    }).returning({ id: merchantPortalSessionsTable.id });
+    passwordSessionId = passwordSession.id;
+
+    const [mpinMerchant] = await db.insert(merchantsTable).values({
+      businessName: "MPIN browser failure recovery test",
+      contactName: "MPIN Browser Failure Test",
+      email: mpinEmail,
+      phone: "7777777777",
+      status: "active",
+    }).returning({ id: merchantsTable.id });
+    mpinMerchantId = mpinMerchant.id;
+
+    const [mpinUser] = await db.insert(usersTable).values({
+      email: mpinEmail,
+      name: "MPIN Browser Failure Test",
+      role: "merchant",
+      merchantId: mpinMerchantId,
+    }).returning({ id: usersTable.id });
+    mpinUserId = mpinUser.id;
+    mpinToken = generateToken({ userId: mpinUserId, role: "merchant" });
+
+    const [mpinSession] = await db.insert(merchantPortalSessionsTable).values({
+      merchantId: mpinMerchantId,
+      providerSlug,
+      status: "AWAITING_MPIN",
+      encryptedSession: "enc:test-browser-failure-mpin-session",
+      stepFailureCount: 1,
+      otpVerificationFailureCount: 1,
+      otpResendCount: 2,
+      otpResendAvailableAt: new Date(Date.now() + 30_000),
+      otpExpiresAt: new Date(Date.now() + 10 * 60 * 1_000),
+      lastStatusMessage: "Waiting for MPIN",
+    }).returning({ id: merchantPortalSessionsTable.id });
+    mpinSessionId = mpinSession.id;
+
+    server = http.createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  });
+
+  after(async () => {
+    if (adapter && originalSubmitStep) {
+      adapter.submitStep = originalSubmitStep;
+    }
+    await db.delete(merchantPortalSessionsTable).where(eq(merchantPortalSessionsTable.id, sessionId));
+    await db.delete(merchantPortalSessionsTable).where(eq(merchantPortalSessionsTable.id, passwordSessionId));
+    await db.delete(merchantPortalSessionsTable).where(eq(merchantPortalSessionsTable.id, mpinSessionId));
+    await db.delete(usersTable).where(eq(usersTable.id, passwordUserId));
+    await db.delete(merchantsTable).where(eq(merchantsTable.id, passwordMerchantId));
+    await db.delete(usersTable).where(eq(usersTable.id, mpinUserId));
+    await db.delete(merchantsTable).where(eq(merchantsTable.id, mpinMerchantId));
+    await db.delete(usersTable).where(eq(usersTable.id, userId));
+    await db.delete(merchantsTable).where(eq(merchantsTable.id, merchantId));
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  const originalSubmitStep = adapter?.submitStep;
+
+  it("returns sanitized 503, restores reservations, and permits a retry", async () => {
+    assert.ok(adapter);
+    assert.ok(originalSubmitStep);
+
+    let calls = 0;
+    adapter.submitStep = async () => {
+      calls++;
+      if (calls === 1) {
+        throw new BrowserRuntimeUnavailableError();
+      }
+      return {
+        status: "FAILED",
+        failReason: "INVALID_OTP",
+        failDetail: "The OTP is invalid.",
+      };
+    };
+
+    const path = `/api/merchant/portal-sessions/${providerSlug}/submit-step`;
+    const failed = await post(server, path, token, { otp: "123456" });
+
+    assert.equal(failed.status, 503);
+    assert.deepEqual(failed.body, {
+      status: "FAILED",
+      errorCode: "BROWSER_RUNTIME_UNAVAILABLE",
+      message: "Browser automation is temporarily unavailable. Please try again later or contact support.",
+      nextStep: null,
+    });
+    assert.equal(JSON.stringify(failed.body).includes("BrowserRuntimeUnavailableError"), false);
+    assert.equal(JSON.stringify(failed.body).includes("/"), false);
+
+    const [restored] = await db
+      .select()
+      .from(merchantPortalSessionsTable)
+      .where(and(
+        eq(merchantPortalSessionsTable.id, sessionId),
+        eq(merchantPortalSessionsTable.merchantId, merchantId),
+      ));
+    assert.equal(restored.otpVerificationFailureCount, 1);
+    assert.equal(restored.otpResendCount, 2);
+    assert.equal(restored.processingLeaseId, null);
+    assert.equal(restored.processingLeaseExpiresAt, null);
+    assert.ok(restored.otpResendAvailableAt);
+    assert.ok(restored.otpExpiresAt);
+
+    const retried = await post(server, path, token, { otp: "654321" });
+    assert.equal(retried.status, 200);
+    assert.equal(calls, 2);
+    assert.equal(retried.body.status, "AWAITING_OTP");
+    assert.equal(retried.body.errorCode, "INVALID_OTP");
+    assert.equal(retried.body.attemptsRemaining, 1);
+
+    const [afterRetry] = await db
+      .select()
+      .from(merchantPortalSessionsTable)
+      .where(eq(merchantPortalSessionsTable.id, sessionId));
+    assert.equal(afterRetry.otpVerificationFailureCount, 2);
+    assert.equal(afterRetry.otpResendCount, 2);
+    assert.equal(afterRetry.processingLeaseId, null);
+    assert.equal(afterRetry.processingLeaseExpiresAt, null);
+  });
+
+  it("releases a password lease after browser failure and permits a retry", async () => {
+    assert.ok(adapter);
+    assert.ok(originalSubmitStep);
+
+    let calls = 0;
+    adapter.submitStep = async () => {
+      calls++;
+      if (calls === 1) {
+        throw new BrowserRuntimeUnavailableError();
+      }
+      return {
+        status: "FAILED",
+        failReason: "INVALID_PASSWORD",
+        failDetail: "The password is invalid.",
+      };
+    };
+
+    const path = `/api/merchant/portal-sessions/${providerSlug}/submit-step`;
+    const failed = await post(server, path, passwordToken, { password: "not-the-password" });
+
+    assert.equal(failed.status, 503);
+    assert.deepEqual(failed.body, {
+      status: "FAILED",
+      errorCode: "BROWSER_RUNTIME_UNAVAILABLE",
+      message: "Browser automation is temporarily unavailable. Please try again later or contact support.",
+      nextStep: null,
+    });
+    assert.equal(JSON.stringify(failed.body).includes("BrowserRuntimeUnavailableError"), false);
+    assert.equal(JSON.stringify(failed.body).includes("/"), false);
+
+    const [restored] = await db
+      .select()
+      .from(merchantPortalSessionsTable)
+      .where(and(
+        eq(merchantPortalSessionsTable.id, passwordSessionId),
+        eq(merchantPortalSessionsTable.merchantId, passwordMerchantId),
+      ));
+    assert.equal(restored.status, "AWAITING_PASSWORD");
+    assert.equal(restored.encryptedSession, "enc:test-browser-failure-password-session");
+    assert.equal(restored.stepFailureCount, 1);
+    assert.equal(restored.otpVerificationFailureCount, 2);
+    assert.equal(restored.otpResendCount, 1);
+    assert.ok(restored.otpResendAvailableAt);
+    assert.ok(restored.otpExpiresAt);
+    assert.equal(restored.processingLeaseId, null);
+    assert.equal(restored.processingLeaseExpiresAt, null);
+
+    const retried = await post(server, path, passwordToken, { password: "still-not-the-password" });
+    assert.equal(retried.status, 200);
+    assert.equal(calls, 2);
+    assert.equal(retried.body.status, "AWAITING_PASSWORD");
+    assert.equal(retried.body.errorCode, "INVALID_PASSWORD");
+
+    const [afterRetry] = await db
+      .select()
+      .from(merchantPortalSessionsTable)
+      .where(eq(merchantPortalSessionsTable.id, passwordSessionId));
+    assert.equal(afterRetry.status, "AWAITING_PASSWORD");
+    assert.equal(afterRetry.stepFailureCount, 2);
+    assert.equal(afterRetry.otpVerificationFailureCount, 2);
+    assert.equal(afterRetry.otpResendCount, 1);
+    assert.equal(afterRetry.processingLeaseId, null);
+    assert.equal(afterRetry.processingLeaseExpiresAt, null);
+  });
+
+  it("keeps an invalid MPIN retryable after browser failure recovery", async () => {
+    assert.ok(adapter);
+    assert.ok(originalSubmitStep);
+
+    let calls = 0;
+    adapter.submitStep = async () => {
+      calls++;
+      if (calls === 1) {
+        throw new BrowserRuntimeUnavailableError();
+      }
+      if (calls === 2 || calls === 3) {
+        return {
+          status: "FAILED",
+          failReason: "INVALID_MPIN",
+          failDetail: "The MPIN is invalid.",
+        };
+      }
+      return {
+        status: "CONNECTED",
+        encryptedSessionToken: "enc:test-connected-mpin-session",
+        nextStep: "COMPLETE",
+        nextStepPrompt: "Connected.",
+      };
+    };
+
+    const path = `/api/merchant/portal-sessions/${providerSlug}/submit-step`;
+    const failed = await post(server, path, mpinToken, { otp: "1234" });
+
+    assert.equal(failed.status, 503);
+    assert.deepEqual(failed.body, {
+      status: "FAILED",
+      errorCode: "BROWSER_RUNTIME_UNAVAILABLE",
+      message: "Browser automation is temporarily unavailable. Please try again later or contact support.",
+      nextStep: null,
+    });
+    assert.equal(JSON.stringify(failed.body).includes("BrowserRuntimeUnavailableError"), false);
+    assert.equal(JSON.stringify(failed.body).includes("/"), false);
+
+    const [restored] = await db
+      .select()
+      .from(merchantPortalSessionsTable)
+      .where(and(
+        eq(merchantPortalSessionsTable.id, mpinSessionId),
+        eq(merchantPortalSessionsTable.merchantId, mpinMerchantId),
+      ));
+    assert.equal(restored.status, "AWAITING_MPIN");
+    assert.equal(restored.encryptedSession, "enc:test-browser-failure-mpin-session");
+    assert.equal(restored.stepFailureCount, 1);
+    assert.equal(restored.otpVerificationFailureCount, 1);
+    assert.equal(restored.otpResendCount, 2);
+    assert.equal(restored.lastStatusMessage, "Waiting for MPIN");
+    assert.ok(restored.otpResendAvailableAt);
+    assert.ok(restored.otpExpiresAt);
+    assert.equal(restored.processingLeaseId, null);
+    assert.equal(restored.processingLeaseExpiresAt, null);
+
+    const retried = await post(server, path, mpinToken, { otp: "5678" });
+    assert.equal(retried.status, 200);
+    assert.equal(calls, 2);
+    assert.equal(retried.body.status, "AWAITING_MPIN");
+    assert.equal(retried.body.errorCode, "INVALID_MPIN");
+
+    const [afterRetry] = await db
+      .select()
+      .from(merchantPortalSessionsTable)
+      .where(eq(merchantPortalSessionsTable.id, mpinSessionId));
+    assert.equal(afterRetry.status, "AWAITING_MPIN");
+    assert.equal(afterRetry.encryptedSession, "enc:test-browser-failure-mpin-session");
+    assert.equal(afterRetry.lastErrorCode, "INVALID_MPIN");
+    assert.equal(afterRetry.lastStatusMessage, "INVALID_MPIN");
+    assert.equal(afterRetry.stepFailureCount, 2);
+    assert.equal(afterRetry.otpVerificationFailureCount, 1);
+    assert.equal(afterRetry.otpResendCount, 2);
+    assert.ok(afterRetry.otpResendAvailableAt);
+    assert.ok(afterRetry.otpExpiresAt);
+    assert.equal(afterRetry.processingLeaseId, null);
+    assert.equal(afterRetry.processingLeaseExpiresAt, null);
+
+    const exhausted = await post(server, path, mpinToken, { otp: "2468" });
+    assert.equal(exhausted.status, 200);
+    assert.equal(calls, 3);
+    assert.equal(exhausted.body.status, "FAILED");
+    assert.equal(exhausted.body.errorCode, "INVALID_MPIN");
+    assert.match(String(exhausted.body.message), /Maximum MPIN attempts reached/);
+
+    const blocked = await post(server, path, mpinToken, { otp: "9999" });
+    assert.equal(blocked.status, 400);
+    assert.equal(calls, 3, "adapter must not be invoked after the MPIN cap");
+
+    await db
+      .update(merchantPortalSessionsTable)
+      .set({
+        status: "AWAITING_MPIN",
+        encryptedSession: "enc:test-browser-failure-mpin-session",
+        stepFailureCount: 2,
+      })
+      .where(eq(merchantPortalSessionsTable.id, mpinSessionId));
+    adapter.submitStep = async () => {
+      calls++;
+      return {
+        status: "CONNECTED",
+        encryptedSessionToken: "enc:test-connected-mpin-session",
+        nextStep: "COMPLETE",
+        nextStepPrompt: "Connected.",
+      };
+    };
+
+    const recovered = await post(server, path, mpinToken, { otp: "1357" });
+    assert.equal(recovered.status, 200);
+    assert.equal(calls, 4);
+    assert.equal(recovered.body.status, "CONNECTED");
+
+    const [afterRecovery] = await db
+      .select()
+      .from(merchantPortalSessionsTable)
+      .where(eq(merchantPortalSessionsTable.id, mpinSessionId));
+    assert.equal(afterRecovery.status, "CONNECTED");
+    assert.equal(afterRecovery.encryptedSession, "enc:test-connected-mpin-session");
+    assert.equal(afterRecovery.lastErrorCode, null);
+    assert.equal(afterRecovery.stepFailureCount, 0);
+    assert.equal(afterRecovery.processingLeaseId, null);
+    assert.equal(afterRecovery.processingLeaseExpiresAt, null);
+  });
+});

@@ -5,8 +5,38 @@ import { logger } from "../lib/logger";
 
 const VA_CLEANUP_DEFAULT_DAYS = 30;
 const HISTORY_LIMIT = 20;
+const FAILED_CLEANUP_SUMMARY = "Cleanup could not complete. Check server logs for technical details.";
 
 let cleanupTask: ScheduledTask | null = null;
+
+async function trimVaCleanupHistory(): Promise<void> {
+  const allRows = await db
+    .select({ id: cleanupRunHistoryTable.id })
+    .from(cleanupRunHistoryTable)
+    .where(eq(cleanupRunHistoryTable.type, "va"))
+    .orderBy(desc(cleanupRunHistoryTable.ranAt));
+
+  if (allRows.length > HISTORY_LIMIT) {
+    const idsToDelete = allRows.slice(HISTORY_LIMIT).map((r) => r.id);
+    await db.execute(sql`DELETE FROM cleanup_run_history WHERE id = ANY(${idsToDelete})`);
+  }
+}
+
+async function recordFailedVaCleanup(
+  trigger: "scheduled" | "manual",
+  retentionDays: number,
+): Promise<void> {
+  await db.insert(cleanupRunHistoryTable).values({
+    type: "va",
+    trigger,
+    triggeredBy: trigger,
+    status: "failed",
+    summary: FAILED_CLEANUP_SUMMARY,
+    deleted: 0,
+    retentionDays,
+  });
+  await trimVaCleanupHistory();
+}
 
 export async function loadVaCleanupRetentionDays(): Promise<number> {
   const rows = await db
@@ -22,14 +52,16 @@ export async function loadVaCleanupRetentionDays(): Promise<number> {
 export async function runVaCleanup(
   trigger: "scheduled" | "manual" = "scheduled"
 ): Promise<{ closed: number; deleted: number }> {
-  const retentionDays = await loadVaCleanupRetentionDays();
+  let retentionDays = 0;
+  try {
+    retentionDays = await loadVaCleanupRetentionDays();
 
-  if (retentionDays === 0) {
-    logger.info("VA auto-cleanup is disabled (retention_days = 0) — skipping");
-    return { closed: 0, deleted: 0 };
-  }
+    if (retentionDays === 0) {
+      logger.info("VA auto-cleanup is disabled (retention_days = 0) — skipping");
+      return { closed: 0, deleted: 0 };
+    }
 
-  const closeResult = await db.execute(sql`
+    const closeResult = await db.execute(sql`
     UPDATE virtual_accounts
     SET status = 'closed', updated_at = NOW()
     WHERE status = 'active'
@@ -41,13 +73,13 @@ export async function runVaCleanup(
         WHERE virtual_account_id IS NOT NULL
       )
   `);
-  const closed = Number((closeResult as any).rowCount ?? 0);
+    const closed = Number((closeResult as any).rowCount ?? 0);
 
-  if (closed > 0) {
-    logger.info({ closed }, "VA cleanup: closed unused active virtual accounts");
-  }
+    if (closed > 0) {
+      logger.info({ closed }, "VA cleanup: closed unused active virtual accounts");
+    }
 
-  const deleteResult = await db.execute(sql`
+    const deleteResult = await db.execute(sql`
     DELETE FROM virtual_accounts
     WHERE status = 'closed'
       AND balance = '0.00'
@@ -59,13 +91,21 @@ export async function runVaCleanup(
         WHERE virtual_account_id IS NOT NULL
       )
   `);
-  const deleted = Number((deleteResult as any).rowCount ?? 0);
+    const deleted = Number((deleteResult as any).rowCount ?? 0);
 
-  logger.info({ retentionDays, trigger, closed, deleted }, "VA auto-cleanup complete");
+    logger.info({ retentionDays, trigger, closed, deleted }, "VA auto-cleanup complete");
 
-  await writeVaCleanupLastRun(deleted, retentionDays, trigger, closed);
+    await writeVaCleanupLastRun(deleted, retentionDays, trigger, closed);
 
-  return { closed, deleted };
+    return { closed, deleted };
+  } catch (err) {
+    try {
+      await recordFailedVaCleanup(trigger, retentionDays);
+    } catch (historyErr) {
+      logger.warn({ err: historyErr, trigger }, "Failed to record VA cleanup failure");
+    }
+    throw err;
+  }
 }
 
 async function writeVaCleanupLastRun(
@@ -98,19 +138,7 @@ async function writeVaCleanupLastRun(
     deleted,
     retentionDays,
   });
-
-  const allRows = await db
-    .select({ id: cleanupRunHistoryTable.id })
-    .from(cleanupRunHistoryTable)
-    .where(eq(cleanupRunHistoryTable.type, "va"))
-    .orderBy(desc(cleanupRunHistoryTable.ranAt));
-
-  if (allRows.length > HISTORY_LIMIT) {
-    const idsToDelete = allRows.slice(HISTORY_LIMIT).map((r) => r.id);
-    await db.execute(
-      sql`DELETE FROM cleanup_run_history WHERE id = ANY(${idsToDelete})`
-    );
-  }
+  await trimVaCleanupHistory();
 }
 
 export async function loadVaCleanupLastRun(): Promise<{ lastRunAt: string | null; lastDeleted: number | null }> {
@@ -132,6 +160,8 @@ export async function loadVaCleanupHistory(): Promise<Array<{
   id: number;
   trigger: string;
   ranAt: Date;
+  status: string;
+  summary: string | null;
   closed: number | null;
   deleted: number;
   retentionDays: number;

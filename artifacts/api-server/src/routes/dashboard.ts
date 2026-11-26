@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { readFileSync } from "fs";
-import { db, transactionsTable, merchantsTable, callbackLogsTable, qrCodesTable, virtualAccountsTable, reconciliationRunsTable, settlementsTable, merchantPlansTable, providersTable, systemSettingsTable } from "@workspace/db";
+import { db, transactionsTable, merchantsTable, merchantWalletsTable, callbackLogsTable, qrCodesTable, virtualAccountsTable, reconciliationRunsTable, settlementsTable, merchantPlansTable, providersTable, systemSettingsTable, cashfreePaymentOrdersTable, systemConfigTable, PAYIN_ORDER_STATUS, SYSTEM_CONFIG_KEYS } from "@workspace/db";
 import { eq, sql, and, gte, count, countDistinct, inArray, notInArray, ne, lte, isNotNull } from "drizzle-orm";
-import { requireAuth, requireAdmin } from "../middlewares/auth";
+import { requireAuth, requireAdmin, requireSuperAdmin } from "../middlewares/auth";
 import { readFailureStreak, getCleanupFailureThreshold, CLEANUP_ALERT_SNOOZE_KEY } from "../helpers/githubSyncLogCleanupScheduler";
 
 const router = Router();
@@ -106,6 +106,14 @@ router.get("/stats", async (req, res, next) => {
       .from(transactionsTable)
       .where(and(eq(transactionsTable.type, "deposit"), eq(transactionsTable.status, "success"), merchantFilter, gte(transactionsTable.createdAt, todayStart)));
 
+    const [todayPayoutStats] = await db
+      .select({
+        cnt: count(),
+        total: sql<number>`COALESCE(SUM(CAST(${transactionsTable.amount} AS DECIMAL)), 0)`,
+      })
+      .from(transactionsTable)
+      .where(and(eq(transactionsTable.type, "withdrawal"), eq(transactionsTable.status, "success"), merchantFilter, gte(transactionsTable.createdAt, todayStart)));
+
     // QR and VA counts
     let qrCount = 0;
     let vaCount = 0;
@@ -154,15 +162,71 @@ router.get("/stats", async (req, res, next) => {
     const totalWithdrawals = Number(withdrawalStats?.total ?? 0);
 
     let pendingSettlementAmount: number | undefined;
+    let availableBalance: number | undefined;
     if (!isAdmin && user.merchantId) {
-      const [psRow] = await db
-        .select({ total: sql<number>`COALESCE(SUM(CAST(${settlementsTable.amount} AS DECIMAL)), 0)` })
-        .from(settlementsTable)
-        .where(and(
-          eq(settlementsTable.merchantId, user.merchantId),
-          inArray(settlementsTable.status, ["pending", "processing"]),
-        ));
+      const [[psRow], [walletRow]] = await Promise.all([
+        db.select({ total: sql<number>`COALESCE(SUM(CAST(${settlementsTable.amount} AS DECIMAL)), 0)` })
+          .from(settlementsTable)
+          .where(and(eq(settlementsTable.merchantId, user.merchantId), inArray(settlementsTable.status, ["pending", "processing"]))),
+        db.select({ availableBalance: merchantWalletsTable.availableBalance })
+          .from(merchantWalletsTable)
+          .where(eq(merchantWalletsTable.merchantId, user.merchantId))
+          .limit(1),
+      ]);
       pendingSettlementAmount = Number(psRow?.total ?? 0);
+      availableBalance = Number(walletRow?.availableBalance ?? 0);
+    }
+
+    // Stuck Cashfree payin orders (admin-only).
+    //
+    // "Stuck" = CREATED or PENDING (actionable states where a webhook is still
+    // expected) and older than the configured stale window. FAILED and EXPIRED
+    // are terminal states: they will never receive a completing webhook so they
+    // must NOT be counted here or the alert fires forever on ordinary abandoned
+    // payments. Wallet-load orders (WLOAD_ prefix) follow a different lifecycle
+    // and are always excluded.
+    //
+    // The environment filter mirrors the rest of the stats endpoint so the
+    // count matches what the destination payin orders page shows.
+    let stuckCashfreeOrderCount: number | undefined;
+    let stuckCashfreeOrderStaleMinutes: number | undefined;
+    if (isAdmin) {
+      try {
+        const [staleMinRow] = await db
+          .select({ value: systemConfigTable.value })
+          .from(systemConfigTable)
+          .where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_STALE_MINUTES))
+          .limit(1);
+        const staleMinutes = Math.max(1, parseInt(staleMinRow?.value ?? "15", 10) || 15);
+        const staleThreshold = new Date(Date.now() - staleMinutes * 60 * 1000);
+
+        // Apply the same merchant environment filter used by the rest of the stats
+        const envCond = envParam === "production"
+          ? inArray(cashfreePaymentOrdersTable.merchantId, getProdMerchantIds())
+          : envParam === "demo"
+            ? notInArray(cashfreePaymentOrdersTable.merchantId, getProdMerchantIds())
+            : undefined; // "all" — no env restriction
+
+        const [stuckRow] = await db
+          .select({ cnt: count() })
+          .from(cashfreePaymentOrdersTable)
+          .where(and(
+            // Only actionable stuck states — FAILED/EXPIRED are terminal
+            inArray(cashfreePaymentOrdersTable.status, [
+              PAYIN_ORDER_STATUS.CREATED,
+              PAYIN_ORDER_STATUS.PENDING,
+            ]),
+            lte(cashfreePaymentOrdersTable.createdAt, staleThreshold),
+            sql`${cashfreePaymentOrdersTable.cashfreeOrderId} NOT LIKE 'WLOAD_%'`,
+            envCond,
+          ));
+        stuckCashfreeOrderCount = stuckRow?.cnt ?? 0;
+        stuckCashfreeOrderStaleMinutes = staleMinutes;
+      } catch {
+        // Non-critical — silently omit on edge-case environments
+        stuckCashfreeOrderCount = undefined;
+        stuckCashfreeOrderStaleMinutes = undefined;
+      }
     }
 
     res.json({
@@ -176,10 +240,15 @@ router.get("/stats", async (req, res, next) => {
       totalBalance: totalDeposits - totalWithdrawals,
       todayDeposits: todayDepositStats?.cnt ?? 0,
       todayDepositAmount: Number(todayDepositStats?.total ?? 0),
+      todayPayouts: todayPayoutStats?.cnt ?? 0,
+      todayPayoutAmount: Number(todayPayoutStats?.total ?? 0),
       qrCount,
       vaCount,
       demoDataOnly,
       ...(pendingSettlementAmount !== undefined ? { pendingSettlementAmount } : {}),
+      ...(availableBalance !== undefined ? { availableBalance } : {}),
+      ...(stuckCashfreeOrderCount !== undefined ? { stuckCashfreeOrderCount } : {}),
+      ...(stuckCashfreeOrderStaleMinutes !== undefined ? { stuckCashfreeOrderStaleMinutes } : {}),
     });
   } catch (err) {
     next(err);
@@ -203,24 +272,27 @@ router.get("/chart", async (req, res, next) => {
       .select({
         date: sql<string>`TO_CHAR(${transactionsTable.createdAt}, 'YYYY-MM-DD')`,
         type: transactionsTable.type,
+        status: transactionsTable.status,
         total: sql<number>`COALESCE(SUM(CAST(${transactionsTable.amount} AS DECIMAL)), 0)`,
       })
       .from(transactionsTable)
       .where(chartFilter)
-      .groupBy(sql`TO_CHAR(${transactionsTable.createdAt}, 'YYYY-MM-DD')`, transactionsTable.type)
+      .groupBy(sql`TO_CHAR(${transactionsTable.createdAt}, 'YYYY-MM-DD')`, transactionsTable.type, transactionsTable.status)
       .orderBy(sql`TO_CHAR(${transactionsTable.createdAt}, 'YYYY-MM-DD')`);
 
-    const dateMap: Record<string, { deposits: number; withdrawals: number }> = {};
+    const dateMap: Record<string, { deposits: number; withdrawals: number; failed: number; refunded: number }> = {};
     for (let i = 29; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
       const key = d.toISOString().slice(0, 10);
-      dateMap[key] = { deposits: 0, withdrawals: 0 };
+      dateMap[key] = { deposits: 0, withdrawals: 0, failed: 0, refunded: 0 };
     }
     for (const row of rows) {
       if (dateMap[row.date]) {
-        if (row.type === "deposit") dateMap[row.date].deposits = Number(row.total);
-        if (row.type === "withdrawal") dateMap[row.date].withdrawals = Number(row.total);
+        if (row.status === "success" && row.type === "deposit") dateMap[row.date].deposits += Number(row.total);
+        if (row.status === "success" && row.type === "withdrawal") dateMap[row.date].withdrawals += Number(row.total);
+        if (row.status === "failed") dateMap[row.date].failed += Number(row.total);
+        if (row.status === "refunded") dateMap[row.date].refunded += Number(row.total);
       }
     }
 
@@ -608,6 +680,28 @@ router.get("/webhook-health", requireAdmin, async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+/** Minimal aggregate read-only monitoring. No payment records, merchant IDs, or secrets. */
+router.get("/monitoring-summary", requireSuperAdmin, async (_req, res, next) => {
+  try {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const prodIds = getProdMerchantIds();
+    const [payments, payouts, webhooks] = await Promise.all([
+      db.select({ failed: count() }).from(transactionsTable)
+        .where(and(eq(transactionsTable.type, "deposit"), eq(transactionsTable.status, "failed"), gte(transactionsTable.createdAt, since), inArray(transactionsTable.merchantId, prodIds))),
+      db.select({ failed: count() }).from(transactionsTable)
+        .where(and(eq(transactionsTable.type, "withdrawal"), eq(transactionsTable.status, "failed"), gte(transactionsTable.createdAt, since), inArray(transactionsTable.merchantId, prodIds))),
+      db.select({ failed: count() }).from(callbackLogsTable)
+        .where(and(eq(callbackLogsTable.status, "failed"), gte(callbackLogsTable.createdAt, since), inArray(callbackLogsTable.merchantId, prodIds))),
+    ]);
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ service: "rasokart", scope: "production", windowHours: 24,
+      generatedAt: new Date().toISOString(),
+      failedPayins24h: payments[0]?.failed ?? 0,
+      failedPayouts24h: payouts[0]?.failed ?? 0,
+      failedWebhooks24h: webhooks[0]?.failed ?? 0 });
+  } catch (error) { next(error); }
 });
 
 export default router;

@@ -1,4 +1,5 @@
 import { Router } from "express";
+import crypto from "node:crypto";
 import { db, cashfreePayoutsTable, cashfreePayoutWebhookLogsTable, systemConfigTable, SYSTEM_CONFIG_KEYS, withdrawalsTable } from "@workspace/db";
 import { and, eq, inArray, or } from "drizzle-orm";
 import { logger } from "../lib/logger";
@@ -7,6 +8,7 @@ import { normalizeCashfreePayoutStatus } from "../helpers/cashfreePayout";
 import { mutateWallet } from "./wallets";
 import { decryptSecret } from "../helpers/cryptoUtils";
 import { maybeAlertPayoutWebhookNoSecret } from "../helpers/payoutWebhookNoSecretAlert";
+import { evaluatePayoutWebhookEvent } from "../lib/whiteLabelWebhookEventGuard";
 
 const router = Router();
 
@@ -154,7 +156,116 @@ router.post("/", async (req, res) => {
       return;
     }
 
-    // ── Timestamp staleness check — replay protection ─────────────────────────
+    // ── Timestamp check — two webhook formats from Cashfree Payout ───────────
+    //
+    // FORMAT A — Standard Payout V2 transfer events (TRANSFER_SUCCESS, TRANSFER_FAILED,
+    //   WEBHOOK_TEST, CREDIT_CONFIRMATION, etc.):
+    //   Required headers: x-webhook-timestamp (Unix epoch seconds) + x-webhook-signature
+    //   Signing:          HMAC-SHA256(timestamp + rawBody, clientSecret) → base64
+    //   Enforcement:      strict 300-second replay window (see below).
+    //
+    // FORMAT B — Cashfree informational/alert events (LOW_BALANCE_ALERT, etc.):
+    //   Observed in production: x-webhook-timestamp and x-webhook-signature headers are
+    //   ABSENT. A "signature" field appears in the JSON body.
+    //   SECURITY STATUS: Cashfree does not publicly document the body-signature algorithm
+    //   for these events. All HMAC formula candidates attempted against production captures
+    //   failed to match. The body "signature" field therefore CANNOT be cryptographically
+    //   verified with the available credentials and documented algorithms.
+    //   Action: Return HTTP 200 as an operational ACK only (to stop Cashfree retry storms).
+    //           The event is NOT authenticated. signatureVerified is set to explicit false.
+    //           processingResult = "ignored_unverified_info". ZERO state mutations.
+    if (!timestamp) {
+      const bodyObj = req.body as Record<string, unknown>;
+      const bodyEventRaw = ((bodyObj["event"] ?? bodyObj["type"]) as string | undefined) ?? null;
+      const bodySignature  = (bodyObj["signature"] as string | undefined) ?? "";
+
+      if (bodySignature && activeSecret) {
+        // Body carries a "signature" field with no header-based auth.
+        // Attempt several known HMAC formula variants to discover the algorithm.
+        // Even if a candidate matches in the future, NEVER mutate payout/wallet state
+        // without the Cashfree-documented algorithm confirmed from official sources.
+        const hmacCandidate = (input: string) =>
+          crypto.createHmac("sha256", activeSecret).update(input).digest("base64");
+
+        const bodyWithoutSig = Object.fromEntries(
+          Object.entries(bodyObj).filter(([k]) => k !== "signature")
+        );
+        const candidates: Record<string, string> = {
+          "full_raw_body":           hmacCandidate(rawBody),
+          "body_without_sig_json":   hmacCandidate(JSON.stringify(bodyWithoutSig)),
+          "alertTime+balance":       hmacCandidate(
+            `${bodyObj["alertTime"] ?? ""}${bodyObj["currentBalance"] ?? ""}`
+          ),
+          "event+alertTime+balance": hmacCandidate(
+            `${bodyEventRaw ?? ""}${bodyObj["alertTime"] ?? ""}${bodyObj["currentBalance"] ?? ""}`
+          ),
+        };
+        const matchedFormula = Object.keys(candidates).find(k => candidates[k] === bodySignature);
+        // bodySignatureVerified is true ONLY when a known candidate formula matched.
+        // Currently always false for all production LOW_BALANCE_ALERT events.
+        const bodySignatureVerified = matchedFormula !== undefined;
+
+        // SECURITY: signatureVerified is explicit boolean — never null — for this path.
+        // processingResult distinguishes verified vs unverified informational events.
+        // HTTP 200 is an operational ACK to stop retry storms, NOT an authentication
+        // acceptance. No payout/wallet/ledger mutations occur in this code path.
+        eventType      = bodyEventRaw;
+        signatureVerified = bodySignatureVerified; // explicit true or false, NEVER null
+        processingResult  = bodySignatureVerified
+          ? "info_event"              // formula matched — authenticated informational event
+          : "ignored_unverified_info"; // formula unknown — ACK only, NOT authenticated
+
+        logger.warn(
+          {
+            endpoint,
+            env: isLive ? "LIVE" : "SANDBOX",
+            bodyEventType: bodyEventRaw,
+            rawBodyBytes,
+            // authentication outcome — false until Cashfree documents the body-sig algorithm
+            bodySignatureVerified,
+            matchedFormula: matchedFormula ?? null,
+            processingResult,
+            // Tail-8 of received sig and each candidate for formula discovery (no secret logged).
+            receivedSigTail:  bodySignature.slice(-8),
+            candidateTails: Object.fromEntries(
+              Object.entries(candidates).map(([k, v]) => [k, v.slice(-8)])
+            ),
+          },
+          bodySignatureVerified
+            ? "cashfree_payout_webhook_body_signed_event_verified"
+            : "cashfree_payout_webhook_body_signed_event_unverified — HTTP 200 ACK only; body-signature formula undocumented; event is NOT authenticated",
+        );
+
+        res.status(200).json({ ok: true, received: true });
+        await insertLog({
+          endpoint, eventType, status: null,
+          signatureVerified,      // explicit false for all currently observed events
+          payoutId: null, transferId: null, cfTransferId: null, utr: null,
+          safeError: bodySignatureVerified
+            ? null
+            : "webhook.body_signature_unverified — body-signature algorithm undocumented by Cashfree; event NOT authenticated",
+          processingResult,
+          rawPayload: rawBody,
+        });
+        return;
+      }
+
+      // No x-webhook-timestamp AND no body signature field → malformed request.
+      // Reject with 401 (Cashfree will retry, but without auth there is nothing to process).
+      logger.warn(
+        { endpoint, env: isLive ? "LIVE" : "SANDBOX", hasBodySignature: !!bodySignature, rawBodyBytes },
+        "cashfree_payout_webhook_missing_timestamp — neither header timestamp nor body signature present",
+      );
+      await insertLog({
+        endpoint, eventType: null, status: null, signatureVerified: false, payoutId: null,
+        transferId: null, cfTransferId: null, utr: null,
+        safeError: "webhook.missing_timestamp", processingResult: "rejected", rawPayload: rawBody,
+      });
+      res.status(401).json({ error: "Request is missing required timestamp" });
+      return;
+    }
+
+    // ── Standard Format A: timestamp staleness check (replay protection) ──────
     // Cashfree sends x-webhook-timestamp as Unix epoch seconds.
     // Reject requests where the timestamp is more than 5 minutes old or in the
     // future, to prevent signature-replay attacks. A captured valid webhook
@@ -164,7 +275,7 @@ router.post("/", async (req, res) => {
     const timestampSec = parseInt(timestamp, 10);
     const nowSec = Math.floor(Date.now() / 1000);
     const REPLAY_WINDOW_SECONDS = 300; // 5 minutes
-    if (!timestamp || isNaN(timestampSec) || Math.abs(nowSec - timestampSec) > REPLAY_WINDOW_SECONDS) {
+    if (isNaN(timestampSec) || Math.abs(nowSec - timestampSec) > REPLAY_WINDOW_SECONDS) {
       logger.warn(
         {
           endpoint,
@@ -263,10 +374,38 @@ router.post("/", async (req, res) => {
       return;
     }
 
+    // Reject contradictory signed identifiers before any legacy payout or wallet
+    // mutation. The provider may omit one identifier; present values must agree
+    // with the stored record. This does not enable White-Label financial writes.
+    if (payout && (
+      (transferId && payout.transferId !== transferId) ||
+      (cfTransferId && payout.cashfreeTransferId && payout.cashfreeTransferId !== cfTransferId)
+    )) {
+      logger.warn({ endpoint, payoutId: payout.id }, "cashfree_payout_webhook_identifier_conflict");
+      processingResult = "rejected";
+      safeError = "Webhook transfer identifiers conflict with stored payout";
+      await insertLog({ endpoint, eventType, status: statusRaw, signatureVerified,
+        payoutId: payout.id, transferId, cfTransferId, utr, safeError, processingResult, rawPayload: rawBody });
+      return;
+    }
+
     // ── Update cashfreePayoutsTable (legacy path) ─────────────────────────────
     if (payout) {
       payoutId = payout.id;
-      if (normalizedStatus !== payout.status || (normalizedStatus === "SUCCESS" && utr && !payout.utr)) {
+      // A late signed event must not downgrade an already terminal payout.
+      // An identical SUCCESS event may still enrich a missing UTR; the
+      // withdrawal ledger path below retains its own processing checks.
+      const eventDecision = transferId
+        ? evaluatePayoutWebhookEvent(
+          { transferId: payout.transferId, providerTransferId: payout.cashfreeTransferId, status: payout.status },
+          { transferId, providerTransferId: cfTransferId, status: normalizedStatus },
+        )
+        : "accept";
+      if (eventDecision === "stale") {
+        logger.warn({ endpoint, payoutId: payout.id, status: normalizedStatus }, "cashfree_payout_webhook_stale_transition_ignored");
+      }
+      if (eventDecision !== "stale" &&
+          (normalizedStatus !== payout.status || (normalizedStatus === "SUCCESS" && utr && !payout.utr))) {
         const baseSet = {
           status: normalizedStatus,
           cashfreeTransferId: cfTransferId ?? payout.cashfreeTransferId ?? null,
@@ -303,49 +442,51 @@ router.post("/", async (req, res) => {
 
       // Idempotent guard — WHERE clause on current transferStatus prevents
       // concurrent webhook deliveries from double-updating the same withdrawal.
-      const [updatedWd] = await db
-        .update(withdrawalsTable)
-        .set({
-          transferStatus: newWdTransferStatus,
-          utr: newWdUtr,
-          failureReason: newWdFailureReason,
-          completedAt: isWdTerminal ? new Date() : withdrawal.completedAt,
-        })
-        .where(
-          and(
-            eq(withdrawalsTable.id, withdrawal.id),
-            eq(withdrawalsTable.transferStatus, withdrawal.transferStatus),
+      await db.transaction(async tx => {
+        const [updatedWd] = await tx
+          .update(withdrawalsTable)
+          .set({
+            transferStatus: newWdTransferStatus,
+            utr: newWdUtr,
+            failureReason: newWdFailureReason,
+            completedAt: isWdTerminal ? new Date() : withdrawal.completedAt,
+          })
+          .where(
+            and(
+              eq(withdrawalsTable.id, withdrawal.id),
+              eq(withdrawalsTable.transferStatus, withdrawal.transferStatus),
+            )
           )
-        )
-        .returning();
+          .returning();
 
-      if (updatedWd) {
-        logger.info({ endpoint, withdrawalId: withdrawal.id, transferId, cfTransferId, prevTransferStatus, newTransferStatus: newWdTransferStatus, utr }, "payout_withdrawal_status_updated_via_webhook");
+        if (updatedWd) {
+          logger.info({ endpoint, withdrawalId: withdrawal.id, transferId, cfTransferId, prevTransferStatus, newTransferStatus: newWdTransferStatus, utr }, "payout_withdrawal_status_updated_via_webhook");
 
-        // Wallet mutations — only executed once per state transition (idempotency
-        // enforced by the conditional WHERE above).
-        if (normalizedStatus === "SUCCESS") {
-          if (["FAILED", "REVERSED"].includes(prevTransferStatus)) {
+          // Wallet mutations — only executed once per state transition (idempotency
+          // enforced by the conditional WHERE above).
+          if (normalizedStatus === "SUCCESS") {
+            if (["FAILED", "REVERSED"].includes(prevTransferStatus)) {
+              await mutateWallet(
+                withdrawal.merchantId,
+                { availableDelta: -wAmt, totalPayoutDelta: wAmt, totalReversalsDelta: -wAmt },
+                { txnType: "payout_success_correction", bucket: "available", amount: -wAmt, referenceType: "withdrawal", referenceId: withdrawal.id, description: `Payout #${withdrawal.id} — provider SUCCESS via webhook (was locally ${prevTransferStatus}) — ₹${wAmt} corrected`, createdBy: null }, tx
+              );
+            } else {
+              await mutateWallet(
+                withdrawal.merchantId,
+                { holdDelta: -wAmt, totalPayoutDelta: wAmt },
+                { txnType: "payout_success", bucket: "hold", amount: -wAmt, referenceType: "withdrawal", referenceId: withdrawal.id, description: `Payout #${withdrawal.id} confirmed successful via webhook — ₹${wAmt} settled`, createdBy: null }, tx
+              );
+            }
+          } else if (normalizedStatus === "FAILED" && !["FAILED", "REVERSED"].includes(prevTransferStatus)) {
             await mutateWallet(
               withdrawal.merchantId,
-              { availableDelta: -wAmt, totalPayoutDelta: wAmt, totalReversalsDelta: -wAmt },
-              { txnType: "payout_success_correction", bucket: "available", amount: -wAmt, referenceType: "withdrawal", referenceId: withdrawal.id, description: `Payout #${withdrawal.id} — provider SUCCESS via webhook (was locally ${prevTransferStatus}) — ₹${wAmt} corrected`, createdBy: null }
-            );
-          } else {
-            await mutateWallet(
-              withdrawal.merchantId,
-              { holdDelta: -wAmt, totalPayoutDelta: wAmt },
-              { txnType: "payout_success", bucket: "hold", amount: -wAmt, referenceType: "withdrawal", referenceId: withdrawal.id, description: `Payout #${withdrawal.id} confirmed successful via webhook — ₹${wAmt} settled`, createdBy: null }
+              { holdDelta: -wAmt, availableDelta: wAmt, totalReversalsDelta: wAmt },
+              { txnType: "payout_failed_release", bucket: "hold", amount: wAmt, referenceType: "withdrawal", referenceId: withdrawal.id, description: `Payout #${withdrawal.id} confirmed failed via webhook — ₹${wAmt} released back`, createdBy: null }, tx
             );
           }
-        } else if (normalizedStatus === "FAILED" && !["FAILED", "REVERSED"].includes(prevTransferStatus)) {
-          await mutateWallet(
-            withdrawal.merchantId,
-            { holdDelta: -wAmt, availableDelta: wAmt, totalReversalsDelta: wAmt },
-            { txnType: "payout_failed_release", bucket: "hold", amount: wAmt, referenceType: "withdrawal", referenceId: withdrawal.id, description: `Payout #${withdrawal.id} confirmed failed via webhook — ₹${wAmt} released back`, createdBy: null }
-          );
         }
-      }
+      });
     }
 
     processingResult = "processed";

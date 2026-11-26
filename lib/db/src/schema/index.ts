@@ -78,6 +78,8 @@ export * from "./platformWalletLedger";
 export * from "./taxLiabilityLedger";
 export * from "./otpSmsSettings";
 export * from "./smsSendLogs";
+export * from "./emailDeliveryLogs";
+export * from "./merchantProviderEnrollments";
 export * from "./secureIdSettings";
 export * from "./merchantKycVerifications";
 export * from "./kycVerificationLogs";
@@ -99,3 +101,14 @@ export * from "./iamPermissions";
 export * from "./promotionalCampaigns";
 export * from "./razorpayRefunds";
 export * from "./agentCommissionLedger";
+export * from "./platformConnections";
+export * from "./portalSessions";
+export * from "./portalDiscovery";
+export * from "./portalTransactions";
+export * from "./portalWalletCredits";
+export * from "./merchantPortalSessions";
+export * from "./merchantPortalTransactions";
+
+export * from "./whiteLabelTenants";
+
+export * from "./whiteLabelFinanceCommands";

@@ -22,6 +22,7 @@ import {
   activationRequestsTable,
   merchantsTable,
   auditLogsTable,
+  providersTable,
 } from "@workspace/db";
 import { eq, and, asc, desc } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
@@ -42,13 +43,17 @@ function maskSecret(raw: string): string {
 function serializeIntegration(r: ProviderIntegration) {
   const rawApiKey = r.apiKeyEncrypted ? decryptSecret(r.apiKeyEncrypted) : null;
   const rawApiSecret = r.apiSecretEncrypted ? decryptSecret(r.apiSecretEncrypted) : null;
+  const rawClientId = r.clientIdEncrypted ? decryptSecret(r.clientIdEncrypted) : null;
   const apiKeyValue = rawApiKey?.ok ? rawApiKey.value : "";
   const apiSecretValue = rawApiSecret?.ok ? rawApiSecret.value : "";
+  const clientIdValue = rawClientId?.ok ? rawClientId.value : "";
 
   const {
     apiKeyEncrypted: _apiKeyEncrypted,
     apiSecretEncrypted: _apiSecretEncrypted,
     webhookSecretEncrypted: _webhookSecretEncrypted,
+    clientIdEncrypted: _clientIdEncrypted,
+    clientSecretEncrypted: _clientSecretEncrypted,
     ...rest
   } = r;
 
@@ -60,6 +65,8 @@ function serializeIntegration(r: ProviderIntegration) {
     apiKeyMasked: apiKeyValue.length > 0 ? maskSecret(apiKeyValue) : "",
     apiSecretSet: apiSecretValue.length > 0,
     webhookSecretSet: !!r.webhookSecretEncrypted,
+    clientIdSet: clientIdValue.length > 0,
+    clientIdMasked: clientIdValue.length > 0 ? maskSecret(clientIdValue) : "",
   };
 }
 
@@ -136,7 +143,19 @@ router.put("/integrations/:key", requireAdmin, async (req, res, next) => {
   try {
     const user = (req as any).user;
     const key = req.params["key"] as string;
-    const { environment, isEnabled, webhookUrl, notes, displayNamePublic, productType, apiKey, apiSecret, webhookSecret } = req.body as {
+
+    // Pine Labs credential updates are restricted to Super Admin only.
+    // admin_pinelabs is in SUPER_ADMIN_ONLY_PERMISSIONS so regular admins
+    // never hold it and cannot receive an ALLOW override.
+    if (key === "pinelabs" && !user.isSuperAdmin) {
+      res.status(403).json({
+        error: "Permission denied",
+        permissionRequired: ["pinelabs_settings_manage"],
+        mode: "OR",
+      });
+      return;
+    }
+    const { environment, isEnabled, webhookUrl, notes, displayNamePublic, productType, apiKey, apiSecret, webhookSecret, clientId } = req.body as {
       environment?: string;
       isEnabled?: boolean;
       webhookUrl?: string;
@@ -146,6 +165,7 @@ router.put("/integrations/:key", requireAdmin, async (req, res, next) => {
       apiKey?: string;
       apiSecret?: string;
       webhookSecret?: string;
+      clientId?: string;
     };
 
     const [existing] = await db.select().from(providerIntegrationsTable)
@@ -159,15 +179,50 @@ router.put("/integrations/:key", requireAdmin, async (req, res, next) => {
     if (notes !== undefined) updateSet.notes = notes;
     if (displayNamePublic !== undefined) updateSet.displayNamePublic = displayNamePublic;
     if (existing.isCustom && productType !== undefined) updateSet.productType = productType;
-    if (existing.isCustom && apiKey !== undefined) updateSet.apiKeyEncrypted = apiKey.trim() ? encryptSecret(apiKey.trim()) : null;
-    if (existing.isCustom && apiSecret !== undefined) updateSet.apiSecretEncrypted = apiSecret.trim() ? encryptSecret(apiSecret.trim()) : null;
-    if (existing.isCustom && webhookSecret !== undefined) updateSet.webhookSecretEncrypted = webhookSecret.trim() ? encryptSecret(webhookSecret.trim()) : null;
+    // Credentials allowed for both custom and built-in platform integrations (e.g. Pine Labs)
+    if (apiKey !== undefined) updateSet.apiKeyEncrypted = apiKey.trim() ? encryptSecret(apiKey.trim()) : null;
+    if (apiSecret !== undefined) updateSet.apiSecretEncrypted = apiSecret.trim() ? encryptSecret(apiSecret.trim()) : null;
+    if (webhookSecret !== undefined) updateSet.webhookSecretEncrypted = webhookSecret.trim() ? encryptSecret(webhookSecret.trim()) : null;
+    if (clientId !== undefined) updateSet.clientIdEncrypted = clientId.trim() ? encryptSecret(clientId.trim()) : null;
     updateSet.updatedByEmail = user.email;
+
+    // Pine Labs live-mode credential guard
+    if (key === "pinelabs") {
+      const resultingEnabled = isEnabled !== undefined ? isEnabled : existing.isEnabled;
+      const resultingEnv = (environment !== undefined ? environment : existing.environment) ?? "test";
+      if (resultingEnabled && resultingEnv === "live") {
+        // Compute the resulting credential state after this update.
+        // If a credential field is explicitly supplied (even as ""), only that value counts —
+        // don't fall back to the existing saved value, because the update will overwrite it.
+        // Only fields that are absent from the request (undefined) should inherit the existing value.
+        const midOk    = clientId   !== undefined ? clientId.trim().length   > 0 : !!existing.clientIdEncrypted;
+        const accessOk = apiKey     !== undefined ? apiKey.trim().length     > 0 : !!existing.apiKeyEncrypted;
+        const secretOk = apiSecret  !== undefined ? apiSecret.trim().length  > 0 : !!existing.apiSecretEncrypted;
+        if (!midOk || !accessOk || !secretOk) {
+          const missing: string[] = [];
+          if (!midOk) missing.push("Merchant ID (MID)");
+          if (!accessOk) missing.push("Access Code");
+          if (!secretOk) missing.push("Secret Key");
+          res.status(400).json({
+            error: `Cannot enable Pine Labs in Live mode — the following credentials are missing: ${missing.join(", ")}. Save all credentials before switching to Live.`,
+          });
+          return;
+        }
+      }
+    }
 
     const [updated] = await db.update(providerIntegrationsTable)
       .set(updateSet as any)
       .where(eq(providerIntegrationsTable.providerKey, key))
       .returning();
+
+    // Sync the providers catalog status to reflect the integration state.
+    // A provider shows as 'live' only when its integration is both enabled
+    // and configured for the live environment; otherwise it reverts to 'sandbox'.
+    const newCatalogStatus = updated!.isEnabled && updated!.environment === "live" ? "live" : "sandbox";
+    await db.update(providersTable)
+      .set({ status: newCatalogStatus })
+      .where(eq(providersTable.slug, key));
 
     const auditChangeSet: Record<string, unknown> = { providerKey: key };
     if (updateSet["apiKeyEncrypted"] !== undefined) auditChangeSet.apiKeyUpdated = true;

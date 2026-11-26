@@ -1,6 +1,7 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request, type Response } from "express";
 import healthRouter from "./health";
 import openApiDocsRouter from "./openApiDocs";
+import { browserPoolStatus, probeBrowserReady } from "../helpers/connectorEngine/browserPool";
 import authRouter from "./auth";
 import dashboardRouter from "./dashboard";
 import merchantsRouter from "./merchants";
@@ -29,6 +30,11 @@ import reconciliationRouter from "./reconciliation";
 import paymentLinksRouter from "./paymentLinks";
 import systemConfigRouter from "./systemConfig";
 import companySettingsRouter from "./companySettings";
+import whiteLabelsRouter from "./whiteLabels";
+import whiteLabelWalletsRouter from "./whiteLabelWallets";
+import whiteLabelTransactionsRouter from "./whiteLabelTransactions";
+import whiteLabelFinanceRouter from "./whiteLabelFinance";
+import whiteLabelWritePreflightRouter from "./whiteLabelWritePreflight";
 import settingsRouter from "./settings";
 import storageRouter from "./storage";
 import savedFiltersRouter from "./savedFilters";
@@ -52,15 +58,20 @@ import rasokartServicesRouter from "./rasokartServices";
 import otpSettingsRouter from "./otpSettings";
 import otpEmailSettingsRouter from "./otpEmailSettings";
 import smsLogsRouter from "./smsLogs";
+import adminEmailDeliveryRouter from "./adminEmailDelivery";
+import emailDeliveryWebhookRouter from "./emailDeliveryWebhook";
 import onboardingRouter from "./onboarding";
 import adminOnboardingRouter from "./adminOnboarding";
 import secureIdSettingsRouter from "./secureIdSettings";
 import merchantKycRouter from "./merchantKyc";
+import merchantEnrollmentsRouter from "./merchantEnrollments";
+import merchantPortalSessionsRouter from "./merchantPortalSessions";
 import adminMerchantKycRouter from "./adminMerchantKyc";
 import merchantKycSettingsRouter from "./merchantKycSettings";
 import payoutMerchantRouter from "./payoutMerchant";
 import payoutMerchantKycRouter from "./payoutMerchantKyc";
 import adminPayoutMerchantsRouter from "./adminPayoutMerchants";
+import adminMerchantEnrollmentsRouter from "./adminMerchantEnrollments";
 import adminPayoutSettingsRouter from "./adminPayoutSettings";
 import payoutAdminRouter from "./payoutAdmin";
 import agentRoutesRouter from "./agentRoutes";
@@ -100,13 +111,35 @@ import policyVersionsRouter from "./policyVersions";
 import iamRouter from "./iam";
 import adminAgentsRouter from "./adminAgents";
 import agentActivateRouter from "./agentActivate";
+import adminCashfreePayinReconRouter from "./adminCashfreePayinRecon";
+import adminPineLabsRouter from "./adminPineLabs";
 import { devHelperRouter } from "./devHelper";
+import platformConnectionsRouter from "./platformConnections";
+import portalSessionsRouter from "./portalSessions";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
 // Public OpenAPI spec + Swagger UI — no auth required (must be before requireAuth middleware)
 router.use(openApiDocsRouter);
+
+// ── Public: Connector-engine browser health ────────────────────────────────
+// Mounted here — BEFORE any /merchant/* auth aliases — so it is reachable
+// without a JWT. Returns no merchant data, no credentials, no server paths.
+// Used by deploy scripts, CI, and monitoring to verify the Playwright runtime.
+router.get("/browser-health", async (_req: Request, res: Response) => {
+  try {
+    const poolStatus = browserPoolStatus();
+    const probe      = await probeBrowserReady();
+    res.json({ ...probe, pool: poolStatus });
+  } catch (err: any) {
+    res.status(500).json({ ready: false, reason: "health_check_exception" });
+  }
+});
+
+// Public email-provider delivery callback — authenticate with the provider
+// webhook secret inside its own router before the global JWT guard below.
+router.use("/webhooks/email-delivery", emailDeliveryWebhookRouter);
 router.use("/auth", authRouter);
 // Top-level alias: some deploy configs / older frontend builds call
 // `/api/merchant/login` directly. Mounts the same authRouter so
@@ -121,9 +154,10 @@ router.use("/payout-beneficiaries", payoutBeneficiariesRouter);
 router.use("/api-keys", apiKeysRouter);
 // Public payout webhook alias — must come BEFORE /webhooks (which has global requireAuth)
 router.use("/webhooks/payouts/cashfree", cashfreePayoutWebhookRouter);
-// Public payin webhook — must come BEFORE /webhooks (which has global requireAuth)
-router.use("/webhooks/payin", payinWebhookRouter);
 // Public generic custom-gateway payin webhook — same reason as above.
+// Public Cashfree payin webhook — both the canonical endpoint and its legacy alias
+// are served by the same router. This must come before /webhooks, which is auth-guarded.
+router.use("/webhooks/payin", payinWebhookRouter);
 router.use("/webhooks/payin/custom", payinCustomWebhookRouter);
 // Public UPIGateway payin webhook — must come BEFORE /webhooks (which has global requireAuth)
 router.use("/webhooks/upigateway", upigatewayWebhookRouter);
@@ -150,6 +184,11 @@ router.use("/reconciliation", reconciliationRouter);
 router.use("/payment-links", paymentLinksRouter);
 router.use("/system-config", systemConfigRouter);
 router.use(companySettingsRouter);
+router.use("/admin/white-labels", whiteLabelsRouter);
+router.use("/white-label/tenants/:tenantId/wallets", whiteLabelWalletsRouter);
+router.use("/white-label/tenants/:tenantId/transactions", whiteLabelTransactionsRouter);
+router.use("/white-label/tenants/:tenantId/finance", whiteLabelFinanceRouter);
+router.use("/white-label/tenants/:tenantId/write", whiteLabelWritePreflightRouter);
 router.use("/settings", settingsRouter);
 router.use(storageRouter);
 router.use("/saved-filters", savedFiltersRouter);
@@ -189,11 +228,17 @@ router.use("/admin/tryit-presets", adminTryItPresetsRouter);
 router.use("/admin/otp-settings", otpSettingsRouter);
 router.use("/admin/otp-email-settings", otpEmailSettingsRouter);
 router.use("/admin/sms-logs", smsLogsRouter);
+router.use("/admin/email-delivery", adminEmailDeliveryRouter);
 // Merchant automated onboarding (Secure ID flow)
 router.use("/onboarding", onboardingRouter);
 router.use("/admin/onboarding", adminOnboardingRouter);
 router.use("/admin/secure-id-settings", secureIdSettingsRouter);
 router.use("/merchant-kyc", merchantKycRouter);
+
+// Merchant self-service provider enrollment (Category D providers, audit log, rate-limited)
+router.use("/merchant/enrollments", merchantEnrollmentsRouter);
+// Merchant self-service portal sessions (fail-closed until partner APIs are issued)
+router.use("/merchant/portal-sessions", merchantPortalSessionsRouter);
 router.use("/admin/merchant-kyc-settings", merchantKycSettingsRouter);
 router.use("/admin/merchant-kyc", adminMerchantKycRouter);
 
@@ -203,6 +248,7 @@ router.use("/payout-merchant", payoutMerchantSignupRouter);
 router.use("/payout-merchant/kyc", payoutMerchantKycRouter);
 router.use("/payout-merchant", payoutMerchantRouter);
 router.use("/admin/payout-merchants", adminPayoutMerchantsRouter);
+router.use("/admin/merchant-enrollments", adminMerchantEnrollmentsRouter);
 router.use("/admin/payout-settings", adminPayoutSettingsRouter);
 
 // Payout admin portal — payout admins managing payout ops
@@ -236,6 +282,9 @@ router.use("/merchant", payuOrdersRouter);
 // Admin PayU config, credentials, orders — Super Admin only
 router.use("/admin/payu", adminPayuRouter);
 
+// Admin Pine Labs credential test
+router.use("/admin/pinelabs", adminPineLabsRouter);
+
 // Social provider admin toggles (Super Admin CRUD)
 router.use("/auth/social-providers", socialProvidersRouter);
 
@@ -254,12 +303,19 @@ router.use("/iam", iamRouter);
 // Admin full-lifecycle agent management (create, suspend, revoke, etc.)
 router.use("/admin/agents", adminAgentsRouter);
 
+// Cashfree Payin Reconciliation — Super Admin only stuck-order report + backfill
+router.use("/admin/cashfree-payin-recon", adminCashfreePayinReconRouter);
+
 // Promotional CMS — Super Admin campaign management + public banner delivery
 router.use("/cms", cmsRouter);
 
 // Public agent activation — verify invite token + set password on first login
 // Mounted BEFORE the auth-guarded /agent router so no token is needed
 router.use("/agent/activate", agentActivateRouter);
+
+// Platform Connections — RasoKart's own provider accounts (Super Admin only)
+router.use("/platform-connections", platformConnectionsRouter);
+router.use("/portal-sessions", portalSessionsRouter);
 
 // Dev-only test support: OTP capture helper.
 // NEVER reachable in production — guarded both here and inside the handler.

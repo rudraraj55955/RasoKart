@@ -25,6 +25,7 @@ export const SYSTEM_CONFIG_KEYS = {
   WEBHOOK_RETRY_DELAY_2: "webhook_retry_delay_2",
   WEBHOOK_RETRY_DELAY_3: "webhook_retry_delay_3",
   TEST_EMAIL_HISTORY_RETENTION_DAYS: "test_email_history_retention_days",
+  PASSWORD_RESET_DELIVERY_RETENTION_DAYS: "password_reset_delivery_retention_days",
   AUDIT_REPORT_LOG_RETENTION_DAYS: "audit_report_log_retention_days",
   QR_CLEANUP_LAST_RUN_AT: "qr_cleanup_last_run_at",
   QR_CLEANUP_LAST_RUN_DELETED: "qr_cleanup_last_run_deleted",
@@ -47,6 +48,7 @@ export const SYSTEM_CONFIG_KEYS = {
   EKQR_SYNC_LAST_RUN_AT: "ekqr_sync_last_run_at",
   EKQR_SYNC_LAST_SYNCED: "ekqr_sync_last_synced",
   EKQR_SYNC_LAST_STUCK: "ekqr_sync_last_stuck",
+  EKQR_SYNC_CONSECUTIVE_FAILURES: "ekqr_sync_consecutive_failures",
   UPIGATEWAY_PAYIN_ENABLED: "upigateway_payin_enabled",
   UPIGATEWAY_ENV: "upigateway_env",
   UPIGATEWAY_BASE_URL: "upigateway_base_url",
@@ -165,6 +167,27 @@ export const SYSTEM_CONFIG_KEYS = {
   // Compared against today's UTC date to enforce once-per-day deduplication
   // without requiring a separate table or cron job.
   UPIGATEWAY_CAP_ALERT_LAST_SENT_DATE: "upigateway_cap_alert_last_sent_date",
+  // Cashfree stuck payin order monitoring
+  // An order is "stuck" when its status is not PAID and it is older than
+  // CASHFREE_STUCK_ORDER_STALE_MINUTES minutes (default 15).
+  // The dashboard surfaces the live count; the scheduler fires an email alert
+  // when the count crosses CASHFREE_STUCK_ORDER_ALERT_THRESHOLD and the
+  // cooldown has elapsed.
+  CASHFREE_STUCK_ORDER_STALE_MINUTES:          "cashfree_stuck_order_stale_minutes",
+  CASHFREE_STUCK_ORDER_ALERT_THRESHOLD:        "cashfree_stuck_order_alert_threshold",
+  CASHFREE_STUCK_ORDER_ALERT_COOLDOWN_HOURS:   "cashfree_stuck_order_alert_cooldown_hours",
+  // runtime-state: ISO timestamp of the last alert email (written by scheduler)
+  CASHFREE_STUCK_ORDER_ALERT_LAST_SENT_AT:     "cashfree_stuck_order_alert_last_sent_at",
+  // PayU stuck payin order monitoring
+  // An order is "stuck" when its status is INITIATED or PENDING and older than
+  // PAYU_STUCK_ORDER_STALE_MINUTES minutes (default 30).
+  // The scheduler fires an admin email alert when the remaining count crosses
+  // PAYU_STUCK_ORDER_ALERT_THRESHOLD and the cooldown has elapsed.
+  PAYU_STUCK_ORDER_STALE_MINUTES:          "payu_stuck_order_stale_minutes",
+  PAYU_STUCK_ORDER_ALERT_THRESHOLD:        "payu_stuck_order_alert_threshold",
+  PAYU_STUCK_ORDER_ALERT_COOLDOWN_HOURS:   "payu_stuck_order_alert_cooldown_hours",
+  // runtime-state: ISO timestamp of the last alert email (written by scheduler)
+  PAYU_STUCK_ORDER_ALERT_LAST_SENT_AT:     "payu_stuck_order_alert_last_sent_at",
 } as const;
 
 export const SYSTEM_CONFIG_DEFAULTS = {
@@ -180,6 +203,7 @@ export const SYSTEM_CONFIG_DEFAULTS = {
   [SYSTEM_CONFIG_KEYS.WEBHOOK_RETRY_DELAY_2]: "900",
   [SYSTEM_CONFIG_KEYS.WEBHOOK_RETRY_DELAY_3]: "3600",
   [SYSTEM_CONFIG_KEYS.TEST_EMAIL_HISTORY_RETENTION_DAYS]: "30",
+  [SYSTEM_CONFIG_KEYS.PASSWORD_RESET_DELIVERY_RETENTION_DAYS]: "30",
   [SYSTEM_CONFIG_KEYS.AUDIT_REPORT_LOG_RETENTION_DAYS]: "90",
   [SYSTEM_CONFIG_KEYS.EKQR_ENABLED]: "false",
   [SYSTEM_CONFIG_KEYS.EKQR_ENV]: "test",
@@ -261,6 +285,12 @@ export const SYSTEM_CONFIG_DEFAULTS = {
   [SYSTEM_CONFIG_KEYS.PAYU_LIVE_VERIFIED]:  "false",
   [SYSTEM_CONFIG_KEYS.PAYU_LIVE_VERIFIED_AT]: "",
   [SYSTEM_CONFIG_KEYS.VA_CLEANUP_RETENTION_DAYS]: "30",
+  [SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_STALE_MINUTES]:        "15",
+  [SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_ALERT_THRESHOLD]:      "5",
+  [SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_ALERT_COOLDOWN_HOURS]: "4",
+  [SYSTEM_CONFIG_KEYS.PAYU_STUCK_ORDER_STALE_MINUTES]:            "30",
+  [SYSTEM_CONFIG_KEYS.PAYU_STUCK_ORDER_ALERT_THRESHOLD]:          "3",
+  [SYSTEM_CONFIG_KEYS.PAYU_STUCK_ORDER_ALERT_COOLDOWN_HOURS]:     "4",
 } as const;
 
 /**
@@ -290,6 +320,7 @@ export const SYSTEM_CONFIG_NO_DEFAULT_KEYS: ReadonlySet<string> = new Set([
   SYSTEM_CONFIG_KEYS.EKQR_SYNC_LAST_RUN_AT,
   SYSTEM_CONFIG_KEYS.EKQR_SYNC_LAST_SYNCED,
   SYSTEM_CONFIG_KEYS.EKQR_SYNC_LAST_STUCK,
+  SYSTEM_CONFIG_KEYS.EKQR_SYNC_CONSECUTIVE_FAILURES, // runtime-state: reset on success, incremented on exception
   SYSTEM_CONFIG_KEYS.FAILOVER_ALERT_SNOOZED_UNTIL,  // runtime-state: set by acknowledge route; never seeded
   SYSTEM_CONFIG_KEYS.PAYIN_CHAIN_EXHAUSTED_SINCE,   // set when chain exhausted; cleared on recovery
   SYSTEM_CONFIG_KEYS.UPIGATEWAY_CAP_ALERT_LAST_SENT_DATE, // runtime-state: date last EKQR cap-full alert was sent (once per UTC day)
@@ -302,6 +333,8 @@ export const SYSTEM_CONFIG_NO_DEFAULT_KEYS: ReadonlySet<string> = new Set([
   SYSTEM_CONFIG_KEYS.RAZORPAY_SETTLEMENT_BALANCE,
   SYSTEM_CONFIG_KEYS.RAZORPAY_SETTLEMENT_LAST_UTR,
   SYSTEM_CONFIG_KEYS.RAZORPAY_SETTLEMENT_LAST_UPDATED_AT,
+  SYSTEM_CONFIG_KEYS.CASHFREE_STUCK_ORDER_ALERT_LAST_SENT_AT, // runtime-state: written by scheduler; never seeded
+  SYSTEM_CONFIG_KEYS.PAYU_STUCK_ORDER_ALERT_LAST_SENT_AT,    // runtime-state: written by scheduler; never seeded
   // ── credential: must be configured per-environment; no safe empty default ─
   SYSTEM_CONFIG_KEYS.EKQR_API_KEY,
   SYSTEM_CONFIG_KEYS.EKQR_WEBHOOK_SECRET,

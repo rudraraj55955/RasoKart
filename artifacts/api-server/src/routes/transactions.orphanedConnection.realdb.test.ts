@@ -155,6 +155,12 @@ describe(
       }).returning();
       orphanedTxId = orphanedTx!.id;
 
+      // Hard-delete the connection NOW (before inserting the live cashfree
+      // connection below) — merchant_connections has a UNIQUE(merchant_id,
+      // provider) constraint, so two coexisting cashfree rows for the same
+      // merchant would violate it on a fresh DB.
+      await db.delete(merchantConnectionsTable).where(eq(merchantConnectionsTable.id, deletedConnectionId));
+
       // --- Live connection (stays alive) for CONTRACT 3 ---
       const [liveConn] = await db.insert(merchantConnectionsTable).values({
         merchantId,
@@ -197,8 +203,9 @@ describe(
       }).returning();
       noProviderTxId = noProvTx!.id;
 
-      // Hard-delete both connections so their JOIN produces NULL.
-      await db.delete(merchantConnectionsTable).where(eq(merchantConnectionsTable.id, deletedConnectionId));
+      // Hard-delete the no-provider connection so its JOIN produces NULL.
+      // (deletedConnectionId was already removed above, before liveConn was
+      // inserted, to satisfy the UNIQUE(merchant_id, provider) constraint.)
       await db.delete(merchantConnectionsTable).where(eq(merchantConnectionsTable.id, noProviderConnectionId));
     });
 

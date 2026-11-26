@@ -28,6 +28,7 @@ import { eq } from "drizzle-orm";
 import { db, usersTable, demoAccountRemovalsTable } from "@workspace/db";
 import { DEMO_CREDENTIALS } from "@workspace/demo-credentials";
 import app from "../app";
+import { prepareHealthzDeepTestEnv } from "../lib/testHelpers/ensureDemoUsers";
 
 const TARGET_EMAIL = "merchant3@demo.com";
 const BROKEN_HASH = "$2b$10$tamperedhashtamperedhashtamperedhashtamperedhashtampe";
@@ -68,6 +69,8 @@ describe("GET /api/healthz/deep — excluded demo account does not trip deploy g
       DEMO_CREDENTIALS.some((c) => c.email === TARGET_EMAIL),
       `${TARGET_EMAIL} must be present in DEMO_CREDENTIALS for this test to be meaningful`,
     );
+
+    await prepareHealthzDeepTestEnv();
 
     server = http.createServer(app);
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -180,6 +183,7 @@ describe("GET /api/healthz/deep — all demo accounts excluded returns 200 (real
       allEmails.length > 0,
       "DEMO_CREDENTIALS must not be empty for this test to be meaningful",
     );
+    await prepareHealthzDeepTestEnv();
     server = http.createServer(app);
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   });

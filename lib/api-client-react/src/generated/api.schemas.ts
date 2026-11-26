@@ -2499,11 +2499,50 @@ export interface DashboardStats {
   totalBalance: number;
   todayDeposits: number;
   todayDepositAmount: number;
+  todayPayouts: number;
+  todayPayoutAmount: number;
   qrCount: number;
   vaCount: number;
   pendingSettlementAmount?: number;
+  /** Merchant-only authoritative wallet balance currently available to use. */
+  availableBalance?: number;
   /** True when all merchants are known seed/demo accounts. Cleared automatically once a real merchant is onboarded. */
   demoDataOnly?: boolean;
+  /** Admin-only: count of Cashfree payin orders in CREATED or PENDING status that are older than the configured stale threshold. Absent for merchant sessions. */
+  stuckCashfreeOrderCount?: number;
+  /** Admin-only: the effective stale threshold in minutes used for the stuckCashfreeOrderCount. Absent for merchant sessions. */
+  stuckCashfreeOrderStaleMinutes?: number;
+}
+
+export interface MerchantReadiness {
+  account: { status: string; profileComplete: boolean };
+  contact: { emailVerified: boolean; mobileVerified: boolean; complete: boolean };
+  kyc: {
+    status: 'approved' | 'rejected' | 'pending' | 'not_started';
+    documents: Array<{ docType: string; status: string }>;
+  };
+  plan: {
+    assigned: boolean; status: string | null; planId: number | null; planName: string | null;
+    expiresAt: string | null; isExpired: boolean; apiAccess: boolean; webhookAccess: boolean; providerAccess: boolean;
+  };
+  provider: {
+    configured: boolean; active: boolean; connectionStatus: string | null; lastTestResult: string | null;
+    lastTestedAt: string | null; capabilityPayin: boolean;
+  };
+  apiKey: { active: boolean; count: number; lastUsedAt: string | null };
+  callback: {
+    configured: boolean; verificationStatus: 'verified' | 'unverified' | 'not_configured';
+    lastVerifiedAt: string | null; required: boolean; apiKeyRequired: boolean;
+  };
+  collection: {
+    enabled: boolean; live: boolean; state: 'live' | 'paused_historical_only' | 'paused';
+    historicalDeposits: { count: number; totalAmount: string | number };
+  };
+  testPayment: {
+    supported: boolean; status: 'successful' | 'incomplete' | 'unsupported';
+    lastStatus: string | null; lastAt: string | null;
+  };
+  goLive: { eligible: boolean; blockers: string[]; nextStep: string | null; checkedAt: string };
 }
 
 export type SimulatePaymentInputSourceType = typeof SimulatePaymentInputSourceType[keyof typeof SimulatePaymentInputSourceType];
@@ -2541,6 +2580,8 @@ export interface ChartDataPoint {
   date: string;
   deposits: number;
   withdrawals: number;
+  failed: number;
+  refunded: number;
 }
 
 export interface MerchantProduct {
@@ -4191,12 +4232,23 @@ export const CleanupRunHistoryEntryTrigger = {
   manual: 'manual',
 } as const;
 
+export type CleanupRunHistoryEntryStatus = typeof CleanupRunHistoryEntryStatus[keyof typeof CleanupRunHistoryEntryStatus];
+
+export const CleanupRunHistoryEntryStatus = {
+  success: 'success',
+  failed: 'failed',
+} as const;
+
 export interface CleanupRunHistoryEntry {
   id: number;
   /** Whether this run was triggered by the cron schedule or manually by an admin. */
   trigger: CleanupRunHistoryEntryTrigger;
   /** ISO timestamp of when the cleanup run occurred. */
   ranAt: string;
+  /** Whether the cleanup completed successfully. */
+  status: CleanupRunHistoryEntryStatus;
+  /** Safe admin-facing summary for a failed cleanup; null for successful runs. */
+  summary?: string | null;
   /** Number of QR codes marked as expired in this run (QR cleanup only). */
   expired?: number | null;
   /** Number of virtual accounts closed in this run (VA cleanup only). */

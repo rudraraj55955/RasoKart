@@ -110,6 +110,7 @@ jobs:
   schema-guard-fresh-install:
     name: Schema guard fresh-install smoke (real DB)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     services:
       postgres:
@@ -160,7 +161,15 @@ jobs:
         # runSchemaGuardWith() to prove they are created from scratch, asserts
         # all guarded tables exist, rolls back (restoring state), then
         # starts the app and hits authenticated routes asserting HTTP 200.
+        #
+        # --test-timeout=300000: 5-minute limit per test/hook; prevents indefinite
+        #   hangs if before() blocks on a DB lock or network call in CI.
+        # --test-force-exit: forcefully exit after all tests complete regardless
+        #   of open handles (pino-pretty worker_thread, pg pool idle timers, etc.)
+        #   Exit code is still non-zero when any test fails.
         run: >
           cd artifacts/api-server &&
           node --import tsx/esm --test
+          --test-timeout=300000
+          --test-force-exit
           src/lib/schemaGuard.freshInstall.realdb.test.ts

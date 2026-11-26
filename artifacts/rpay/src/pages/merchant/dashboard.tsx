@@ -1,19 +1,19 @@
 import { useState, useEffect } from "react";
-import { useGetDashboardStats, useGetDashboardChart, useGetMe, useGetMyPlan, useGetMyPlanUsage, useListMerchantConnections, useUpdateMerchantConnection, getListMerchantConnectionsQueryKey, listPaymentLinks, ListPaymentLinksStatus, type PaymentLink, useGetCallbackSecret, useGetKycSummary } from "@workspace/api-client-react";
+import { useGetDashboardStats, useGetDashboardChart, useGetMe, useGetMyPlan, useGetMyPlanUsage, useListMerchantConnections, useUpdateMerchantConnection, getListMerchantConnectionsQueryKey, listPaymentLinks, ListPaymentLinksStatus, type PaymentLink } from "@workspace/api-client-react";
 import { OnboardingProgress } from "@/components/merchant/onboarding-progress";
+import { Tooltip as UITooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { StatCard } from "@/components/ui/stat-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { TrendingUp, ArrowDownLeft, QrCode, Building2, CreditCard, Infinity, AlertTriangle, ChevronRight, Lock, Plug, Link2, Hash, ShieldAlert, BadgeCheck, X, BellOff } from "lucide-react";
+import { TrendingUp, ArrowDownLeft, QrCode, CreditCard, Infinity, AlertTriangle, ChevronRight, Lock, Plug, Link2, Hash, BadgeCheck, X, BellOff, BarChart3, Landmark, FileText, Headphones } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import { format, differenceInDays } from "date-fns";
 import { MERCHANT_KPI_ROUTES } from "@/lib/kpi-routes";
 import { Link } from "wouter";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
-import { SECRET_WARN_DAYS, SECRET_ROTATION_OVERDUE_DAYS } from "@/lib/webhook-constants";
 
 interface UsageRowProps { label: string; used: number; limit: number; }
 
@@ -127,13 +127,15 @@ async function fetchAllPaymentLinks(): Promise<PaymentLink[]> {
   return all;
 }
 
+import { useMerchantReadiness } from "@/hooks/use-merchant-readiness";
+
 export default function MerchantDashboard() {
   const { data: user } = useGetMe();
+  const { data: readiness } = useMerchantReadiness();
   const { data: stats, isLoading: statsLoading } = useGetDashboardStats();
   const { data: chartData, isLoading: chartLoading } = useGetDashboardChart();
   const { data: myPlan } = useGetMyPlan();
   const { data: usage } = useGetMyPlanUsage();
-  const { data: secretStatus } = useGetCallbackSecret();
   const { data: connectionsRaw, isLoading: connectionsLoading } = useListMerchantConnections();
   const { data: allPaymentLinks, isLoading: paymentLinksLoading } = useQuery<PaymentLink[]>({
     queryKey: ["payment-links-all-for-dashboard"],
@@ -167,21 +169,6 @@ export default function MerchantDashboard() {
     },
   });
 
-  const merchantId = (user as any)?.merchantId as number | undefined;
-  const { data: kycSummary } = useGetKycSummary(merchantId ?? 0, {
-    query: { enabled: !!merchantId, queryKey: ["/api/kyc/summary", merchantId] },
-  });
-
-  const kycDismissKey = user?.id && kycSummary
-    ? `rasokart_kyc_banner_${user.id}_${kycSummary.pendingCount}_${kycSummary.rejectedCount}_${kycSummary.approvedCount}_${kycSummary.submittedDocTypes.length}`
-    : null;
-  const [kycBannerDismissed, setKycBannerDismissed] = useState(false);
-  useEffect(() => {
-    if (!kycDismissKey) return;
-    setKycBannerDismissed(localStorage.getItem(kycDismissKey) === "1");
-  }, [kycDismissKey]);
-
-  const showKycBanner = kycSummary != null && !kycSummary.isVerified && !kycBannerDismissed;
 
   // Notification reminder banner: show when any email notification has been disabled for ≥30 days
   const NOTIF_REMINDER_THRESHOLD_DAYS = 30;
@@ -257,24 +244,20 @@ export default function MerchantDashboard() {
 
   const isExpiringSoon = myPlan && !myPlan.isExpired && myPlan.daysUntilExpiry != null && myPlan.daysUntilExpiry <= 7;
 
-  const secretAgeInDays = secretStatus?.isSet && secretStatus.lastRotatedAt != null
-    ? differenceInDays(new Date(), new Date(secretStatus.lastRotatedAt))
-    : null;
-  const secretDaysLeft = secretAgeInDays != null ? Math.max(0, SECRET_ROTATION_OVERDUE_DAYS - secretAgeInDays) : null;
-  const isSecretOverdue = secretAgeInDays != null && secretAgeInDays >= SECRET_ROTATION_OVERDUE_DAYS;
-  const isSecretWarningSoon = secretAgeInDays != null && secretAgeInDays >= SECRET_WARN_DAYS && !isSecretOverdue;
-
   const allLinks = allPaymentLinks ?? [];
   const activeLinks = allLinks.filter(l => l.status === ListPaymentLinksStatus.active);
   const totalLinkPayments = allLinks.reduce((sum, l) => sum + l.paymentCount, 0);
   const topLinks = [...allLinks].sort((a, b) => b.paymentCount - a.paymentCount).slice(0, 3);
+  const hasChartActivity = chartData?.some(point =>
+    point.deposits > 0 || point.withdrawals > 0 || point.failed > 0 || point.refunded > 0
+  ) ?? false;
 
   return (
     <div className="space-y-4 sm:space-y-6">
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-3 flex-wrap">
           <h1 className="text-3xl font-bold tracking-tight">Welcome, {user?.name || "Merchant"}</h1>
-          {kycSummary?.isVerified && (
+          {readiness?.serverData.kyc.status === "approved" && (
             <span className="flex items-center gap-1 text-xs font-semibold text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 rounded-full px-2.5 py-1 leading-none">
               <BadgeCheck className="w-3.5 h-3.5" />
               KYC Verified
@@ -285,169 +268,123 @@ export default function MerchantDashboard() {
       </div>
 
       {/* Onboarding Progress — shown until all required steps are complete */}
-      <OnboardingProgress
-        userId={user?.id}
-        accountCreated={true}
-        contactVerified={!!user?.email}
-        kycSubmitted={(kycSummary?.submittedDocTypes ?? []).length > 0}
-        kycApproved={kycSummary?.isVerified === true}
-        planAssigned={myPlan != null && !myPlan.isExpired && myPlan.status !== "suspended"}
-        hasApiAccess={usage?.apiAccess === true}
-        callbackSecretSet={secretStatus?.isSet === true}
-        callbackVerified={secretStatus?.callbackVerified === true}
-        paymentServiceLive={activeConnections.length > 0}
-      />
+      <OnboardingProgress />
 
       {statsLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map((i) => (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
             <Card key={i} className="animate-pulse bg-muted/50 h-32" />
           ))}
         </div>
       ) : stats ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
           <StatCard
-            title="Today's Deposits"
+            title="Available Balance"
+            value={`₹${(stats.availableBalance ?? 0).toLocaleString()}`}
+            icon={<CreditCard className="w-4 h-4 text-primary" />}
+            description="Current wallet balance available to use"
+            href="/merchant/wallet"
+          />
+          <StatCard
+            title="Today's Successful Collections"
             value={`₹${stats.todayDepositAmount.toLocaleString()}`}
             icon={<TrendingUp className="w-4 h-4 text-primary" />}
-            description={`${stats.todayDeposits} payment${stats.todayDeposits !== 1 ? "s" : ""} today`}
+            description={`${stats.todayDeposits} payment${stats.todayDeposits !== 1 ? "s" : ""} today${readiness?.collectionState === 'paused_historical_only' ? ' (Collection paused)' : ''}`}
             href={MERCHANT_KPI_ROUTES.todayDeposits()}
           />
           <StatCard
-            title="Total Deposits"
-            value={`₹${stats.totalDeposits.toLocaleString()}`}
-            icon={<ArrowDownLeft className="w-4 h-4 text-emerald-500" />}
-            description={(() => {
-              const reserved = stats.pendingSettlementAmount ?? 0;
-              const available = stats.totalBalance - reserved;
-              if (reserved > 0) {
-                return `₹${available.toLocaleString()} available · ₹${reserved.toLocaleString()} reserved`;
-              }
-              return `₹${stats.totalBalance.toLocaleString()} available balance`;
-            })()}
-            href="/merchant/transactions"
+            title="Pending Settlements"
+            value={`₹${(stats.pendingSettlementAmount ?? 0).toLocaleString()}`}
+            icon={<Landmark className="w-4 h-4 text-amber-500" />}
+            description="Current pending and processing settlements"
+            href="/merchant/settlements"
           />
           <StatCard
-            title="Active QR Codes"
-            value={stats.qrCount}
+            title="Today's Payouts"
+            value={`₹${stats.todayPayoutAmount.toLocaleString()}`}
+            icon={<ArrowDownLeft className="w-4 h-4 text-violet-500" />}
+            description={`${stats.todayPayouts} successful payout${stats.todayPayouts !== 1 ? "s" : ""} today`}
+            href="/merchant/payouts"
+          />
+          <StatCard
+            title="Lifetime Success Rate"
+            value={`${stats.successTransactions + stats.failedTransactions > 0 ? ((stats.successTransactions / (stats.successTransactions + stats.failedTransactions)) * 100).toFixed(1) : "0.0"}%`}
+            icon={<BarChart3 className="w-4 h-4 text-emerald-500" />}
+            description={`${stats.successTransactions.toLocaleString()} successful transactions`}
+            href="/merchant/transactions?status=success"
+          />
+          <StatCard
+            title="Lifetime Failed Transactions"
+            value={stats.failedTransactions.toLocaleString()}
+            icon={<AlertTriangle className="w-4 h-4 text-rose-500" />}
+            description="All recorded failed transactions"
+            href="/merchant/transactions?status=failed"
+          />
+          <StatCard
+            title="Active Payment Links"
+            value={activeLinks.length}
+            icon={<Link2 className="w-4 h-4 text-sky-500" />}
+            description={`${totalLinkPayments.toLocaleString()} lifetime payments through links`}
+            href="/merchant/payment-links"
+          />
+          <StatCard
+            title="Active QR & Virtual Accounts"
+            value={stats.qrCount + stats.vaCount}
             icon={<QrCode className="w-4 h-4 text-sky-500" />}
-            description="Dynamic QR codes accepting payments"
+            description={`${stats.qrCount} QR codes · ${stats.vaCount} virtual accounts`}
             href="/merchant/qr-codes"
-          />
-          <StatCard
-            title="Virtual Accounts"
-            value={stats.vaCount}
-            icon={<Building2 className="w-4 h-4 text-violet-500" />}
-            description="Active virtual bank accounts"
-            href="/merchant/virtual-accounts"
           />
         </div>
       ) : null}
 
-      {/* Expiry alerts */}
-      {myPlan?.isExpired && (
-        <Card className="border-rose-500/40 bg-rose-950/20">
-          <CardContent className="py-4 flex items-center gap-3">
-            <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />
-            <div className="flex-1">
-              <p className="text-sm text-rose-400 font-medium">Plan Expired</p>
-              <p className="text-xs text-rose-400/70">Your {myPlan.planName} plan has expired. New QR codes, virtual accounts, and payouts are restricted.</p>
-            </div>
-            <Link href="/merchant/plan">
-              <Button size="sm" variant="outline" className="border-rose-500/30 text-rose-400 hover:bg-rose-500/10 shrink-0">View Plan</Button>
-            </Link>
-          </CardContent>
-        </Card>
-      )}
+      <div className="space-y-3">
+        <h2 className="text-lg font-semibold tracking-tight">Quick Actions</h2>
+        <div className="flex flex-wrap items-center gap-3">
+          {(() => {
+            const actions = [
+              { label: "Create Payment Link", href: "/merchant/payment-links", feature: "create_payment_link", icon: Link2 },
+              { label: "Create QR Code", href: "/merchant/qr-codes", feature: "create_qr", icon: QrCode },
+              { label: "Connect Provider", href: "/merchant/connect", feature: "connect_provider", icon: Plug },
+              { label: "Configure Callback", href: "/merchant/webhook", feature: "configure_callback", icon: Lock },
+              { label: "Initiate Payout", href: "/merchant/payouts", feature: "initiate_payout", icon: Landmark },
+              { label: "Download Statement", href: "/merchant/account-statement", feature: "download_statement", icon: FileText },
+              { label: "Contact Support", href: "/merchant/support", feature: "contact_support", icon: Headphones },
+            ];
 
-      {isExpiringSoon && !myPlan?.isExpired && (
-        <Card className="border-amber-500/40 bg-amber-950/20">
-          <CardContent className="py-4 flex items-center gap-3">
-            <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
-            <div className="flex-1">
-              <p className="text-sm text-amber-400 font-medium">Plan Expiring Soon</p>
-              <p className="text-xs text-amber-400/70">Your {myPlan?.planName} plan expires in {myPlan?.daysUntilExpiry} day{myPlan?.daysUntilExpiry === 1 ? "" : "s"}. Contact support to renew.</p>
-            </div>
-            <Link href="/merchant/plan">
-              <Button size="sm" variant="outline" className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10 shrink-0">View Plan</Button>
-            </Link>
-          </CardContent>
-        </Card>
-      )}
+            return actions.map((action) => {
+              const check = readiness ? readiness.canUseFeature(action.feature) : { allowed: false, reason: "Loading..." };
+              const Icon = action.icon;
 
-      {(isSecretWarningSoon || isSecretOverdue) && secretDaysLeft != null && (
-        <Card className="border-amber-500/40 bg-amber-950/20">
-          <CardContent className="py-4 flex items-center gap-3">
-            <ShieldAlert className="w-5 h-5 text-amber-400 shrink-0" />
-            <div className="flex-1">
-              {isSecretOverdue ? (
-                <>
-                  <p className="text-sm text-amber-400 font-medium">Callback Secret Rotation Overdue</p>
-                  <p className="text-xs text-amber-400/70">Your callback signing secret is {secretAgeInDays} days old. Rotate it now to keep your integration secure.</p>
-                </>
-              ) : (
-                <>
-                  <p className="text-sm text-amber-400 font-medium">Callback Secret Rotation Due in {secretDaysLeft} Day{secretDaysLeft !== 1 ? "s" : ""}</p>
-                  <p className="text-xs text-amber-400/70">Rotate your callback signing secret soon to keep your integration secure.</p>
-                </>
-              )}
-            </div>
-            <Link href="/merchant/webhook">
-              <Button size="sm" variant="outline" className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10 shrink-0">Rotate Secret</Button>
-            </Link>
-          </CardContent>
-        </Card>
-      )}
+              if (check.allowed) {
+                return (
+                  <Link key={action.label} href={action.href}>
+                    <Button variant="outline" size="sm" className="gap-1.5 min-h-10 shadow-sm">
+                      <Icon className="w-3.5 h-3.5 text-muted-foreground" />
+                      {action.label}
+                    </Button>
+                  </Link>
+                );
+              }
 
-      {/* KYC Banner */}
-      {showKycBanner && kycSummary && (
-        <Card className={kycSummary.rejectedCount > 0 ? "border-rose-500/40 bg-rose-950/20" : "border-blue-500/40 bg-blue-950/20"}>
-          <CardContent className="py-4 flex items-center gap-3">
-            <BadgeCheck className={`w-5 h-5 shrink-0 ${kycSummary.rejectedCount > 0 ? "text-rose-400" : "text-blue-400"}`} />
-            <div className="flex-1">
-              <p className={`text-sm font-medium ${kycSummary.rejectedCount > 0 ? "text-rose-400" : "text-blue-400"}`}>
-                {kycSummary.rejectedCount > 0
-                  ? "KYC Action Required"
-                  : kycSummary.pendingCount > 0
-                  ? "KYC Verification In Progress"
-                  : "Complete Your KYC Verification"}
-              </p>
-              <p className={`text-xs ${kycSummary.rejectedCount > 0 ? "text-rose-400/70" : "text-blue-400/70"}`}>
-                {kycSummary.rejectedCount > 0
-                  ? `${kycSummary.rejectedCount} document${kycSummary.rejectedCount !== 1 ? "s" : ""} need${kycSummary.rejectedCount === 1 ? "s" : ""} attention. Please re-submit to continue verification.`
-                  : kycSummary.pendingCount > 0
-                  ? `${kycSummary.pendingCount} document${kycSummary.pendingCount !== 1 ? "s" : ""} under review. We'll notify you once verified.`
-                  : "Submit your verification documents to unlock full platform access."}
-              </p>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <Link href="/merchant/verification">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className={kycSummary.rejectedCount > 0
-                    ? "border-rose-500/30 text-rose-400 hover:bg-rose-500/10 hidden sm:flex"
-                    : "border-blue-500/30 text-blue-400 hover:bg-blue-500/10 hidden sm:flex"}
-                >
-                  {kycSummary.rejectedCount > 0 ? "Fix Now" : kycSummary.pendingCount > 0 ? "View Status" : "Start KYC"}
-                </Button>
-              </Link>
-              <Button
-                size="sm"
-                variant="ghost"
-                className={`h-8 w-8 p-0 ${kycSummary.rejectedCount > 0 ? "text-rose-400/60 hover:text-rose-400 hover:bg-rose-500/10" : "text-blue-400/60 hover:text-blue-400 hover:bg-blue-500/10"}`}
-                onClick={() => {
-                  if (kycDismissKey) localStorage.setItem(kycDismissKey, "1");
-                  setKycBannerDismissed(true);
-                }}
-                aria-label="Dismiss KYC verification banner"
-              >
-                <X className="w-4 h-4" />
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+              return (
+                <UITooltip key={action.label}>
+                  <TooltipTrigger asChild>
+                    <div>
+                      <Button disabled variant="outline" size="sm" className="gap-1.5 min-h-10 opacity-50 shadow-sm">
+                        <Icon className="w-3.5 h-3.5" />
+                        {action.label}
+                      </Button>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent className="text-xs max-w-xs text-center">
+                    {check.reason}
+                  </TooltipContent>
+                </UITooltip>
+              );
+            });
+          })()}
+        </div>
+      </div>
 
       {/* Notification reminder banner (30+ days) */}
       {showNotifReminderBanner && (
@@ -514,18 +451,7 @@ export default function MerchantDashboard() {
       {connectionsLoading ? (
         <Card className="animate-pulse h-28 bg-muted/30" />
       ) : connections.length === 0 ? (
-        <Card className="border-dashed border-muted-foreground/30">
-          <CardContent className="py-4 flex items-center gap-3">
-            <Plug className="w-4 h-4 shrink-0 text-muted-foreground" />
-            <div className="flex-1">
-              <p className="text-sm text-muted-foreground">No payment provider connected.</p>
-              <p className="text-xs text-muted-foreground/70 mt-0.5">Connect a provider to start collecting payments.</p>
-            </div>
-            <Link href="/merchant/connect">
-              <Button size="sm" variant="outline" className="shrink-0">Connect Provider</Button>
-            </Link>
-          </CardContent>
-        </Card>
+        null
       ) : (
         (() => {
           const anyAtLimit = connections.some(c => c.isActive && c.monthlyLimit > 0 && c.monthlyUsed >= c.monthlyLimit);
@@ -587,15 +513,28 @@ export default function MerchantDashboard() {
                     )}
                     <div className="ml-auto flex items-center gap-2">
                       <span className="text-xs text-muted-foreground">{conn.isActive ? "Enabled" : "Disabled"}</span>
-                      <Switch
-                        checked={conn.isActive}
-                        onCheckedChange={(checked) =>
-                          updateConnection({ id: conn.id, data: { provider: conn.provider, isActive: checked } })
-                        }
-                        disabled={togglingId}
-                        aria-label={`${conn.isActive ? "Disable" : "Enable"} ${label}`}
-                        className={conn.isActive ? "data-[state=checked]:bg-emerald-500" : ""}
-                      />
+                      {myPlan?.isExpired ? (
+                        <UITooltip>
+                          <TooltipTrigger asChild>
+                            <div>
+                              <Switch disabled checked={conn.isActive} />
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent side="left" className="text-xs">
+                            Plan expired. Please renew to manage providers.
+                          </TooltipContent>
+                        </UITooltip>
+                      ) : (
+                        <Switch
+                          checked={conn.isActive}
+                          onCheckedChange={(checked) =>
+                            updateConnection({ id: conn.id, data: { provider: conn.provider, isActive: checked } })
+                          }
+                          disabled={togglingId}
+                          aria-label={`${conn.isActive ? "Disable" : "Enable"} ${label}`}
+                          className={conn.isActive ? "data-[state=checked]:bg-emerald-500" : ""}
+                        />
+                      )}
                     </div>
                   </div>
                   {conn.isActive && hasLimit && (
@@ -705,8 +644,7 @@ export default function MerchantDashboard() {
           <CardHeader className="pb-3">
             <div className="flex items-center gap-2">
               <CreditCard className="w-4 h-4 text-primary" />
-              <CardTitle className="text-base">Active Plan</CardTitle>
-              <Badge variant="outline" className={`ml-1 ${myPlan.isExpired ? "text-rose-400 border-rose-500/30" : "text-primary border-primary/40"}`}>{myPlan.planName}</Badge>
+               <CardTitle className="text-base">Current Plan — {myPlan.planName}</CardTitle>
               {myPlan.status === "suspended" && <Badge className="text-xs bg-orange-500/20 text-orange-400 border-orange-500/30">Suspended</Badge>}
               {myPlan.isExpired && myPlan.status !== "suspended" && <Badge variant="destructive" className="text-xs">Expired</Badge>}
               {myPlan.expiresAt && !myPlan.isExpired && myPlan.status !== "suspended" && (
@@ -726,7 +664,7 @@ export default function MerchantDashboard() {
             </div>
           </CardHeader>
           <CardContent className="pt-0">
-            {usage ? (
+             {usage && !myPlan.isExpired ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-4">
                 <QrUsageRow label="Dynamic QR Codes" active={usage.dynamicQr.used} limit={usage.dynamicQr.limit} usedCount={usage.dynamicQr.usedCount ?? 0} expiredCount={usage.dynamicQr.expiredCount ?? 0} />
                 <QrUsageRow label="Static QR Codes" active={usage.staticQr.used} limit={usage.staticQr.limit} usedCount={usage.staticQr.usedCount ?? 0} expiredCount={usage.staticQr.expiredCount ?? 0} />
@@ -735,7 +673,11 @@ export default function MerchantDashboard() {
                 <UsageRow label="Payouts" used={usage.payout.used} limit={usage.payout.limit} />
                 <UsageRow label="Transactions Today" used={usage.dailyTransaction.used} limit={usage.dailyTransaction.limit} />
               </div>
-            ) : (
+             ) : myPlan.isExpired ? (
+               <div className="rounded-md border border-rose-500/20 bg-rose-500/5 p-3 text-sm text-rose-300">
+                 Plan usage and limits are unavailable while this plan is expired.
+               </div>
+             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 {(() => {
                   let features: string[] = [];
@@ -759,11 +701,11 @@ export default function MerchantDashboard() {
               <div className="mt-4 pt-3 border-t border-border/50 flex flex-wrap gap-2">
                 <div className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-xs border ${usage.apiAccess ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400" : "border-rose-500/30 bg-rose-500/10 text-rose-400"}`}>
                   {usage.apiAccess ? null : <Lock className="w-3 h-3" />}
-                  API {usage.apiAccess ? "Enabled" : "Locked"}
+                   API {usage.apiAccess ? "Included in plan" : "Not included"}
                 </div>
                 <div className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-xs border ${usage.webhookAccess ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400" : "border-rose-500/30 bg-rose-500/10 text-rose-400"}`}>
                   {usage.webhookAccess ? null : <Lock className="w-3 h-3" />}
-                  Webhooks {usage.webhookAccess ? "Enabled" : "Locked"}
+                   Webhooks {usage.webhookAccess ? "Included in plan" : "Not included"}
                 </div>
                 <div className="flex items-center gap-1.5 px-2 py-1 rounded-full text-xs border border-border/50 text-muted-foreground">
                   Settlement: {usage.settlementFee}%
@@ -783,12 +725,12 @@ export default function MerchantDashboard() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Deposit Volume (30 Days)</CardTitle>
+          <CardTitle>Transaction Activity (Last 30 Days)</CardTitle>
         </CardHeader>
         <CardContent className="h-[400px]">
           {chartLoading ? (
             <div className="w-full h-full animate-pulse bg-muted/20 rounded-md" />
-          ) : chartData && chartData.length > 0 ? (
+          ) : chartData && hasChartActivity ? (
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                 <defs>
@@ -807,10 +749,16 @@ export default function MerchantDashboard() {
                 <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))' }} itemStyle={{ color: 'hsl(var(--foreground))' }} labelFormatter={(val) => format(new Date(val), "MMM d, yyyy")} />
                 <Area type="monotone" dataKey="deposits" name="Deposits" stroke="hsl(var(--chart-1))" fillOpacity={1} fill="url(#colorDeposits)" strokeWidth={2} />
                 <Area type="monotone" dataKey="withdrawals" name="Payouts" stroke="hsl(var(--chart-5))" fillOpacity={1} fill="url(#colorWithdrawals)" strokeWidth={2} />
+                <Area type="monotone" dataKey="failed" name="Failed" stroke="hsl(var(--destructive))" fillOpacity={0} strokeWidth={2} />
+                <Area type="monotone" dataKey="refunded" name="Refunded" stroke="hsl(var(--chart-4))" fillOpacity={0} strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
           ) : (
-            <div className="w-full h-full flex items-center justify-center text-muted-foreground">No data available</div>
+            <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground/60">
+              <BarChart3 className="w-8 h-8 mb-2 opacity-30" />
+              <p className="text-sm">No deposits during the selected period</p>
+              <p className="text-xs">No successful, failed, refunded, or payout activity was recorded in the last 30 days.</p>
+            </div>
           )}
         </CardContent>
       </Card>

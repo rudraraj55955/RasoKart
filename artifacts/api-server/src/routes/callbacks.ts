@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, callbackLogsTable, qrCodesTable, apiKeysTable, merchantsTable, transactionsTable, qrPaymentEventsTable, webhooksTable, callbackLogAttemptsTable, systemSettingsTable, credentialEventsTable, auditLogsTable } from "@workspace/db";
+import { db, callbackLogsTable, qrCodesTable, apiKeysTable, merchantsTable, transactionsTable, qrPaymentEventsTable, webhooksTable, callbackLogAttemptsTable, systemSettingsTable, systemConfigTable, SYSTEM_CONFIG_KEYS, SYSTEM_CONFIG_DEFAULTS, credentialEventsTable, auditLogsTable } from "@workspace/db";
 import { eq, and, count, countDistinct, sql, gte, lte, isNull, like, asc, desc, gt } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { requireApiKey, verifyCallbackSignature } from "../middlewares/callbackAuth";
@@ -234,9 +234,11 @@ router.get("/stats", async (req, res) => {
 
 // GET /api/callbacks/admin/stats — aggregate signature failure stats across all merchants (admin only)
 router.get("/admin/stats", requireAdmin, async (req, res) => {
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  // The alert scheduler always looks back 24 h (hardcoded in checkAndAlertSignatureFailures).
+  const ALERT_WINDOW_HOURS = 24;
+  const since = new Date(Date.now() - ALERT_WINDOW_HOURS * 60 * 60 * 1000);
 
-  const [row, thresholdRow, windowRow] = await Promise.all([
+  const [row, thresholdRow] = await Promise.all([
     db
       .select({
         signatureFailures24h: count(),
@@ -250,28 +252,26 @@ router.get("/admin/stats", requireAdmin, async (req, res) => {
         )
       )
       .then(r => r[0]),
+    // Read threshold from system_config — the single source of truth used by
+    // checkAndAlertSignatureFailures(). The old systemSettingsTable lookup was
+    // reading from the wrong table (always fell back to the hardcoded 10).
     db
-      .select({ value: systemSettingsTable.value })
-      .from(systemSettingsTable)
-      .where(eq(systemSettingsTable.key, "signature_failure_alert_threshold"))
-      .limit(1)
-      .then(r => r[0]),
-    db
-      .select({ value: systemSettingsTable.value })
-      .from(systemSettingsTable)
-      .where(eq(systemSettingsTable.key, "signature_failure_alert_window_hours"))
+      .select({ value: systemConfigTable.value })
+      .from(systemConfigTable)
+      .where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_THRESHOLD))
       .limit(1)
       .then(r => r[0]),
   ]);
 
-  const alertThreshold = thresholdRow?.value ? parseInt(thresholdRow.value, 10) : 10;
-  const alertWindowHours = windowRow?.value ? parseFloat(windowRow.value) : 1;
+  const rawThreshold = thresholdRow?.value
+    ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_THRESHOLD];
+  const alertThreshold = parseInt(rawThreshold, 10);
 
   res.json({
     signatureFailures24h: row?.signatureFailures24h ?? 0,
     affectedMerchants: row?.affectedMerchants ?? 0,
     alertThreshold: isNaN(alertThreshold) ? 10 : alertThreshold,
-    alertWindowHours: isNaN(alertWindowHours) ? 1 : alertWindowHours,
+    alertWindowHours: ALERT_WINDOW_HOURS,
   });
 });
 

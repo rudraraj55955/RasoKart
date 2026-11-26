@@ -61,73 +61,41 @@ cd "$APP_DIR" || fail "App directory $APP_DIR not found."
 # ---------------------------------------------------------------------------
 log "Verifying repository identity and branch..."
 REMOTE_URL="$(git config --get remote.origin.url || true)"
+REMOTE_PUSH_URL="$(git config --get remote.origin.pushurl || true)"
+[ -n "$REMOTE_PUSH_URL" ] || REMOTE_PUSH_URL="$REMOTE_URL"
+for CANDIDATE_URL in "$REMOTE_URL" "$REMOTE_PUSH_URL"; do
+  case "$CANDIDATE_URL" in
+    http://*'@'* | https://*'@'*) fail "Git remote contains HTTP credentials (value redacted) — refusing to deploy." ;;
+  esac
+done
 case "$REMOTE_URL" in
   *rudraraj55955/RasoKart* | *rudraraj55955/RPAY*) : ;;
-  *) fail "Unexpected git remote '$REMOTE_URL' — refusing to deploy." ;;
+  *) fail "Unexpected git remote (value redacted) — refusing to deploy." ;;
 esac
 
 CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 [ "$CURRENT_BRANCH" = "main" ] || fail "Not on main (on '$CURRENT_BRANCH'). Refusing to deploy."
 
 # ---------------------------------------------------------------------------
-# 1b. Auto-recover from a stale merge left by a prior reconciliation attempt.
-#
-#     A previous reconcile workflow may have run `git merge origin/main` on the
-#     VPS, hit a conflict (e.g. on a one-time workflow file), and exited without
-#     cleaning up — leaving .git/MERGE_HEAD present and staged files in the
-#     index. This is safe to abort: all reconciliation merges use -s ours, so
-#     no VPS-only content is lost (it is fully preserved in origin/main's tree).
+# 1b. Preserve unfinished Git operations. Deployment is not reconciliation.
+# Never abort a merge, discard tracked edits, or remove untracked artifacts.
+# The owner must resolve local state separately before retrying deployment.
 # ---------------------------------------------------------------------------
-_GIT_DIR="$(git rev-parse --git-dir 2>/dev/null || echo '.git')"
-if [ -f "$_GIT_DIR/MERGE_HEAD" ]; then
-  log "Stale merge detected (.git/MERGE_HEAD present from prior reconciliation)."
-  log "Aborting merge and restoring working tree to HEAD ($(git rev-parse HEAD))..."
-  git merge --abort
-  log "Merge aborted. Index and working tree restored to pre-merge state."
-fi
-unset _GIT_DIR
-
-# After merge abort, reset any residual staged changes and discard tracked
-# working-tree modifications (e.g. agent-memory or source files staged before
-# the merge was initiated).
-if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
-  log "Residual tracked changes after merge abort — resetting index and working tree..."
-  git reset HEAD -- .
-  git checkout -- .
-  log "Index and working tree fully reset to HEAD ($(git rev-parse HEAD))."
-fi
-
-# Remove known-safe untracked paths created by reconciliation tooling.
-# These directories hold no production data; they will be fully restored by
-# the incoming fast-forward from origin/main if they belong there.
-for _rk_path in \
-    ".agents/memory" \
-    ".github/workflows/sed8S3arA" \
-    "attached_assets/screenshots"; do
-  if [ -e "$_rk_path" ]; then
-    log "Removing reconciliation artifact (no production data): $_rk_path"
-    rm -rf -- "$_rk_path"
+for operation in MERGE_HEAD CHERRY_PICK_HEAD REVERT_HEAD rebase-merge rebase-apply sequencer; do
+  operation_path="$(git rev-parse --git-path "$operation")" || fail "Unable to inspect Git operation state. Refusing to deploy."
+  if [ -e "$operation_path" ]; then
+    fail "Unfinished Git operation detected ($operation). Refusing to deploy; local state is preserved for manual resolution."
   fi
 done
-unset _rk_path
-
-# The rm-rf loop above may have removed tracked files inside those directories
-# (e.g. auto-generated screenshots that were committed to git).  Restore any
-# such tracked deletions so the hard guard below stays clean; the subsequent
-# git merge will then apply whatever the remote has for those paths.
-_deleted_tracked=$(git status --porcelain --untracked-files=no | awk '$0 ~ /^ D / {print $2}')
-if [ -n "$_deleted_tracked" ]; then
-  log "Restoring tracked files deleted by reconciliation cleanup (will be updated by merge)..."
-  echo "$_deleted_tracked" | xargs -I{} git checkout -- {} 2>/dev/null || true
-fi
-unset _deleted_tracked
+unset operation operation_path
 
 # ---------------------------------------------------------------------------
 # 2. Preflight: fail safely on any local drift before pulling.
 # ---------------------------------------------------------------------------
 log "Checking working tree for tracked local changes..."
-if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
-  git status --porcelain --untracked-files=no | tee -a "$LOG_FILE"
+TRACKED_STATUS="$(git status --porcelain --untracked-files=no)" || fail "Unable to inspect tracked local changes. Refusing to deploy."
+if [ -n "$TRACKED_STATUS" ]; then
+  printf '%s\n' "$TRACKED_STATUS" | tee -a "$LOG_FILE"
   fail "Tracked local changes detected on the VPS. Refusing to deploy — resolve manually (never auto-discarded)."
 fi
 

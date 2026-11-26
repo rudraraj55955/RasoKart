@@ -390,6 +390,11 @@ export default function AdminSettings() {
   const [quietHoursFlushInterval, setQuietHoursFlushInterval] = useState<number>(60);
   const [quietHoursFlushInitialized, setQuietHoursFlushInitialized] = useState(false);
 
+  const [cfStuckThreshold, setCfStuckThreshold] = useState<number>(5);
+  const [cfStuckStaleMinutes, setCfStuckStaleMinutes] = useState<number>(15);
+  const [cfStuckCooldownHours, setCfStuckCooldownHours] = useState<number>(4);
+  const [cfStuckInitialized, setCfStuckInitialized] = useState(false);
+
 
   // SMTP config form state
   const [smtpHost, setSmtpHost] = useState("");
@@ -414,6 +419,7 @@ export default function AdminSettings() {
   const ekqrCapAlertEnabled = (me as any)?.ekqrCapAlertEmails ?? true;
   const ekqrCapAlertNotifsEnabled = (me as any)?.ekqrCapAlertNotifs ?? true;
   const githubSyncFailureEnabled = (me as any)?.githubSyncFailureAlertEmails ?? true;
+  const enrollmentCredentialEnabled = (me as any)?.enrollmentCredentialSubmittedEmails ?? true;
   const weeklyDigestEnabled = me?.weeklyDeliveryDigestEmails ?? true;
 
   const { mutate: updatePrefs, isPending: savingPrefs } = useUpdateMyPreferences({
@@ -727,15 +733,20 @@ export default function AdminSettings() {
         toast.success(`Cleanup complete — ${parts.join(", ")}.`);
       }
     },
-    onError: (err: Error) => toast.error(`Cleanup failed: ${err.message}`),
+    onError: (err: Error) => {
+      qc.invalidateQueries({ queryKey: getGetQrCleanupHistoryQueryKey() });
+      toast.error(`Cleanup failed: ${err.message}`);
+    },
   });
 
   const [vaCleanupRunResult, setVaCleanupRunResult] = useState<{ closed: number; deleted: number } | null>(null);
   const [qrHistoryOpen, setQrHistoryOpen] = useState(false);
   const [vaHistoryOpen, setVaHistoryOpen] = useState(false);
 
-  const { data: qrHistoryData, isLoading: qrHistoryLoading } = useGetQrCleanupHistory({ query: { enabled: qrHistoryOpen, queryKey: getGetQrCleanupHistoryQueryKey(), staleTime: 30_000 } });
-  const { data: vaHistoryData, isLoading: vaHistoryLoading } = useGetVaCleanupHistory({ query: { enabled: vaHistoryOpen, queryKey: getGetVaCleanupHistoryQueryKey(), staleTime: 30_000 } });
+  const { data: qrHistoryData, isLoading: qrHistoryLoading } = useGetQrCleanupHistory({ query: { queryKey: getGetQrCleanupHistoryQueryKey(), staleTime: 30_000 } });
+  const { data: vaHistoryData, isLoading: vaHistoryLoading } = useGetVaCleanupHistory({ query: { queryKey: getGetVaCleanupHistoryQueryKey(), staleTime: 30_000 } });
+  const latestQrCleanup = qrHistoryData?.data?.[0];
+  const latestVaCleanup = vaHistoryData?.data?.[0];
 
   const { mutate: clearQrHistory, isPending: clearingQrHistory } = useClearQrCleanupHistory({
     mutation: {
@@ -772,7 +783,10 @@ export default function AdminSettings() {
         toast.success(`Cleanup complete — ${parts.join(", ")}.`);
       }
     },
-    onError: (err: Error) => toast.error(`Cleanup failed: ${err.message}`),
+    onError: (err: Error) => {
+      qc.invalidateQueries({ queryKey: getGetVaCleanupHistoryQueryKey() });
+      toast.error(`Cleanup failed: ${err.message}`);
+    },
   });
 
   const currentTestEmailRetentionDays = testEmailRetentionData?.retentionDays ?? 30;
@@ -1338,6 +1352,60 @@ export default function AdminSettings() {
       },
       onError: (err: Error) => toast.error(err.message),
     },
+  });
+
+  const { data: cfStuckAlertData, isLoading: cfStuckAlertLoading } = useQuery<{ threshold: number; staleMinutes: number; cooldownHours: number }>({
+    queryKey: ["/api/system-config/cashfree-stuck-order-alert"],
+    queryFn: () => apiGet("/system-config/cashfree-stuck-order-alert"),
+    staleTime: 30_000,
+  });
+
+  const { data: cfStuckStatus, isLoading: cfStuckStatusLoading } = useQuery<{
+    stuckCount: number;
+    staleMinutes: number;
+    lastSentAt: string | null;
+    cooldownExpiresAt: string | null;
+    cooldownActive: boolean;
+  }>({
+    queryKey: ["/api/system-config/cashfree-stuck-order-status"],
+    queryFn: () => apiGet("/system-config/cashfree-stuck-order-status"),
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+    staleTime: 30_000,
+  });
+
+  useEffect(() => {
+    if (!cfStuckInitialized && cfStuckAlertData) {
+      setCfStuckThreshold(cfStuckAlertData.threshold);
+      setCfStuckStaleMinutes(cfStuckAlertData.staleMinutes);
+      setCfStuckCooldownHours(cfStuckAlertData.cooldownHours);
+      setCfStuckInitialized(true);
+    }
+  }, [cfStuckInitialized, cfStuckAlertData]);
+
+  const currentCfStuckThreshold = cfStuckAlertData?.threshold ?? 5;
+  const currentCfStuckStaleMinutes = cfStuckAlertData?.staleMinutes ?? 15;
+  const currentCfStuckCooldownHours = cfStuckAlertData?.cooldownHours ?? 4;
+  const cfStuckUnchanged =
+    cfStuckThreshold === currentCfStuckThreshold &&
+    cfStuckStaleMinutes === currentCfStuckStaleMinutes &&
+    cfStuckCooldownHours === currentCfStuckCooldownHours;
+  const cfStuckValid = cfStuckThreshold >= 1 && cfStuckStaleMinutes >= 5 && cfStuckCooldownHours >= 1;
+
+  const { mutate: saveCfStuckAlert, isPending: savingCfStuckAlert } = useMutation({
+    mutationFn: () => apiPut("/system-config/cashfree-stuck-order-alert", {
+      threshold: cfStuckThreshold,
+      staleMinutes: cfStuckStaleMinutes,
+      cooldownHours: cfStuckCooldownHours,
+    }),
+    onSuccess: (res: { threshold: number; staleMinutes: number; cooldownHours: number }) => {
+      toast.success("Cashfree stuck order alert settings saved");
+      setCfStuckThreshold(res.threshold);
+      setCfStuckStaleMinutes(res.staleMinutes);
+      setCfStuckCooldownHours(res.cooldownHours);
+      qc.invalidateQueries({ queryKey: ["/api/system-config/cashfree-stuck-order-alert"] });
+    },
+    onError: (err: Error) => toast.error(err.message),
   });
 
   const testEmailTrimmed = testEmailTo.trim();
@@ -2225,6 +2293,19 @@ export default function AdminSettings() {
               </span>
             </div>
           )}
+          {latestQrCleanup?.status === "failed" && (
+            <div className="flex items-start gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-md px-3 py-2">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <span>
+                <strong>Latest QR cleanup failed</strong>
+                {" — "}
+                <span title={new Date(latestQrCleanup.ranAt).toLocaleString()}>
+                  {formatTimeAgo(latestQrCleanup.ranAt)}
+                </span>
+                {latestQrCleanup.summary ? ` · ${latestQrCleanup.summary}` : ""}
+              </span>
+            </div>
+          )}
           {cleanupStats?.qrCleanup.lastRunAt != null ? (
             <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/20 border border-border/40 rounded-md px-3 py-2">
               <History className="w-3.5 h-3.5 shrink-0" />
@@ -2337,6 +2418,7 @@ export default function AdminSettings() {
                         <tr className="border-b border-border/40 bg-muted/20">
                           <th className="text-left px-3 py-2 font-medium text-muted-foreground">Date &amp; time</th>
                           <th className="text-left px-3 py-2 font-medium text-muted-foreground">Trigger</th>
+                           <th className="text-left px-3 py-2 font-medium text-muted-foreground">Status</th>
                           <th className="text-right px-3 py-2 font-medium text-muted-foreground">Expired</th>
                           <th className="text-right px-3 py-2 font-medium text-muted-foreground">Deleted</th>
                           <th className="text-right px-3 py-2 font-medium text-muted-foreground">Retention</th>
@@ -2354,13 +2436,26 @@ export default function AdminSettings() {
                                 : <span className="inline-flex items-center gap-1 rounded-full bg-muted/40 border border-border/40 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">scheduled</span>
                               }
                             </td>
+                             <td className="px-3 py-2">
+                               <span className={`inline-flex rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${
+                                 row.status === "failed"
+                                   ? "bg-red-500/15 border-red-500/25 text-red-400"
+                                   : "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                               }`}>
+                                 {row.status === "failed" ? "failed" : "succeeded"}
+                               </span>
+                             </td>
                             <td className="px-3 py-2 text-right tabular-nums">
-                              {(row.expired ?? 0) === 0
+                               {row.status === "failed"
+                                 ? <span className="text-muted-foreground">—</span>
+                                 : (row.expired ?? 0) === 0
                                 ? <span className="text-muted-foreground">0</span>
                                 : <span className="text-amber-400 font-medium">{row.expired}</span>}
                             </td>
                             <td className="px-3 py-2 text-right tabular-nums">
-                              {row.deleted === 0
+                               {row.status === "failed"
+                                 ? <span className="text-muted-foreground">—</span>
+                                 : row.deleted === 0
                                 ? <span className="text-muted-foreground">0</span>
                                 : <span className="text-amber-400 font-medium">{row.deleted}</span>}
                             </td>
@@ -2446,6 +2541,19 @@ export default function AdminSettings() {
               <span>
                 Closed virtual accounts are deleted automatically after{" "}
                 <strong>{currentVaRetentionDays} day{currentVaRetentionDays !== 1 ? "s" : ""}</strong>.
+              </span>
+            </div>
+          )}
+          {latestVaCleanup?.status === "failed" && (
+            <div className="flex items-start gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-md px-3 py-2">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <span>
+                <strong>Latest virtual-account cleanup failed</strong>
+                {" — "}
+                <span title={new Date(latestVaCleanup.ranAt).toLocaleString()}>
+                  {formatTimeAgo(latestVaCleanup.ranAt)}
+                </span>
+                {latestVaCleanup.summary ? ` · ${latestVaCleanup.summary}` : ""}
               </span>
             </div>
           )}
@@ -2541,6 +2649,7 @@ export default function AdminSettings() {
                         <tr className="border-b border-border/40 bg-muted/20">
                           <th className="text-left px-3 py-2 font-medium text-muted-foreground">Date &amp; time</th>
                           <th className="text-left px-3 py-2 font-medium text-muted-foreground">Trigger</th>
+                           <th className="text-left px-3 py-2 font-medium text-muted-foreground">Status</th>
                           <th className="text-right px-3 py-2 font-medium text-muted-foreground">Closed</th>
                           <th className="text-right px-3 py-2 font-medium text-muted-foreground">Deleted</th>
                           <th className="text-right px-3 py-2 font-medium text-muted-foreground">Retention</th>
@@ -2558,13 +2667,26 @@ export default function AdminSettings() {
                                 : <span className="inline-flex items-center gap-1 rounded-full bg-muted/40 border border-border/40 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">scheduled</span>
                               }
                             </td>
+                             <td className="px-3 py-2">
+                               <span className={`inline-flex rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${
+                                 row.status === "failed"
+                                   ? "bg-red-500/15 border-red-500/25 text-red-400"
+                                   : "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                               }`}>
+                                 {row.status === "failed" ? "failed" : "succeeded"}
+                               </span>
+                             </td>
                             <td className="px-3 py-2 text-right tabular-nums">
-                              {(row.closed ?? 0) === 0
+                               {row.status === "failed"
+                                 ? <span className="text-muted-foreground">—</span>
+                                 : (row.closed ?? 0) === 0
                                 ? <span className="text-muted-foreground">0</span>
                                 : <span className="text-amber-400 font-medium">{row.closed}</span>}
                             </td>
                             <td className="px-3 py-2 text-right tabular-nums">
-                              {row.deleted === 0
+                               {row.status === "failed"
+                                 ? <span className="text-muted-foreground">—</span>
+                                 : row.deleted === 0
                                 ? <span className="text-muted-foreground">0</span>
                                 : <span className="text-amber-400 font-medium">{row.deleted}</span>}
                             </td>
@@ -3771,6 +3893,28 @@ export default function AdminSettings() {
 
           <div className="flex items-center justify-between rounded-lg border border-border/50 bg-muted/5 px-4 py-3">
             <div className="space-y-0.5">
+              <p className="text-sm font-medium">Merchant enrollment credential submission emails</p>
+              <p className="text-xs text-muted-foreground">
+                Receive an email when a merchant submits new API credentials for a Category D provider (e.g. PhonePe, Paytm, BharatPe). Includes a direct link to the Enrollment Review panel.
+              </p>
+            </div>
+            <Switch
+              checked={enrollmentCredentialEnabled}
+              onCheckedChange={val =>
+                updatePrefs({ data: { enrollmentCredentialSubmittedEmails: val } as any })
+              }
+              disabled={savingPrefs || me === undefined}
+            />
+          </div>
+          {!enrollmentCredentialEnabled && (
+            <p className="text-xs text-amber-400 flex items-center gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              You will not receive emails when merchants submit provider credentials for review.
+            </p>
+          )}
+
+          <div className="flex items-center justify-between rounded-lg border border-border/50 bg-muted/5 px-4 py-3">
+            <div className="space-y-0.5">
               <p className="text-sm font-medium">Weekly delivery health digest</p>
               <p className="text-xs text-muted-foreground">
                 Receive a weekly summary every Monday with delivery success rates, failure counts, and auto-paused schedules across all merchants.
@@ -4790,6 +4934,172 @@ export default function AdminSettings() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Cashfree Stuck Order Alert */}
+      <Card className="border-border/50" id="cashfree-stuck-order-alert">
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-muted-foreground" />
+            <CardTitle className="text-base">Cashfree Stuck Order Alert</CardTitle>
+          </div>
+          <CardDescription className="text-sm">
+            The scheduler scans every 30 minutes for Cashfree payin orders that are still
+            CREATED or PENDING past the stale window. When the count meets or exceeds the
+            threshold an email goes to every active admin (no opt-out). A cooldown prevents
+            repeated alerts during a prolonged outage. Changes take effect on the next scheduler tick.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {cfStuckAlertLoading ? (
+            <SettingsFormSkeleton rows={3} />
+          ) : (
+            <>
+              {/* Live status banner */}
+              {!cfStuckStatusLoading && cfStuckStatus != null && (() => {
+                const count = cfStuckStatus.stuckCount;
+                const threshold = currentCfStuckThreshold;
+                const breached = count >= threshold;
+                const cooldownRemaining = formatTimeRemaining(cfStuckStatus.cooldownExpiresAt, now);
+                return (
+                  <div className={`rounded-lg border px-4 py-3 space-y-1.5 text-xs ${
+                    breached
+                      ? "bg-red-500/10 border-red-500/20 text-red-400"
+                      : "bg-muted/10 border-border/40 text-muted-foreground"
+                  }`}>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`inline-flex items-center gap-1.5 font-medium ${breached ? "text-red-400" : "text-foreground"}`}>
+                        <AlertCircle className={`w-3.5 h-3.5 shrink-0 ${breached ? "text-red-400" : "text-muted-foreground"}`} />
+                        {count === 0
+                          ? "No stuck orders right now"
+                          : `${count} stuck order${count !== 1 ? "s" : ""} right now`}
+                      </span>
+                      {count > 0 && (
+                        <span className="text-muted-foreground">
+                          (threshold: {threshold})
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-4 flex-wrap">
+                      {cfStuckStatus.lastSentAt ? (
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3 h-3 shrink-0" />
+                          Last alert: {formatTimeAgo(cfStuckStatus.lastSentAt)}
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3 h-3 shrink-0" />
+                          No alert sent yet
+                        </span>
+                      )}
+                      {cfStuckStatus.cooldownActive && cooldownRemaining && (
+                        <span className="flex items-center gap-1 text-amber-400">
+                          <Clock className="w-3 h-3 shrink-0" />
+                          Next alert in {cooldownRemaining}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="cf-stuck-threshold" className="text-sm">
+                    Alert threshold (orders)
+                  </Label>
+                  <Input
+                    id="cf-stuck-threshold"
+                    type="number"
+                    min={1}
+                    max={10000}
+                    value={cfStuckThreshold}
+                    onChange={e => {
+                      const v = parseInt(e.target.value);
+                      if (!isNaN(v)) setCfStuckThreshold(Math.min(10000, Math.max(1, v)));
+                    }}
+                    className="w-full"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Min 1. Default: 5.
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="cf-stuck-stale" className="text-sm">
+                    Stale window (minutes)
+                  </Label>
+                  <Input
+                    id="cf-stuck-stale"
+                    type="number"
+                    min={5}
+                    max={1440}
+                    value={cfStuckStaleMinutes}
+                    onChange={e => {
+                      const v = parseInt(e.target.value);
+                      if (!isNaN(v)) setCfStuckStaleMinutes(Math.min(1440, Math.max(5, v)));
+                    }}
+                    className="w-full"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    5–1440 min. Default: 15.
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="cf-stuck-cooldown" className="text-sm">
+                    Alert cooldown (hours)
+                  </Label>
+                  <Input
+                    id="cf-stuck-cooldown"
+                    type="number"
+                    min={1}
+                    max={168}
+                    value={cfStuckCooldownHours}
+                    onChange={e => {
+                      const v = parseInt(e.target.value);
+                      if (!isNaN(v)) setCfStuckCooldownHours(Math.min(168, Math.max(1, v)));
+                    }}
+                    className="w-full"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    1–168 h (1 week). Default: 4.
+                  </p>
+                </div>
+              </div>
+
+              {!cfStuckValid && (
+                <p className="text-xs text-amber-400 flex items-center gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  Threshold must be ≥ 1, stale window ≥ 5 min, and cooldown ≥ 1 h.
+                </p>
+              )}
+
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  onClick={() => saveCfStuckAlert()}
+                  disabled={savingCfStuckAlert || cfStuckUnchanged || !cfStuckValid}
+                >
+                  <Save className="w-3.5 h-3.5 mr-1.5" />
+                  {savingCfStuckAlert ? "Saving…" : "Save"}
+                </Button>
+                {!cfStuckUnchanged && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setCfStuckThreshold(currentCfStuckThreshold);
+                      setCfStuckStaleMinutes(currentCfStuckStaleMinutes);
+                      setCfStuckCooldownHours(currentCfStuckCooldownHours);
+                    }}
+                    disabled={savingCfStuckAlert}
+                  >
+                    Cancel
+                  </Button>
+                )}
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Quiet Hours Flush Interval */}
       <Card className="border-border/50">
