@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, promotionalCampaignsTable, promotionalAnalyticsTable, auditLogsTable } from "@workspace/db";
-import { eq, desc, and, sql } from "drizzle-orm";
+import { eq, desc, and, inArray, sql } from "drizzle-orm";
 import { requireAuth, requireAdmin, requireSuperAdmin } from "../middlewares/auth";
 
 const router = Router();
@@ -57,10 +57,10 @@ function sanitizeCampaign(body: Record<string, unknown>) {
 
 // ── Public endpoints (no auth) ────────────────────────────────────────────────
 
-// GET /api/cms/public/banners?placement=hero_bottom
-// Returns active campaigns for a given placement (or all active if no placement)
+// GET /api/cms/public/banners?placement=hero_bottom (or ?placements=a,b,c, or all if omitted)
+// Returns active campaigns for the requested placement(s) or all active banners in one batch
 router.get("/public/banners", async (req, res) => {
-  const { placement } = req.query as Record<string, string>;
+  const { placement, placements } = req.query as Record<string, string>;
   const now = new Date();
 
   try {
@@ -68,14 +68,23 @@ router.get("/public/banners", async (req, res) => {
       eq(promotionalCampaignsTable.status, "published"),
       eq(promotionalCampaignsTable.isSlotEnabled, true),
     );
+    const placementList = placements
+      ? placements
+          .split(",")
+          .map((p) => p.trim())
+          .filter(Boolean)
+      : [];
+
+    const whereClause = placement
+      ? and(base, eq(promotionalCampaignsTable.placement, placement))
+      : placementList.length > 0
+        ? and(base, inArray(promotionalCampaignsTable.placement, placementList))
+        : base;
+
     const rows = await db
       .select()
       .from(promotionalCampaignsTable)
-      .where(
-        placement
-          ? and(base, eq(promotionalCampaignsTable.placement, placement))
-          : base,
-      )
+      .where(whereClause)
       .orderBy(promotionalCampaignsTable.priority, promotionalCampaignsTable.displayOrder);
 
     const filtered = rows.filter((r) => {
@@ -84,6 +93,22 @@ router.get("/public/banners", async (req, res) => {
       return true;
     });
 
+    const nowMs = now.getTime();
+    let maxAgeSeconds = 60;
+    for (const r of rows) {
+      for (const boundary of [r.startAt, r.endAt]) {
+        if (!boundary) continue;
+        const deltaSeconds = Math.floor((boundary.getTime() - nowMs) / 1000);
+        if (deltaSeconds >= 0 && deltaSeconds < maxAgeSeconds) {
+          maxAgeSeconds = deltaSeconds;
+        }
+      }
+    }
+
+    res.setHeader(
+      "Cache-Control",
+      maxAgeSeconds > 0 ? `public, max-age=${maxAgeSeconds}` : "no-store",
+    );
     return res.json({ campaigns: filtered });
   } catch (err) {
     req.log.error({ err }, "cms_public_banners_error");

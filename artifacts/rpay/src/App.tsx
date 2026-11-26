@@ -66,6 +66,7 @@ import ApiDocsPublic from "@/pages/api-docs-public";
 import IntegrationGuide from "@/pages/integration-guide";
 import AdminLegalPages from "@/pages/admin/legal-pages";
 import { CookieConsent } from "@/components/ui/cookie-consent";
+import { HelpKartWidget } from "@/components/ui/helpkart-widget";
 
 // Auth Pages
 import AdminLogin from "@/pages/admin/login";
@@ -725,6 +726,7 @@ function App() {
           <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
             <Router />
             <CookieConsent />
+            <HelpKartWidget />
           </WouterRouter>
         </AuthProvider>
         <Toaster theme="dark" position="top-right" />

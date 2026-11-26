@@ -21,6 +21,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { MobileBottomNav } from "@/components/layout/mobile-bottom-nav";
 import { InstallAppButton } from "@/components/ui/install-app-banner";
 import { apiUrl } from "@/lib/api-url";
+import { APP_VERSION, BUILD_DATE, getBuildStampLabel } from "@/lib/build-info";
 
 // ── Admin self-service password change dialog ─────────────────────────────────
 
@@ -942,35 +943,52 @@ function GithubSyncAdminAlert() {
 }
 
 function VersionBadge() {
-  const [commit, setCommit] = useState<string | null>(null);
+  const [meta, setMeta] = useState<{ version: string; buildDate: string; commit: string | null }>({
+    version: APP_VERSION,
+    buildDate: BUILD_DATE,
+    commit: null,
+  });
 
   useEffect(() => {
     fetch(apiUrl("/api/healthz"))
       .then((r) => r.json())
-      .then((data: { commit?: string }) => {
-        if (data?.commit && data.commit !== "unknown") {
-          setCommit(data.commit);
-        }
+      .then((data: { version?: string; buildDate?: string; commit?: string }) => {
+        setMeta({
+          version: data?.version || APP_VERSION,
+          buildDate: data?.buildDate || BUILD_DATE,
+          commit: data?.commit && data.commit !== "unknown" ? data.commit : null,
+        });
       })
       .catch(() => {
-        // non-critical — silently ignore network errors
+        // non-critical — keep build-time stamp
       });
   }, []);
 
-  if (!commit) return null;
+  const label = getBuildStampLabel(meta.version, meta.buildDate);
+  const shortSha = meta.commit ? meta.commit.slice(0, 7) : null;
 
-  const shortSha = commit.slice(0, 7);
+  if (!meta.commit) {
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-mono text-muted-foreground/60 w-fit"
+        title={`Running ${label}`}
+      >
+        <GitCommit className="w-3 h-3 shrink-0" />
+        {label}
+      </span>
+    );
+  }
 
   return (
     <a
-      href={`https://github.com/rudraraj55955/RasoKart/commit/${commit}`}
+      href={`https://github.com/rudraraj55955/RasoKart/commit/${meta.commit}`}
       target="_blank"
       rel="noopener noreferrer"
-      className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-mono text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/40 transition-colors w-fit"
-      title={`Running commit ${commit}`}
+      className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-mono text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/40 transition-colors w-fit"
+      title={`Running ${label} (${meta.commit})`}
     >
       <GitCommit className="w-3 h-3 shrink-0" />
-      {shortSha}
+      {label} ({shortSha})
     </a>
   );
 }
