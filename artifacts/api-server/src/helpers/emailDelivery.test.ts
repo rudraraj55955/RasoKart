@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  extractProviderMessageId,
   sanitizeEmailDeliveryReason,
   shouldApplyEmailDeliveryStatus,
   type EmailDeliveryStatus,
@@ -64,5 +65,25 @@ describe("password-reset email delivery reason sanitization", () => {
       assert.equal(sanitized, "Provider reported delivery failure");
       assert.equal(JSON.stringify(sanitized).includes(reason), false);
     }
+  });
+});
+
+describe("provider message ID extraction", () => {
+  it("extracts top-level request_id and MSG91 v5 nested data.unique_id", () => {
+    assert.equal(extractProviderMessageId({ request_id: "req-123" }), "req-123");
+    assert.equal(
+      extractProviderMessageId({ status: "success", data: { unique_id: "msg91-uid-456" }, hasError: false }),
+      "msg91-uid-456",
+    );
+    assert.equal(
+      extractProviderMessageId({ data: { request_id: "  nested-req-789  " } }),
+      "nested-req-789",
+    );
+  });
+
+  it("returns null for missing or non-string IDs", () => {
+    assert.equal(extractProviderMessageId(null), null);
+    assert.equal(extractProviderMessageId({}), null);
+    assert.equal(extractProviderMessageId({ data: { unique_id: "   " } }), null);
   });
 });

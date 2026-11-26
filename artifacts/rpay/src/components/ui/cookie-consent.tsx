@@ -55,9 +55,9 @@ export function CookieConsent() {
   };
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-[100] p-4 pointer-events-none">
-      <div className="mx-auto max-w-3xl pointer-events-auto">
-        <div className="rounded-2xl border border-border/60 bg-background/95 backdrop-blur-xl shadow-2xl p-4 sm:p-5">
+    <div className="fixed bottom-3 left-3 right-3 sm:right-auto sm:max-w-xl z-[90] pointer-events-none">
+      <div className="pointer-events-auto">
+        <div className="rounded-2xl border border-border/60 bg-background/95 backdrop-blur-xl shadow-2xl p-3.5 sm:p-4">
           {!showManage ? (
             <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
               <div className="flex items-start gap-3 flex-1 min-w-0">

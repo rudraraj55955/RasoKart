@@ -8,11 +8,23 @@ import { isServerInitialized } from "../lib/startupState";
 import { getSchemaGuardStatus } from "../lib/schemaGuard";
 
 // Injected at build time by esbuild define (see build.mjs).
-// Falls back to the COMMIT_SHA env var (useful when running the uncompiled source
-// directly in development), then to "unknown".
+// Falls back to env vars in development, then sensible defaults.
 declare const __COMMIT_SHA__: string;
+declare const __APP_VERSION__: string;
+declare const __BUILD_DATE__: string;
+
 const COMMIT_SHA: string = (() => {
   try { return __COMMIT_SHA__; } catch { return process.env.COMMIT_SHA ?? "unknown"; }
+})();
+
+const APP_VERSION: string = (() => {
+  try { return __APP_VERSION__; } catch { return process.env.APP_VERSION ?? "2.1.0"; }
+})();
+
+const BUILD_DATE: string = (() => {
+  try { return __BUILD_DATE__; } catch {
+    return process.env.BUILD_DATE ?? new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  }
 })();
 
 const router: IRouter = Router();
@@ -20,11 +32,11 @@ const router: IRouter = Router();
 // Lightweight liveness check — no DB access, always fast, used by load
 // balancers / uptime pingers that just need to know the process is up.
 router.get("/health", (_req, res) => {
-  res.json({ status: "ok" });
+  res.json({ status: "ok", version: APP_VERSION, buildDate: BUILD_DATE });
 });
 
 router.get("/healthz", (_req, res) => {
-  res.json({ status: "ok", commit: COMMIT_SHA });
+  res.json({ status: "ok", version: APP_VERSION, buildDate: BUILD_DATE, commit: COMMIT_SHA });
 });
 
 // DEMO_CREDENTIALS imported from @workspace/demo-credentials — single source
@@ -228,6 +240,8 @@ router.get("/healthz/deep", async (_req, res) => {
   const allOk = Object.values(checks).every(Boolean);
   return res.status(allOk ? 200 : 503).json({
     status: allOk ? "ok" : "degraded",
+    version: APP_VERSION,
+    buildDate: BUILD_DATE,
     commit: COMMIT_SHA,
     schema_guard: { status: guardInfo.status, failedBlocks: guardInfo.failedBlocks },
     checks,
