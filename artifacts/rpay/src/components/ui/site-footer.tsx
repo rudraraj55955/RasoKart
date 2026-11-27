@@ -1,6 +1,7 @@
 import { Link } from "wouter";
 import { RasoKartLogo } from "@/components/ui/rasokart-logo";
 import { useCompanySettings } from "@/lib/company-settings";
+import { getBuildStampLabel } from "@/lib/build-info";
 import { Phone, Mail, MapPin, ExternalLink } from "lucide-react";
 
 const companyLinks = [
@@ -184,7 +185,8 @@ export function SiteFooter() {
         {/* Bottom bar */}
         <div className="border-t border-border/40 pt-5 flex flex-col sm:flex-row items-center justify-between gap-3">
           <p className="text-xs text-muted-foreground/60 text-center sm:text-left">
-            © {new Date().getFullYear()} NICKEY COLLECTION PRIVATE LIMITED. All rights reserved. CIN: U47820RJ2025PTC109583 · GSTIN: 08AALCN0945P1ZT.
+            © {new Date().getFullYear()} NICKEY COLLECTION PRIVATE LIMITED. All rights reserved. CIN: U47820RJ2025PTC109583 · GSTIN: 08AALCN0945P1ZT ·{" "}
+            <span className="font-mono text-muted-foreground/80" data-testid="build-version-stamp">{getBuildStampLabel()}</span>
           </p>
           <div className="flex items-center gap-4 text-xs text-muted-foreground/60">
             <Link href="/privacy-policy" className="hover:text-muted-foreground transition-colors">

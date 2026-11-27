@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { RasoKartLogo } from "@/components/ui/rasokart-logo";
 import { PromoBannerSlot } from "@/components/ui/promo-banner";
 import { useCompanySettings } from "@/lib/company-settings";
+import { getBuildStampLabel } from "@/lib/build-info";
 import { trackEvent } from "@/lib/analytics";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -124,9 +125,11 @@ export default function Landing() {
   const { companyName, supportPhone, footerText } = useCompanySettings();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   return (
-    <div className="min-h-screen overflow-x-hidden bg-background text-foreground antialiased">
-      {/* NAV */}
-      <header className="fixed inset-x-0 top-0 z-50 border-b border-border/40 bg-background/80 backdrop-blur-xl">
+    <div className="min-h-screen overflow-x-clip bg-background text-foreground antialiased">
+      {/* STICKY TOP STACK: Announcement Bar + NAV */}
+      <div className="sticky top-0 z-50">
+        <PromoBannerSlot placement="announcement_bar" />
+        <header className="border-b border-border/40 bg-background/85 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
           {/* Logo — always routes home */}
           <Link href="/" className="flex items-center gap-3 hover:opacity-90 transition-opacity">
@@ -173,6 +176,7 @@ export default function Landing() {
           </div>
         </div>
       </header>
+      </div>
 
       {/* Mobile navigation drawer — Sheet renders in a portal, works on all widths below md */}
       <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
@@ -227,28 +231,26 @@ export default function Landing() {
         </SheetContent>
       </Sheet>
 
-      <PromoBannerSlot placement="announcement_bar" />
-
       {/* HERO */}
-      <section className="relative flex min-h-screen items-center overflow-hidden pt-16">
+      <section className="relative flex min-h-[calc(100svh-5rem)] items-center overflow-hidden">
         {/* glow blobs — clipped so they can't cause horizontal overflow */}
         <div className="pointer-events-none absolute inset-0 overflow-hidden">
           <div className="absolute -top-40 left-1/4 h-[600px] w-[600px] rounded-full bg-cyan-500/10 blur-3xl" />
           <div className="absolute bottom-0 right-1/4 h-[500px] w-[500px] rounded-full bg-violet-500/10 blur-3xl" />
         </div>
 
-        <div className="relative mx-auto w-full max-w-7xl px-4 py-24 sm:px-6 lg:py-32">
+        <div className="relative mx-auto w-full max-w-7xl px-4 py-12 sm:px-6 sm:py-16 lg:py-20">
           <div className="min-w-0 max-w-3xl">
-            <Badge className="mb-6 border-cyan-400/30 bg-cyan-400/10 text-cyan-400" variant="outline">
+            <Badge className="mb-5 border-cyan-400/30 bg-cyan-400/10 text-cyan-400" variant="outline">
               Merchant Technology & Payment Integration Platform
             </Badge>
-            <h1 className="mb-6 text-4xl font-extrabold leading-tight tracking-tight sm:text-6xl lg:text-7xl">
+            <h1 className="mb-5 text-4xl font-extrabold leading-tight tracking-tight sm:text-5xl lg:text-6xl">
               Manage Payments, Merchants and{" "}
               <span className="bg-gradient-to-r from-cyan-400 to-violet-400 bg-clip-text text-transparent">
                 Reconciliation from One Platform
               </span>
             </h1>
-            <p className="mb-10 max-w-2xl text-base text-muted-foreground sm:text-xl">
+            <p className="mb-8 max-w-2xl text-base text-muted-foreground sm:text-lg">
               RasoKart provides software tools for merchant onboarding, payment integration, transaction monitoring, reconciliation, reporting and business operations. Payment processing and settlement services are provided through approved banking and payment-service partners, subject to partner onboarding, KYC, risk approval and applicable terms.
             </p>
             <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:gap-4">
@@ -915,6 +917,7 @@ export default function Landing() {
             <span>
               © {new Date().getFullYear()} Powered by RasoKart. Operated by {companyName}. All rights reserved.
               {" "}Support: {supportPhone}
+              {" "}· <span className="font-mono text-muted-foreground/80" data-testid="build-version-stamp">{getBuildStampLabel()}</span>
             </span>
             <div className="flex flex-wrap gap-x-6 gap-y-1.5 justify-center sm:justify-end">
               <Link href="/privacy-policy" className="transition-colors hover:text-foreground">Privacy Policy</Link>

@@ -155,6 +155,9 @@ jobs:
       - name: Verify production deployment workflow safety policy
         run: pnpm --filter @workspace/scripts run test:deployment-workflow-policy
 
+      - name: Verify deployment preflight preserves local changes
+        run: node --test scripts/deploy-sensitive-production.test.mjs
+
       - name: Validate shared-package TypeScript project references
         run: pnpm run test:ts-references
 
@@ -206,8 +209,13 @@ jobs:
       - name: Run unit tests (rpay — scrubbing, UPI, gateway guards)
         run: pnpm --filter @workspace/rpay test
 
+      - name: Create isolated White Label test database
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "CREATE DATABASE rasokart_wl_test;"
+
       - name: Run unit tests (api-server — routing, helpers, schema guard)
         run: pnpm --filter @workspace/api-server test
+        env:
+          TEST_DATABASE_URL: postgres://rasokart_ci:rasokart_ci@localhost:5432/rasokart_wl_test
 
       - name: Start API server
         run: |

@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { resolveUserPermissions, checkPermission } from "../services/permissionResolver";
+import { isTokenInvalidatedByPasswordUpdate } from "./authTokenFreshness";
 
 export { resolveUserPermissions } from "../services/permissionResolver";
 
@@ -41,7 +42,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       res.status(401).json({ error: "Unauthorized" });
       return;
     }
-    if (user.passwordUpdatedAt && payload.iat != null && payload.iat * 1000 < user.passwordUpdatedAt.getTime()) {
+    if (isTokenInvalidatedByPasswordUpdate(payload.iat, user.passwordUpdatedAt)) {
       res.status(401).json({ error: "Session expired. Please log in again." });
       return;
     }

@@ -58,9 +58,10 @@ interface LedgerParams {
 async function mutateWallet(
   merchantId: number,
   mutation: WalletMutation,
-  ledger: LedgerParams
+  ledger: LedgerParams,
+  existingTx?: DbOrTx
 ): Promise<typeof walletLedgerTable.$inferSelect> {
-  return await db.transaction(async (tx) => {
+  const run = async (tx: DbOrTx) => {
     const w = await ensureWallet(tx, merchantId);
 
     const avBefore = numStr(w.availableBalance);
@@ -103,7 +104,8 @@ async function mutateWallet(
       })
       .returning();
     return entry;
-  });
+  };
+  return existingTx ? run(existingTx) : db.transaction(run);
 }
 
 function mapWallet(w: typeof merchantWalletsTable.$inferSelect, merchantName?: string | null) {

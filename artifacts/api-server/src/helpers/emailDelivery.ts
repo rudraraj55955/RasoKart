@@ -36,7 +36,25 @@ export function maskEmail(email: string): string {
 export function extractProviderMessageId(value: unknown): string | null {
   if (!value || typeof value !== "object") return null;
   const record = value as Record<string, unknown>;
-  const candidate = record.request_id ?? record.requestId ?? record.message_id ?? record.messageId ?? record.email_id;
+  const nested =
+    record.data && typeof record.data === "object"
+      ? (record.data as Record<string, unknown>)
+      : null;
+  const candidate =
+    record.request_id ??
+    record.requestId ??
+    record.unique_id ??
+    record.uniqueId ??
+    record.message_id ??
+    record.messageId ??
+    record.email_id ??
+    nested?.request_id ??
+    nested?.requestId ??
+    nested?.unique_id ??
+    nested?.uniqueId ??
+    nested?.message_id ??
+    nested?.messageId ??
+    nested?.email_id;
   return typeof candidate === "string" && candidate.trim() ? candidate.trim().slice(0, 255) : null;
 }
 

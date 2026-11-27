@@ -5,12 +5,30 @@ import { execSync } from "node:child_process";
 import { build as esbuild } from "esbuild";
 import esbuildPluginPino from "esbuild-plugin-pino";
 import { rm } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { resolve as pathResolve } from "node:path";
 
 // Plugins (e.g. 'esbuild-plugin-pino') may use `require` to resolve dependencies
 globalThis.require = createRequire(import.meta.url);
 
 const artifactDir = path.dirname(fileURLToPath(import.meta.url));
+
+function resolveRootVersion() {
+  try {
+    const pkg = JSON.parse(readFileSync(pathResolve(artifactDir, "../../package.json"), "utf8"));
+    if (typeof pkg.version === "string" && pkg.version && pkg.version !== "0.0.0") {
+      return pkg.version;
+    }
+  } catch {
+    // ignore
+  }
+  return "2.1.0";
+}
+
+const appVersion = process.env.APP_VERSION || resolveRootVersion();
+const buildDate =
+  process.env.BUILD_DATE ||
+  new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
 // Resolve the deployed commit SHA.  Priority order:
 //   1. COMMIT_SHA env var (set by CI/GitHub Actions at build time)
@@ -123,6 +141,8 @@ async function buildAll() {
     // In local dev builds, the git SHA is resolved above from `git rev-parse HEAD`.
     define: {
       __COMMIT_SHA__: JSON.stringify(commitSha),
+      __APP_VERSION__: JSON.stringify(appVersion),
+      __BUILD_DATE__: JSON.stringify(buildDate),
     },
     sourcemap: "linked",
     plugins: [

@@ -2,7 +2,7 @@ import { Router } from "express";
 import { readFileSync } from "fs";
 import { db, transactionsTable, merchantsTable, merchantWalletsTable, callbackLogsTable, qrCodesTable, virtualAccountsTable, reconciliationRunsTable, settlementsTable, merchantPlansTable, providersTable, systemSettingsTable, cashfreePaymentOrdersTable, systemConfigTable, PAYIN_ORDER_STATUS, SYSTEM_CONFIG_KEYS } from "@workspace/db";
 import { eq, sql, and, gte, count, countDistinct, inArray, notInArray, ne, lte, isNotNull } from "drizzle-orm";
-import { requireAuth, requireAdmin } from "../middlewares/auth";
+import { requireAuth, requireAdmin, requireSuperAdmin } from "../middlewares/auth";
 import { readFailureStreak, getCleanupFailureThreshold, CLEANUP_ALERT_SNOOZE_KEY } from "../helpers/githubSyncLogCleanupScheduler";
 
 const router = Router();
@@ -680,6 +680,28 @@ router.get("/webhook-health", requireAdmin, async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+/** Minimal aggregate read-only monitoring. No payment records, merchant IDs, or secrets. */
+router.get("/monitoring-summary", requireSuperAdmin, async (_req, res, next) => {
+  try {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const prodIds = getProdMerchantIds();
+    const [payments, payouts, webhooks] = await Promise.all([
+      db.select({ failed: count() }).from(transactionsTable)
+        .where(and(eq(transactionsTable.type, "deposit"), eq(transactionsTable.status, "failed"), gte(transactionsTable.createdAt, since), inArray(transactionsTable.merchantId, prodIds))),
+      db.select({ failed: count() }).from(transactionsTable)
+        .where(and(eq(transactionsTable.type, "withdrawal"), eq(transactionsTable.status, "failed"), gte(transactionsTable.createdAt, since), inArray(transactionsTable.merchantId, prodIds))),
+      db.select({ failed: count() }).from(callbackLogsTable)
+        .where(and(eq(callbackLogsTable.status, "failed"), gte(callbackLogsTable.createdAt, since), inArray(callbackLogsTable.merchantId, prodIds))),
+    ]);
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ service: "rasokart", scope: "production", windowHours: 24,
+      generatedAt: new Date().toISOString(),
+      failedPayins24h: payments[0]?.failed ?? 0,
+      failedPayouts24h: payouts[0]?.failed ?? 0,
+      failedWebhooks24h: webhooks[0]?.failed ?? 0 });
+  } catch (error) { next(error); }
 });
 
 export default router;

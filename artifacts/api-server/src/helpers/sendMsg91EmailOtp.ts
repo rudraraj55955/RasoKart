@@ -1,4 +1,5 @@
 import { logger } from "../lib/logger";
+import { extractProviderMessageId } from "./emailDelivery";
 
 const MSG91_EMAIL_ENDPOINT = "https://control.msg91.com/api/v5/email/send";
 const VERIFIED_SENDER_DOMAIN = "notify.rasokart.com";
@@ -154,7 +155,7 @@ export async function sendMsg91EmailOtp(opts: {
   let data: unknown;
   try { data = await resp.json(); } catch { data = null; }
 
-  const requestId = (data as Record<string, unknown> | null)?.["request_id"] as string | undefined;
+  const requestId = extractProviderMessageId(data);
 
   if (!resp.ok) {
     const errMsg = (data as Record<string, unknown> | null)?.["message"] as string | undefined;
