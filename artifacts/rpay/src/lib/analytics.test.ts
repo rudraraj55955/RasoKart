@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  PROVIDER_SUCCESS_ANALYTICS_EVENTS,
+  PROVIDER_SUCCESS_SMOKE_MARKER,
+  providerSuccessAnalyticsData,
   trackEvent,
   trackProviderConnectionSucceeded,
   trackProviderTestSucceeded,
@@ -66,4 +69,17 @@ test("provider setup helpers send only coarse provider, method, and outcome prop
     ],
   ]);
   Reflect.deleteProperty(globalThis, "window");
+});
+
+test("exports provider analytics contract used by production analytics smoke tests", () => {
+  assert.deepEqual(PROVIDER_SUCCESS_ANALYTICS_EVENTS, {
+    connection: "provider_connection_succeeded",
+    test: "provider_test_succeeded",
+  });
+  assert.deepEqual(PROVIDER_SUCCESS_SMOKE_MARKER, { is_smoke_test: true });
+  assert.deepEqual(providerSuccessAnalyticsData("razorpay", "api_key"), {
+    provider: "razorpay",
+    method: "api_key",
+    outcome: "success",
+  });
 });
