@@ -1,4 +1,5 @@
 import app from "./app";
+import { startRudrarajHeartbeat } from "./routes/rudrarajCommand";
 import { logger } from "./lib/logger";
 import { pool } from "@workspace/db";
 import { seed } from "./seed";
@@ -270,6 +271,7 @@ async function main() {
   // From this point on /api/healthz/deep runs the full schema + credential
   // checks and returns 200 (or 503 degraded) instead of 503 "starting".
   markServerInitialized();
+  startRudrarajHeartbeat();
   logger.info("Server fully initialised — startup probe will now return full health check");
 }
 
