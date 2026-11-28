@@ -6,7 +6,6 @@ export type ProviderConnectionMethod =
   | "mpin"
   | "password"
   | "session_reconnect";
-
 declare global {
   interface Window {
     umami?: {
